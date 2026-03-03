@@ -16,7 +16,7 @@
     "dev": "node --watch --experimental-strip-types src/index.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "echo 'lint not configured yet'",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo 'server tests not created yet'"
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "node --experimental-strip-types --test src/*.test.ts"
   }
 }

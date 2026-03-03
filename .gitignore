@@ -17,3 +17,10 @@ Docs/
 
 # Local tooling docs/scripts
 tooling/
+
+# Dependencies and build artifacts
+node_modules/
+.turbo/
+**/.turbo/
+*.tsbuildinfo
+node_modules
