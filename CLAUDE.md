@@ -37,7 +37,11 @@
 
 ## 参考文档（按需读取，不要每次都读）
 
-- `Docs/PRD.md` — 产品需求与功能范围
-- `Docs/gameplay-prd.md` — 德州规则与边界用例
-- `Docs/engineering-styleguide.md` — 完整工程规范（含测试/安全/性能细节）
-- `AGENTS.md` — Agent 团队分工
+- `Docs/PRD.md` — 产品范围、功能列表、KPIs、风险
+- `Docs/gameplay-rules.md` — **游戏规则权威**（TDA、边池、Dead Button、Squid）
+- `Docs/tech-architecture.md` — 技术栈、Monorepo、部署
+- `Docs/data-models.md` — 类型定义、DB Schema、Socket 事件、API
+- `Docs/ui-spec.md` — 页面架构、线框图、颜色、动画
+- `Docs/bot-roadmap.md` — Bot Phase 1/2/3、AIPlayerAdapter
+- `Docs/sprint-plan.md` — Agent 分工、Sprint 计划
+- `Docs/engineering-styleguide.md` — 工程规范（测试/安全/性能）
