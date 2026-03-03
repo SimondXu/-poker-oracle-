@@ -6,3 +6,11 @@
 
 # Git worktrees
 .worktrees/
+
+# Local agent artifacts and prompts
+.agents/
+AGENTS.md
+CLAUDE.md
+
+# Local docs workspace (do not publish)
+Docs/
