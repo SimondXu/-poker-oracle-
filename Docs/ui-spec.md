@@ -149,7 +149,7 @@
 ### 组件约束
 - 渲染组件不直接依赖 socket（由 store/hook 供数据）
 - 高频更新组件（TimerBar、动画）隔离状态，避免全桌重渲染
-- 所有组件用 `React.memo` 包裹
+- 优先对高频更新/大组件使用 `React.memo`（其余按 profiling 决定，避免过度 memo）
 
 ---
 

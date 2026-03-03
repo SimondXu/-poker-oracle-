@@ -1,6 +1,6 @@
 # AiPoker — Agent 指令
 
-> 本文件自动加载到每次对话。保持精简。详细参考见 `Docs/` 目录。
+> 本文件自动加载到每次对话（Claude）。Codex 入口见 `AGENTS.md`。保持精简。详细参考见 `Docs/` 目录。
 
 ## 架构铁律（不可违反）
 
@@ -14,8 +14,8 @@
 
 - Monorepo: pnpm workspace + Turborepo
 - 前端: Next.js 15 / React 19 / Zustand / Framer Motion / Tailwind + shadcn/ui
-- 后端: Fastify / Socket.io / Drizzle ORM / BullMQ
-- 数据库: PostgreSQL (Supabase) + Redis (Upstash)
+- 后端: Fastify / Socket.io / Drizzle ORM（可选：BullMQ）
+- 数据库: PostgreSQL（默认 self-host；可选：Supabase）/ Redis（可选）
 - 测试: Vitest + Testing Library + Playwright (E2E)
 - 语言: TypeScript strict 全栈
 

@@ -15,13 +15,14 @@
                      │ WebSocket (Socket.io)
 ┌────────────────────▼────────────────────────────┐
 │                后端 (Fastify + Node.js)           │
-│  TypeScript · Socket.io · BullMQ · Zod          │
+│  TypeScript · Socket.io · Zod · Drizzle ORM     │
+│  (可选：BullMQ / Redis)                          │
 └──────┬──────────────────┬───────────────────────┘
        │                  │
 ┌──────▼──────┐    ┌──────▼──────┐
 │ PostgreSQL  │    │   Redis     │
-│  (Supabase) │    │  (Upstash)  │
-│  永久存储   │    │  实时状态   │
+│ (Self-host) │    │ (Optional)  │
+│  永久存储   │    │  可选加速   │
 └─────────────┘    └─────────────┘
 ```
 
@@ -48,7 +49,7 @@
 | 运行时 | **Node.js 22 LTS** | 前后端共享 game-engine；TypeScript 生态成熟 |
 | 框架 | **Fastify** | 比 Express 快 3-4x；内置 Schema 验证。备选：Hono（更轻但生态小） |
 | WebSocket | **Socket.io** | Rooms 天然适配游戏房间；自动重连。备选：原生 ws（需自己实现 rooms） |
-| 任务队列 | **BullMQ** | Bot 决策异步化；延迟任务（计时器超时） |
+| 任务队列 | （可选）**BullMQ** | MVP 先用 in-process 队列/worker threads；需要延迟任务/强隔离再引入 BullMQ |
 | 验证 | **Zod** | 运行时类型验证，与 TypeScript 完美集成 |
 | ORM | **Drizzle ORM** | TypeScript 原生，性能好，比 Prisma 更轻 |
 
@@ -91,15 +92,18 @@ AiPoker/
 - 用户账号、历史、统计
 - 对局记录、行动序列（回放用）
 
-### Redis（实时数据）
+### 房间运行态（MVP：内存）
+
+- 房间权威状态（Table/Hand）保存在 `apps/server` 内存中，并通过 **per-room 串行队列**推进。
+- 每个 action 都持久化到 PostgreSQL（`hand_actions` 等）用于回放与训练分析。
+- 个人训练产品的 MVP 默认接受“进程重启会丢失进行中的房间状态”。若需要恢复，再引入 Redis 或 DB snapshot。
+
+### Redis（可选，用于恢复/加速/多进程）
+
 ```
 room:{roomId}:state    → GameState JSON           TTL: 24h
-room:{roomId}:lock     → 行动锁（防并发）          TTL: 10s
-session:{token}        → 用户会话                  TTL: 7d
 bot:{roomId}:{pos}     → Bot 决策状态              TTL: 1h
 ```
-
-为什么不用纯内存？Node.js 重启后状态丢失，Redis 保证持久化。
 
 ---
 
@@ -108,13 +112,18 @@ bot:{roomId}:{pos}     → Bot 决策状态              TTL: 1h
 ```
 开发环境:
   Next.js dev (localhost:3000) + Fastify dev (localhost:3001)
-  PostgreSQL (Docker) + Redis (Docker)
+  PostgreSQL (Docker)
+  (可选) Redis (Docker)
 
-生产环境:
-  Vercel       → Next.js 前端（边缘 CDN）
-  Railway      → Fastify 后端（支持 WebSocket）
-  Supabase     → PostgreSQL（免费 500MB）
-  Upstash      → Redis（Serverless，按请求计费）
+生产环境（默认：个人服务器 Self-host）:
+  Caddy/Nginx   → 反向代理 / TLS
+  Next.js       → Web（同机部署）
+  Fastify       → API + WebSocket（同机部署）
+  PostgreSQL    → Docker（同机部署）
+  (可选) Redis  → Docker（需要恢复/队列时再加）
+
+可选云部署（非 MVP 必需）:
+  Vercel / Railway / Supabase / Upstash
 
 CI/CD (GitHub Actions):
   PR:    lint → typecheck → unit tests
@@ -142,7 +151,7 @@ CI/CD (GitHub Actions):
 {
   "dependencies": {
     "fastify": "^5.0", "socket.io": "^4.7", "drizzle-orm": "^0.36",
-    "ioredis": "^5.4", "bullmq": "^5.0", "zod": "^3.23",
+    "zod": "^3.23",
     "@aipoker/game-engine": "workspace:*",
     "@aipoker/bot-engine": "workspace:*"
   }
@@ -159,3 +168,5 @@ CI/CD (GitHub Actions):
   }
 }
 ```
+
+> 可选依赖（按需引入）：`ioredis` / `bullmq`（仅当你确定需要 Redis 或独立队列 worker 时）。

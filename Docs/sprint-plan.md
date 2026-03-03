@@ -30,11 +30,11 @@
 
 | | |
 |---|---|
-| **范围** | `apps/server/`：Fastify + Socket.io + DB + Redis + 认证 |
+| **范围** | `apps/server/`：Fastify + Socket.io + DB（可选 Redis）+ 认证 |
 | **读哪些文档** | `tech-architecture.md`, `data-models.md` |
-| **关键决策** | Redis 原子锁防并发；BullMQ 异步 Bot 调度；per-room 串行队列 |
+| **关键决策** | per-room 串行队列 + 状态版本号；（可选）Redis/BullMQ 仅在证明需要时引入 |
 | **交付物** | 后端服务 + OpenAPI spec + Socket 事件文档 + DB migrations |
-| **风险** | Bot 决策阻塞 loop → BullMQ worker 隔离 |
+| **风险** | Bot 决策阻塞 loop → worker threads/独立进程隔离；需要队列再 BullMQ |
 
 ### Agent 4：Frontend Table UI
 
@@ -81,7 +81,7 @@ Sprint 1（Week 1-2）：游戏引擎核心 ─── Agent 2
 Sprint 2（Week 3-4）：后端基础设施 ─── Agent 3
 ├── Fastify 服务器 + JWT 认证
 ├── PostgreSQL schema + Drizzle ORM
-├── Redis 集成（房间状态）
+├── 房间状态：MVP 内存为主（可选 Redis）
 ├── Socket.io 基础（房间加入/状态广播）
 └── ✅ 目标：Postman 测 API，Socket.io 可创建房间
 
@@ -95,7 +95,7 @@ Sprint 3（Week 5-6）：前端牌桌 UI ─── Agent 4
 Sprint 4（Week 7-8）：Bot + 完整游戏 loop ─── Agent 6 + Agent 3
 ├── Fish / TAG Bot 实现
 ├── 完整游戏 loop：发牌 → 下注 → 结算
-├── Bot 动作调度（BullMQ）
+├── Bot 动作调度（in-process；可选 BullMQ）
 ├── 动画：发牌 / 下注 / 赢牌
 └── ✅ 目标：玩家可以 vs Bot 完整打一手
 
@@ -110,7 +110,7 @@ Sprint 6（Week 11-12）：集成 + 发布 ─── 全员
 ├── E2E 测试（Playwright）
 ├── 性能优化（60FPS, FCP<1.5s）
 ├── 断线重连 + 错误处理
-├── 部署生产（Vercel + Railway）
+├── 部署生产（默认：个人服务器 Self-host；可选云部署）
 └── ✅ 目标：MVP 发布
 ```
 

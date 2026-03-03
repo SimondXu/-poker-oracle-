@@ -56,8 +56,8 @@ export default [
   {
     files: ['packages/game-engine/**/*.ts'],
     rules: {
-      // 禁止所有全局副作用 API
-      'no-restricted-globals': ['error', 'Date', 'Math'],
+      // 禁止非确定性 API（引擎必须可重放）
+      'no-restricted-globals': ['error', 'Date'],
       'no-restricted-properties': ['error',
         { object: 'Math', property: 'random', message: '使用注入的 rng 参数' },
       ],

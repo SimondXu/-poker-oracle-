@@ -80,7 +80,7 @@ UTG: openRange 14%, vs3bet  7%
 ```
 
 ### 关键实现要点
-- Bot 决策在 BullMQ worker 异步执行（不阻塞游戏 loop）
+- MVP：Bot 决策用 in-process 队列/worker threads 异步执行（不阻塞游戏 loop）；需要更强隔离再引入 BullMQ
 - thinkingDelayMs = 1000 + random(2000)，模拟人类思考
 - Bot 使用同一套 action 校验逻辑（服务端验证 bot 行为）
 

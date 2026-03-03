@@ -112,8 +112,8 @@ interface ValidActions {
   callAmount: number;
   canBet: boolean;             // currentBetToMatch == 0
   canRaise: boolean;           // currentBetToMatch > 0
-  minBetOrRaiseTo: number;     // bet 或 raiseTo 的最小值
-  maxBetOrRaiseTo: number;     // = stack（all-in 上限）
+  minBetOrRaiseTo: number;     // bet 或 raise_to(to) 的最小值（to = 动作后 streetCommitted）
+  maxBetOrRaiseTo: number;     // = streetCommitted + stack（all-in 上限，raise_to(to) 的 to）
   canAllIn: boolean;
 }
 ```
@@ -150,6 +150,15 @@ interface RoomConfig {
   squid?: SquidConfig;
 }
 
+interface SquidConfig {
+  enabled: boolean;
+  squidValue: number;          // 默认按 BB 倍数配置
+  roundHands: number;          // 默认 = roundStartParticipants
+  minPlayers: number;          // 默认 4
+  minStackBb: number;          // 默认 35
+  joinPolicy: 'nextRoundOnly'; // 一轮中途加入/离开仅下轮生效
+}
+
 interface BlindLevel {
   sb: number;
   bb: number;
@@ -166,10 +175,15 @@ interface BlindLevel {
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username VARCHAR(32) UNIQUE NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
+  is_guest BOOLEAN NOT NULL DEFAULT FALSE,
+  email VARCHAR(255) UNIQUE,          -- guest 可为空
+  password_hash TEXT,                -- guest 可为空
   default_chips INTEGER DEFAULT 10000,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CHECK (
+    (is_guest = true  AND email IS NULL AND password_hash IS NULL) OR
+    (is_guest = false AND email IS NOT NULL AND password_hash IS NOT NULL)
+  )
 );
 
 CREATE TABLE rooms (
@@ -280,10 +294,13 @@ interface ServerEvents {
 
 ## 5. REST API
 
+> 认证策略：默认使用 **JWT 存 httpOnly cookie**（不返回 `{ token }` 到 JS）。服务端通过 cookie 鉴权 REST 与 Socket.io。
+
 ```
-POST   /api/auth/register     → { username, email, password }
-POST   /api/auth/login        → { email, password } → { token }
-POST   /api/auth/guest        → {} → { token, guestId }
+POST   /api/auth/register     → { username, email, password } → { ok, user } (Set-Cookie)
+POST   /api/auth/login        → { email, password } → { ok, user } (Set-Cookie)
+POST   /api/auth/guest        → {} → { ok, user } (Set-Cookie)
+POST   /api/auth/logout       → {} → { ok } (Clear-Cookie)
 
 GET    /api/rooms             → RoomSummary[]
 POST   /api/rooms             → RoomConfig → { roomId }

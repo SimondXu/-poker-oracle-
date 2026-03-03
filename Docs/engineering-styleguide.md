@@ -1,7 +1,7 @@
 # AiPoker 工程规范（详细参考）
 
 > 版本：v0.3 | 日期：2026-03-03
-> 本文件是**按需参考文档**，不需要每次对话都读。核心规则见项目根目录 `CLAUDE.md`。
+> 本文件是**按需参考文档**，不需要每次对话都读。核心规则见项目根目录 `AGENTS.md`（Codex）与 `CLAUDE.md`（Claude）。
 > 代码风格的大部分规则由 ESLint + tsconfig + Prettier 自动执行。
 
 ---
@@ -10,7 +10,8 @@
 
 ```
 AiPoker/
-├── CLAUDE.md                  # Agent 指令（自动加载）
+├── AGENTS.md                  # Codex Agent 指令（自动加载）
+├── CLAUDE.md                  # Claude Agent 指令（自动加载）
 ├── Docs/                      # 参考文档
 ├── apps/
 │   ├── web/                   # Next.js 前端
