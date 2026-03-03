@@ -1,0 +1,22 @@
+{
+  "name": "@aipoker/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aipoker/bot-engine": "workspace:*",
+    "@aipoker/game-engine": "workspace:*",
+    "@aipoker/shared": "workspace:*",
+    "drizzle-orm": "^0.44.6",
+    "fastify": "^5.6.1",
+    "socket.io": "^4.8.1",
+    "zod": "^4.1.11"
+  },
+  "scripts": {
+    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "lint": "echo 'lint not configured yet'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'server tests not created yet'"
+  }
+}

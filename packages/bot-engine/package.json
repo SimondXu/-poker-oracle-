@@ -1,0 +1,19 @@
+{
+  "name": "@aipoker/bot-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aipoker/game-engine": "workspace:*",
+    "@aipoker/shared": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "echo 'lint not configured yet'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test src/index.test.ts"
+  }
+}
