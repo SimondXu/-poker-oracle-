@@ -151,3 +151,5 @@ Expected: 仅出现本次实现相关变更。
   - `game:action` 增加必填 `seq`，对同一玩家重复/过期序号返回 `duplicate_action_seq`，防止网络重试导致重复推进。
 - feat(server): emit `game:action_required` for current human actor
   - 每次状态推进后，为当前真人行动者下发 `validActions + timeoutMs`，对齐实时事件契约并为行动倒计时接入做准备。
+- feat(server): emit `game:hand_result` at `hand_end`
+  - 在手牌结束时向房间广播结算摘要（pot/payout/player stacks），为回放与结果面板提供稳定事件源。

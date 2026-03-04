@@ -74,6 +74,30 @@ function waitForActionRequired(
   });
 }
 
+function waitForHandResult(
+  socket: ReturnType<typeof createClient>,
+  predicate: (payload: any) => boolean,
+  timeoutMs = 2000
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off('game:hand_result', onHandResult);
+      reject(new Error('timed out waiting for game:hand_result'));
+    }, timeoutMs);
+
+    const onHandResult = (payload: any) => {
+      if (!predicate(payload)) {
+        return;
+      }
+      clearTimeout(timer);
+      socket.off('game:hand_result', onHandResult);
+      resolve(payload);
+    };
+
+    socket.on('game:hand_result', onHandResult);
+  });
+}
+
 test('room:join returns ack and tracks room player count', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
@@ -297,6 +321,73 @@ test('game:start emits action_required to current human actor', async (t) => {
   assert.equal(actionRequired.timeoutMs, 30000);
   assert.equal(actionRequired.validActions.canCall, true);
   assert.equal(actionRequired.validActions.callAmount, 50);
+});
+
+test('game:hand_result is broadcast when hand reaches hand_end', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-9',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-9',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-9',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-9',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const aliceHandResultPromise = waitForHandResult(alice, (payload) => payload.roomId === 'room-9');
+  const bobHandResultPromise = waitForHandResult(bob, (payload) => payload.roomId === 'room-9');
+  const foldAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
+    roomId: 'room-9',
+    playerId: 'p0',
+    type: 'fold',
+    seq: 1
+  });
+  assert.deepEqual(foldAck, { ok: true });
+
+  const [aliceHandResult, bobHandResult] = await Promise.all([aliceHandResultPromise, bobHandResultPromise]);
+  assert.equal(aliceHandResult.roomId, 'room-9');
+  assert.equal(aliceHandResult.phase, 'hand_end');
+  assert.equal(Array.isArray(aliceHandResult.payouts), true);
+  assert.deepEqual(bobHandResult, aliceHandResult);
 });
 
 test('game:state hides opponent hole cards before hand_end', async (t) => {

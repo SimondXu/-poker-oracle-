@@ -2,6 +2,7 @@ import { getValidActions } from '@aipoker/game-engine';
 import type { Server } from 'socket.io';
 
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
+import { buildHandResultPayload } from './view-models/hand-result.ts';
 import { buildViewerHand } from './view-models/viewer-hand.ts';
 
 const DEFAULT_ACTION_TIMEOUT_MS = 30000;
@@ -41,6 +42,15 @@ function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<stri
   }
 }
 
+function emitHandResult(io: Server, room: RuntimeRoom): void {
+  const payload = buildHandResultPayload(room);
+  if (!payload) {
+    return;
+  }
+
+  io.to(room.id).emit('game:hand_result', payload);
+}
+
 export function emitRoomState(io: Server, room: RuntimeRoom): void {
   io.to(room.id).emit('room:state', {
     roomId: room.id,
@@ -70,4 +80,5 @@ export function emitGameState(io: Server, room: RuntimeRoom, memberships: Map<st
   }
 
   emitActionRequired(io, room, memberships);
+  emitHandResult(io, room);
 }
