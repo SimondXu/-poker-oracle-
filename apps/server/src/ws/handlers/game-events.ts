@@ -18,7 +18,7 @@ function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
 }
 
-function runBotTurns(io: Server, room: RuntimeRoom): void {
+function runBotTurns(io: Server, room: RuntimeRoom, memberships: Map<string, RoomMembership>): void {
   while (room.hand && room.hand.currentActorSeat !== null) {
     const actor = getRoomPlayerBySeat(room, room.hand.currentActorSeat);
     if (!actor || !actor.isBot) {
@@ -53,7 +53,7 @@ function runBotTurns(io: Server, room: RuntimeRoom): void {
 
     room.hand = result.value;
     syncRoomPlayersFromHand(room);
-    emitGameState(io, room);
+    emitGameState(io, room, memberships);
   }
 }
 
@@ -99,8 +99,8 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     room.hand = initialized.value;
     syncRoomPlayersFromHand(room);
     ack?.({ ok: true });
-    emitGameState(io, room);
-    runBotTurns(io, room);
+    emitGameState(io, room, memberships);
+    runBotTurns(io, room, memberships);
   });
 
   socket.on('game:action', (payload: unknown, ack?: (result: GameActionAck) => void) => {
@@ -148,7 +148,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     room.hand = result.value;
     syncRoomPlayersFromHand(room);
     ack?.({ ok: true });
-    emitGameState(io, room);
-    runBotTurns(io, room);
+    emitGameState(io, room, memberships);
+    runBotTurns(io, room, memberships);
   });
 }

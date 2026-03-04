@@ -213,6 +213,70 @@ test('game:start initializes hand and game:action enforces current actor', async
   assert.equal(nextState.hand.currentActorSeat, 1);
 });
 
+test('game:state hides opponent hole cards before hand_end', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-5',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-5',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-5',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const aliceStatePromise = waitForState(alice, () => true);
+  const bobStatePromise = waitForState(bob, () => true);
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-5',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const [aliceState, bobState] = await Promise.all([aliceStatePromise, bobStatePromise]);
+  const aliceViewSelf = aliceState.hand.players.find((player: { id: string }) => player.id === 'p0');
+  const aliceViewOpponent = aliceState.hand.players.find((player: { id: string }) => player.id === 'p1');
+  const bobViewSelf = bobState.hand.players.find((player: { id: string }) => player.id === 'p1');
+  const bobViewOpponent = bobState.hand.players.find((player: { id: string }) => player.id === 'p0');
+
+  assert.equal(aliceViewSelf?.holeCards.length, 2);
+  assert.equal(aliceViewOpponent?.holeCards.length, 0);
+  assert.equal(bobViewSelf?.holeCards.length, 2);
+  assert.equal(bobViewOpponent?.holeCards.length, 0);
+});
+
 test('game:start rejects non-room member socket', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
