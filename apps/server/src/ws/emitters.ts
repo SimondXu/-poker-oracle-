@@ -51,6 +51,7 @@ function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<stri
     io.to(socketId).emit('game:action_required', {
       roomId: room.id,
       playerId: actor.id,
+      stateVersion: room.stateVersion,
       timeoutMs: room.actionTimeoutMs,
       validActions
     });
@@ -63,7 +64,10 @@ function emitHandResult(io: Server, room: RuntimeRoom): void {
     return;
   }
 
-  io.to(room.id).emit('game:hand_result', payload);
+  io.to(room.id).emit('game:hand_result', {
+    ...payload,
+    stateVersion: room.stateVersion
+  });
 }
 
 function emitGameEvents(io: Server, room: RuntimeRoom): void {
@@ -79,6 +83,7 @@ function emitGameEvents(io: Server, room: RuntimeRoom): void {
   for (const action of newActions) {
     io.to(room.id).emit('game:event', {
       roomId: room.id,
+      stateVersion: room.stateVersion,
       type: 'action_applied',
       action
     });
@@ -98,6 +103,7 @@ export function emitRoomState(io: Server, room: RuntimeRoom): void {
   }));
   io.to(room.id).emit('room:state', {
     roomId: room.id,
+    stateVersion: room.stateVersion,
     players,
     playerCount: room.players.size,
     readyCount: room.readyPlayerIds.size,
@@ -122,6 +128,7 @@ export function emitGameState(io: Server, room: RuntimeRoom, memberships: Map<st
 
     io.to(socketId).emit('game:state', {
       roomId: room.id,
+      stateVersion: room.stateVersion,
       hand: viewerHand
     });
   }

@@ -1276,6 +1276,86 @@ test('game:action rejects duplicate client seq for same player', async (t) => {
   assert.deepEqual(duplicateAck, { ok: false, error: 'duplicate_action_seq' });
 });
 
+test('game:state includes stateVersion and rejects stale expectedVersion', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-8',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-8',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-8',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const startStatePromise = waitForState(alice, (payload) => payload.roomId === 'room-8');
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-8',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const startState = await startStatePromise;
+  assert.equal(typeof startState.stateVersion, 'number');
+
+  const staleExpectedVersion = startState.stateVersion;
+  const advancedStatePromise = waitForState(
+    alice,
+    (payload) => payload.roomId === 'room-8' && payload.stateVersion > staleExpectedVersion && payload.hand.currentActorSeat === 1
+  );
+  const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
+    roomId: 'room-8',
+    playerId: 'p0',
+    type: 'call',
+    seq: 1,
+    expectedVersion: staleExpectedVersion
+  });
+  assert.deepEqual(actionAck, { ok: true });
+
+  await advancedStatePromise;
+
+  const staleVersionAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:action', {
+    roomId: 'room-8',
+    playerId: 'p1',
+    type: 'check',
+    seq: 1,
+    expectedVersion: staleExpectedVersion
+  });
+  assert.deepEqual(staleVersionAck, { ok: false, error: 'stale_state_version' });
+});
+
 test('game loop auto-runs bot turns and returns control to human or ends hand', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);

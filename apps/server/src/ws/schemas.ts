@@ -29,7 +29,8 @@ export const gameActionPayloadSchema = z.object({
   playerId: z.string().trim().min(1),
   type: z.enum(['fold', 'check', 'call', 'bet', 'raise_to', 'all_in']),
   amount: z.coerce.number().int().min(1).optional(),
-  seq: z.coerce.number().int().min(0)
+  seq: z.coerce.number().int().min(0),
+  expectedVersion: z.coerce.number().int().min(0).optional()
 });
 
 export type JoinRoomAck =
@@ -80,6 +81,7 @@ export type GameActionAck =
         | 'not_room_member'
         | 'rate_limited'
         | 'duplicate_action_seq'
+        | 'stale_state_version'
         | 'hand_not_actionable'
         | 'not_current_actor'
         | 'invalid_action';

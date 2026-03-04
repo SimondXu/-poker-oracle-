@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Server } from 'socket.io';
 
 import type { RoomActionTimeouts } from '../game-loop/action-timeout.ts';
+import type { RoomTaskQueues } from '../rooms/room-queue.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { registerGameEvents } from './handlers/game-events.ts';
 import { registerRoomEvents } from './handlers/room-events.ts';
@@ -21,6 +22,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const rooms = new Map<string, RuntimeRoom>();
   const memberships = new Map<string, RoomMembership>();
   const roomActionTimeouts: RoomActionTimeouts = new Map();
+  const roomTaskQueues: RoomTaskQueues = new Map();
 
   io.on('connection', (socket) => {
     registerRoomEvents({
@@ -38,6 +40,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       rooms,
       memberships,
       roomActionTimeouts,
+      roomTaskQueues,
       actionTimeoutMs
     });
   });

@@ -123,6 +123,7 @@ export interface ValidActions {
 
 export interface RoomStateEvent {
   roomId: string;
+  stateVersion: number;
   players: Array<{
     id: string;
     name: string;
@@ -140,12 +141,14 @@ export type RoomState = RoomStateEvent;
 
 export interface GameStateEvent {
   roomId: string;
+  stateVersion: number;
   hand: HandState;
 }
 
 export interface GameActionRequiredEvent {
   roomId: string;
   playerId: string;
+  stateVersion: number;
   validActions: ValidActions;
   timeoutMs: number;
 }
