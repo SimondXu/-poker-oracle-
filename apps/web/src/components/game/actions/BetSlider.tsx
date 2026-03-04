@@ -35,6 +35,8 @@ export const BetSlider = memo(function BetSlider({
   className,
 }: BetSliderProps) {
   const isAllIn = value >= max;
+  const hasSyncedPot = Number.isFinite(pot) && pot > 0;
+  const ratioPct = hasSyncedPot ? Math.round((value / pot) * 100) : null;
 
   const handleShortcut = useCallback(
     (getValue: (min: number, max: number, pot: number) => number) => {
@@ -129,7 +131,7 @@ export const BetSlider = memo(function BetSlider({
 
       {/* 进度指示（百分比位置） */}
       <div className="text-center text-[12px] text-[var(--color-text-dim)]">
-        底池的 {Math.round((value / Math.max(pot, 1)) * 100)}%
+        {ratioPct !== null ? `底池的 ${ratioPct}%` : '等待底池同步'}
       </div>
     </div>
   );

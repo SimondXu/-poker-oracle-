@@ -1,8 +1,9 @@
 'use client';
 
-import { use } from 'react';
+import { use, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, getPositionName } from '@/lib/utils';
 import { useSocket } from '@/hooks/useSocket';
 import { useGameStore, selectHand, selectValidActions } from '@/stores/gameStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -17,7 +18,6 @@ interface GamePageProps {
   params: Promise<{ id: string }>;
 }
 
-/** 连接状态提示条 */
 function ConnectionBanner({ status }: { status: string }) {
   if (status === 'connected') return null;
 
@@ -53,7 +53,6 @@ function ConnectionBanner({ status }: { status: string }) {
   );
 }
 
-/** 顶部状态栏 */
 function GameHeader({
   roomName,
   handNumber,
@@ -68,50 +67,44 @@ function GameHeader({
   onToggleHUD: () => void;
 }) {
   return (
-    <header className="relative z-10 border-b border-white/6 bg-[var(--color-bg-deep)]/72 backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
-        {/* 左：品牌 + 房间信息 */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-lg text-[var(--color-gold)]">♠</span>
-            <span className="font-display text-[20px] leading-none text-[var(--color-text-primary)]">AiPoker</span>
+    <header className="absolute inset-x-0 top-0 z-20">
+      <div className="mx-auto flex w-full max-w-[1500px] items-center justify-between px-4 py-2.5 sm:px-6 sm:py-3">
+        <div className="rounded-xl border border-white/10 bg-[rgba(7,12,22,0.62)] px-3 py-2 backdrop-blur-xl">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base text-[var(--color-gold)]">♠</span>
+              <span className="font-display text-[17px] leading-none text-[var(--color-text-primary)]">AiPoker</span>
+            </div>
+            {roomName && (
+              <>
+                <div className="h-3.5 w-px bg-white/10" />
+                <span className="hidden text-[12px] text-[var(--color-text-secondary)] sm:inline">{roomName}</span>
+              </>
+            )}
+            {smallBlind !== undefined && bigBlind !== undefined && (
+              <span className="rounded-md border border-white/10 bg-[rgba(0,0,0,0.32)] px-2 py-0.5 text-[11px] font-chips text-[var(--color-text-secondary)]">
+                {smallBlind}/{bigBlind}
+              </span>
+            )}
+            {handNumber !== undefined && (
+              <span className="text-[11px] text-[var(--color-text-dim)]">#{handNumber}</span>
+            )}
           </div>
-          {roomName && (
-            <>
-              <div className="h-4 w-px bg-white/10" />
-              <span className="hidden text-[13px] text-[var(--color-text-secondary)] sm:inline">{roomName}</span>
-            </>
-          )}
-          {smallBlind && bigBlind && (
-            <span className="rounded-md border border-white/10 bg-[var(--color-bg-surface)] px-2.5 py-1 text-[12px] font-chips text-[var(--color-text-secondary)]">
-              {smallBlind}/{bigBlind}
-            </span>
-          )}
-          {handNumber && (
-            <span className="text-[12px] text-[var(--color-text-dim)]">#{handNumber}</span>
-          )}
         </div>
 
-        {/* 右：控制按钮 */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-[rgba(7,12,22,0.62)] p-1.5 backdrop-blur-xl">
           <button
             onClick={onToggleHUD}
-            className="rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[14px] text-[var(--color-text-muted)] transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-[var(--color-text-primary)]"
+            className="rounded-lg bg-white/[0.04] p-1.5 text-[13px] text-[var(--color-text-muted)] transition-all hover:bg-white/[0.10] hover:text-[var(--color-text-primary)]"
             title="切换训练提示"
           >
             📊
           </button>
           <button
-            className="rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[14px] text-[var(--color-text-muted)] transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-[var(--color-text-primary)]"
+            className="rounded-lg bg-white/[0.04] p-1.5 text-[13px] text-[var(--color-text-muted)] transition-all hover:bg-white/[0.10] hover:text-[var(--color-text-primary)]"
             title="设置"
           >
             ⚙️
-          </button>
-          <button
-            className="rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[14px] text-[var(--color-text-muted)] transition-all hover:border-[var(--color-error)]/30 hover:bg-[var(--color-error-dim)] hover:text-[var(--color-error)]"
-            title="离开房间"
-          >
-            ✕
           </button>
         </div>
       </div>
@@ -121,8 +114,13 @@ function GameHeader({
 
 export default function GamePage({ params }: GamePageProps) {
   const { id: roomId } = use(params);
+  const router = useRouter();
 
-  const { sendAction } = useSocket(roomId);
+  const user = useAuthStore((s) => s.user);
+  const currentUserId = user?.id ?? '';
+  const currentUserName = user?.username ?? '';
+
+  const { sendAction } = useSocket(roomId, currentUserId, currentUserName, Boolean(user));
 
   const hand = useGameStore(selectHand);
   const validActions = useGameStore(selectValidActions);
@@ -136,13 +134,26 @@ export default function GamePage({ params }: GamePageProps) {
   const toggleTrainingHUD = useUIStore((s) => s.toggleTrainingHUD);
   const isActionHistoryVisible = useUIStore((s) => s.isActionHistoryVisible);
 
-  const currentUserId = useAuthStore((s) => s.user?.id) ?? '';
+  useEffect(() => {
+    if (!user) router.replace('/');
+  }, [user, router]);
 
-  const isMyTurn =
-    validActions !== null &&
-    hand?.players.find((p) => p.id === currentUserId)?.seatIndex === hand?.currentActorSeat;
+  if (!user) return null;
 
-  const pot = hand?.pots.reduce((s, p) => s + p.amount, 0) ?? 0;
+  const currentPlayer = hand?.players.find((p) => p.id === currentUserId);
+  const currentSeat = currentPlayer?.seatIndex;
+  const tableSeats = hand?.maxSeats ?? 6;
+
+  const positionLabel =
+    hand && currentSeat !== undefined
+      ? getPositionName(currentSeat, hand.buttonMarkerSeat, tableSeats)
+      : undefined;
+
+  const isMyTurn = validActions !== null && currentSeat === hand?.currentActorSeat;
+
+  const potFromSettledPots = hand?.pots.reduce((s, p) => s + p.amount, 0) ?? 0;
+  const potFromCommitted = hand?.players.reduce((s, p) => s + p.handCommitted, 0) ?? 0;
+  const pot = Math.max(potFromSettledPots, potFromCommitted);
 
   const handleAction = (type: string, amount?: number) => {
     sendAction(type as ActionType, amount);
@@ -151,7 +162,7 @@ export default function GamePage({ params }: GamePageProps) {
   const trainingData =
     isMyTurn && validActions
       ? {
-          position: 'BTN',
+          ...(positionLabel ? { position: positionLabel } : {}),
           ...(validActions.canCheck
             ? { suggestion: 'check' as const }
             : validActions.canCall
@@ -161,109 +172,103 @@ export default function GamePage({ params }: GamePageProps) {
       : undefined;
 
   return (
-    <div className="relative flex h-screen w-full flex-col overflow-hidden">
-      {/* 连接状态条 */}
+    <div className="relative h-dvh w-full overflow-hidden bg-[var(--color-bg-deep)]">
       <AnimatePresence>
         <ConnectionBanner status={connectionStatus} />
       </AnimatePresence>
 
-      {/* 顶部栏 */}
       <GameHeader
         roomName={`训练室 #${roomId.slice(0, 6)}`}
         handNumber={hand?.handNumber}
-        {...(hand ? { smallBlind: hand.smallBlind, bigBlind: hand.bigBlind } : {})}
+        smallBlind={hand?.smallBlind}
+        bigBlind={hand?.bigBlind}
         onToggleHUD={toggleTrainingHUD}
       />
 
-      {/* ── 主游戏区域 ── */}
-      <main className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
-        <div className="grid min-h-0 w-full gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-5">
-          <section className="relative flex min-h-0 items-center justify-center rounded-[24px] border border-white/10 bg-[rgba(5,12,22,0.45)] px-3 py-4 sm:px-5">
-            {hand ? (
-              <PokerTable
-                hand={hand}
-                currentUserId={currentUserId}
-                {...(validActions ? { validActions } : {})}
-                {...(timerStartedAt !== null ? { timerStartedAt } : {})}
-                {...(timerDurationMs !== null ? { timerDurationMs } : {})}
-                winnerCards={winnerCards}
-                isWinning={isWinning}
-                className="w-full max-w-[980px]"
-              />
-            ) : (
-              /* 加载骨架屏 */
-              <div className="flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="h-36 w-72 rounded-full shimmer opacity-25" />
-                  <span className="text-[16px] text-[var(--color-text-secondary)]">等待游戏开始...</span>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* 桌面端：右侧训练 HUD */}
-          <aside className="hidden items-center justify-end lg:flex">
-            <TrainingHUD
-              isVisible={isTrainingHUDVisible}
-              onToggle={toggleTrainingHUD}
-              {...(validActions?.callAmount !== undefined ? { callAmount: validActions.callAmount } : {})}
-              potTotal={pot}
-              {...(trainingData ? { data: trainingData } : {})}
-              className="w-full max-w-[280px]"
-            />
-          </aside>
-        </div>
-      </main>
-
-      {/* ── 底部控制区 ── */}
-      <footer className="mx-auto w-full max-w-[1400px] px-4 pb-4 sm:px-6 sm:pb-5">
-        {/* 移动端：训练 HUD */}
-        <div className="mb-2 lg:hidden">
-          <TrainingHUD
-            isVisible={isTrainingHUDVisible}
-            onToggle={toggleTrainingHUD}
-            {...(validActions?.callAmount !== undefined ? { callAmount: validActions.callAmount } : {})}
-            potTotal={pot}
-            {...(trainingData ? { data: trainingData } : {})}
-            className="w-full max-w-none"
+      <section className="relative flex h-full w-full items-center justify-center px-4 pb-24 pt-14 sm:px-6 sm:pb-26 sm:pt-16">
+        {hand ? (
+          <PokerTable
+            hand={hand}
+            currentUserId={currentUserId}
+            {...(validActions ? { validActions } : {})}
+            {...(timerStartedAt !== null ? { timerStartedAt } : {})}
+            {...(timerDurationMs !== null ? { timerDurationMs } : {})}
+            winnerCards={winnerCards}
+            isWinning={isWinning}
+            className="h-full w-auto max-h-full max-w-full"
           />
-        </div>
+        ) : (
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-36 w-72 rounded-full shimmer opacity-25" />
+            <span className="text-[16px] text-[var(--color-text-secondary)]">等待游戏开始...</span>
+          </div>
+        )}
+      </section>
 
-        {/* 行动历史条 */}
-        <AnimatePresence>
-          {isActionHistoryVisible && hand && hand.actions.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden rounded-t-xl border border-b-0 border-white/8 bg-[rgba(8,14,24,0.76)]"
-            >
-              <ActionHistory actions={hand.actions} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 行动面板 */}
-        <div className="mt-2 flex justify-center">
-          <AnimatePresence>
-            {isMyTurn && validActions && (
-              <ActionPanel
-                validActions={validActions}
-                pot={pot}
-                isMyTurn={isMyTurn}
-                onAction={handleAction}
-                className="w-full max-w-[780px]"
+      <AnimatePresence>
+        {isTrainingHUDVisible && (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="pointer-events-none fixed right-3 top-14 z-30 w-[260px] sm:right-6 sm:top-16"
+          >
+            <div className="pointer-events-auto">
+              <TrainingHUD
+                isVisible={isTrainingHUDVisible}
+                onToggle={toggleTrainingHUD}
+                {...(validActions?.callAmount !== undefined ? { callAmount: validActions.callAmount } : {})}
+                potTotal={pot}
+                {...(trainingData ? { data: trainingData } : {})}
+                className="w-full"
               />
-            )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isActionHistoryVisible && hand && hand.actions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -16 }}
+            className="fixed bottom-[90px] left-4 z-30 max-w-[360px] overflow-hidden rounded-xl border border-white/10 bg-[rgba(7,12,22,0.76)] backdrop-blur-xl sm:left-6"
+          >
+            <ActionHistory actions={hand.actions} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40">
+        <div className="mx-auto max-w-[880px] px-3 pb-3 sm:px-5 sm:pb-4">
+          <AnimatePresence mode="wait">
+            {isMyTurn && validActions ? (
+              <motion.div key="actions" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="pointer-events-auto">
+                <ActionPanel
+                  validActions={validActions}
+                  pot={pot}
+                  isMyTurn={isMyTurn}
+                  onAction={handleAction}
+                  className="w-full"
+                />
+              </motion.div>
+            ) : hand ? (
+              <motion.div
+                key="waiting"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="pointer-events-auto flex justify-center"
+              >
+                <div className="rounded-full border border-white/10 bg-[rgba(7,13,22,0.76)] px-4 py-1.5 text-[11px] text-[var(--color-text-dim)] backdrop-blur-lg sm:text-[12px]">
+                  等待当前玩家行动
+                </div>
+              </motion.div>
+            ) : null}
           </AnimatePresence>
         </div>
-
-        {!isMyTurn && (
-          <p className="mt-2 text-center text-[12px] text-[var(--color-text-dim)]">
-            等待当前玩家行动
-          </p>
-        )}
-      </footer>
+      </div>
     </div>
   );
 }
