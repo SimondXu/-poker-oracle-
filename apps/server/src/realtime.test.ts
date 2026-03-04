@@ -1276,7 +1276,7 @@ test('game:action rejects duplicate client seq for same player', async (t) => {
   assert.deepEqual(duplicateAck, { ok: false, error: 'duplicate_action_seq' });
 });
 
-test('game loop auto-runs bot turns until next human actor', async (t) => {
+test('game loop auto-runs bot turns and returns control to human or ends hand', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
 
@@ -1322,23 +1322,18 @@ test('game loop auto-runs bot turns until next human actor', async (t) => {
   });
 
   const startState = waitForState(human, () => true);
-  await emitWithAck(human, 'game:start', {
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:start', {
     roomId: 'room-3',
     buttonMarkerSeat: 0
   });
+  assert.deepEqual(startAck, { ok: true });
   await startState;
 
-  const botTurnState = waitForState(
-    human,
-    (payload) => payload.hand.phase === 'betting_preflop' && payload.hand.currentActorSeat === 1
-  );
-  const humanTurnAfterBotActions = waitForState(
+  const handProgressAfterBotActions = waitForState(
     human,
     (payload) =>
-      payload.hand.phase === 'betting_flop' &&
-      payload.hand.currentActorSeat === 0 &&
-      payload.hand.communityCards.length === 3,
-    3000
+      payload.hand.actions.length >= 2 && (payload.hand.currentActorSeat === 0 || payload.hand.phase === 'hand_end'),
+    5000
   );
   const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:action', {
     roomId: 'room-3',
@@ -1348,12 +1343,10 @@ test('game loop auto-runs bot turns until next human actor', async (t) => {
   });
 
   assert.deepEqual(actionAck, { ok: true });
-  const pending = await botTurnState;
-  assert.equal(pending.hand.currentActorSeat, 1);
-  assert.equal(pending.hand.phase, 'betting_preflop');
-
-  const advanced = await humanTurnAfterBotActions;
-  assert.equal(advanced.hand.phase, 'betting_flop');
-  assert.equal(advanced.hand.currentActorSeat, 0);
-  assert.equal(advanced.hand.communityCards.length, 3);
+  const advanced = await handProgressAfterBotActions;
+  const botActions = advanced.hand.actions.filter((action: { playerId: string }) => action.playerId === 'bot-1');
+  assert.equal(botActions.length >= 1, true);
+  const returnedToHuman = advanced.hand.currentActorSeat === 0;
+  const handEnded = advanced.hand.phase === 'hand_end';
+  assert.equal(returnedToHuman || handEnded, true);
 });

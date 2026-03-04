@@ -7,9 +7,11 @@ import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitRoomState } from '../emitters.ts';
 import {
   joinRoomPayloadSchema,
+  roomLeavePayloadSchema,
   roomCreatePayloadSchema,
   roomReadyPayloadSchema,
   type JoinRoomAck,
+  type RoomLeaveAck,
   type RoomCreateAck,
   type RoomReadyAck
 } from '../schemas.ts';
@@ -22,16 +24,6 @@ interface RegisterRoomEventsInput {
   roomActionTimeouts: RoomActionTimeouts;
   actionTimeoutMs: number;
 }
-
-const roomLeavePayloadSchema = z.object({}).strict();
-
-type RoomLeaveAck =
-  | {
-      ok: true;
-      roomId: string;
-      playerCount: number;
-    }
-  | { ok: false; error: 'invalid_payload' | 'not_room_member' };
 
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
   const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
@@ -67,7 +59,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     emitRoomState(io, room);
   });
 
-  socket.on('room:join', (payload: unknown, ack?: (result: JoinRoomAck) => void) => {
+  socket.on('room:join', async (payload: unknown, ack?: (result: JoinRoomAck) => void) => {
     const parsed = joinRoomPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       ack?.({ ok: false, error: 'invalid_payload' });
@@ -79,7 +71,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     if (previousMembership && previousMembership.roomId !== roomId) {
       const previousRoom = rooms.get(previousMembership.roomId);
-      void socket.leave(previousMembership.roomId);
+      await socket.leave(previousMembership.roomId);
       if (previousRoom) {
         if (shouldKeepSeatDuringHand(previousRoom, previousMembership.playerId)) {
           previousRoom.pendingDisconnectPlayerIds.add(previousMembership.playerId);
@@ -107,19 +99,25 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
 
+    const isBot = parsed.data.isBot ?? false;
     room.players.set(playerId, {
       id: playerId,
       name: playerName,
       seatIndex: requestedSeat ?? pickSeatIndex(room),
       stack: parsed.data.stack ?? 1000,
-      isBot: parsed.data.isBot ?? false,
+      isBot,
       ...(parsed.data.botStrategy ? { botStrategy: parsed.data.botStrategy } : {}),
     });
-    room.readyPlayerIds.delete(playerId);
     room.pendingDisconnectPlayerIds.delete(playerId);
+    // Bots are auto-ready; humans start un-ready
+    if (isBot) {
+      room.readyPlayerIds.add(playerId);
+    } else {
+      room.readyPlayerIds.delete(playerId);
+    }
 
     memberships.set(socket.id, { roomId, playerId });
-    void socket.join(roomId);
+    await socket.join(roomId);
 
     ack?.({ ok: true, roomId, playerCount: room.players.size });
     emitRoomState(io, room);
@@ -154,7 +152,43 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     emitRoomState(io, room);
   });
 
-  socket.on('room:leave', (payload: unknown, ack?: (result: RoomLeaveAck) => void) => {
+  socket.on('room:remove_player', (payload: unknown, ack?: (result: { ok: boolean; error?: string }) => void) => {
+    const parsed = z.object({ roomId: z.string(), playerId: z.string() }).safeParse(payload);
+    if (!parsed.success) {
+      ack?.({ ok: false, error: 'invalid_payload' });
+      return;
+    }
+
+    const membership = memberships.get(socket.id);
+    if (!membership || membership.roomId !== parsed.data.roomId) {
+      ack?.({ ok: false, error: 'not_room_member' });
+      return;
+    }
+
+    const room = rooms.get(parsed.data.roomId);
+    if (!room) {
+      ack?.({ ok: false, error: 'room_not_found' });
+      return;
+    }
+
+    const target = room.players.get(parsed.data.playerId);
+    if (!target || !target.isBot) {
+      ack?.({ ok: false, error: 'not_a_bot' });
+      return;
+    }
+
+    // Don't allow removing bots during an active hand
+    if (room.hand && room.hand.phase !== 'hand_end') {
+      ack?.({ ok: false, error: 'hand_in_progress' });
+      return;
+    }
+
+    removePlayerFromRoom(room, parsed.data.playerId);
+    ack?.({ ok: true });
+    emitRoomState(io, room);
+  });
+
+  socket.on('room:leave', async (payload: unknown, ack?: (result: RoomLeaveAck) => void) => {
     const parsed = roomLeavePayloadSchema.safeParse(payload ?? {});
     if (!parsed.success) {
       ack?.({ ok: false, error: 'invalid_payload' });
@@ -168,7 +202,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     }
 
     memberships.delete(socket.id);
-    void socket.leave(membership.roomId);
+    await socket.leave(membership.roomId);
 
     const room = rooms.get(membership.roomId);
     if (!room) {

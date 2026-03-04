@@ -26,8 +26,6 @@ interface RegisterGameEventsInput {
 const ACTION_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_ACTIONS_PER_WINDOW = 20;
 
-type GameActionAckWithRateLimit = GameActionAck | { ok: false; error: 'rate_limited' };
-
 export function registerGameEvents(input: RegisterGameEventsInput): void {
   const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
   const actionTimestamps: number[] = [];
@@ -131,7 +129,10 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
-    if (room.readyPlayerIds.size > 0 && room.readyPlayerIds.size < room.players.size) {
+    // Only count human players in the readiness gate (bots are auto-ready)
+    const humanPlayers = [...room.players.values()].filter((p) => !p.isBot);
+    const humanReadyCount = humanPlayers.filter((p) => room.readyPlayerIds.has(p.id)).length;
+    if (humanReadyCount > 0 && humanReadyCount < humanPlayers.length) {
       ack?.({ ok: false, error: 'players_not_ready' });
       return;
     }
@@ -166,7 +167,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     emitStateAndProgress(room);
   });
 
-  socket.on('game:action', (payload: unknown, ack?: (result: GameActionAckWithRateLimit) => void) => {
+  socket.on('game:action', (payload: unknown, ack?: (result: GameActionAck) => void) => {
     const parsed = gameActionPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       ack?.({ ok: false, error: 'invalid_payload' });

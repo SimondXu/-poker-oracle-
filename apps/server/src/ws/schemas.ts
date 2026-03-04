@@ -78,6 +78,7 @@ export type GameActionAck =
         | 'room_not_found'
         | 'hand_not_started'
         | 'not_room_member'
+        | 'rate_limited'
         | 'duplicate_action_seq'
         | 'hand_not_actionable'
         | 'not_current_actor'
