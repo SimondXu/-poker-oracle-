@@ -10,6 +10,7 @@ export type {
   InitializeHandError,
   InitializeHandInput,
   Pot,
+  PotPayout,
   PlayerActionInput,
   PlayerStatus,
   Rank,

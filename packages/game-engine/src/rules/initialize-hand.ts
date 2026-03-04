@@ -70,6 +70,7 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
     deck: createDeck(input.rng),
     potTotal: computePotTotal(settledPlayers),
     pots: [],
+    payouts: [],
     betting: {
       currentBetToMatch,
       lastFullRaiseSize: currentBetToMatch,

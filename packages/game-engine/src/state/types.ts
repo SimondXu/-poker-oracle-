@@ -44,6 +44,7 @@ export interface HandState {
   deck: Card[];
   potTotal: number;
   pots: Pot[];
+  payouts: PotPayout[];
   betting: {
     currentBetToMatch: number;
     lastFullRaiseSize: number;
@@ -54,6 +55,12 @@ export interface HandState {
 export interface Pot {
   amount: number;
   eligiblePlayerIds: string[];
+}
+
+export interface PotPayout {
+  potIndex: number;
+  playerId: string;
+  amount: number;
 }
 
 export interface InitializeHandInput {

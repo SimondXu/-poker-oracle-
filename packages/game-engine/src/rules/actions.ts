@@ -1,4 +1,5 @@
 import type { ApplyActionError, EngineResult, HandInitPlayerState, HandPhase, HandState, PlayerActionInput, ValidActions } from '../state/types.ts';
+import { settleUncontestedPots } from '../settlement/payouts.ts';
 import { buildSidePots } from '../settlement/side-pots.ts';
 import { err, ok } from './result.ts';
 import {
@@ -82,16 +83,7 @@ function finalizeActionResult(
 ): HandState {
   const remainingInHand = getActiveInHandPlayers(players);
   if (remainingInHand.length <= 1) {
-    return {
-      ...previous,
-      phase: 'hand_end',
-      players,
-      currentActorSeat: null,
-      pendingActorIds: [],
-      potTotal: computePotTotal(players),
-      pots: buildSidePots(players),
-      betting
-    };
+    return buildHandEndState(previous, players, betting);
   }
 
   const nextActorSeat = determineNextActorSeat(players, actorSeat, pendingActorIds);
@@ -122,6 +114,27 @@ function finalizeActionResult(
     currentActorSeat: nextActorSeat,
     pendingActorIds,
     potTotal: computePotTotal(players),
+    betting
+  };
+}
+
+function buildHandEndState(
+  previous: HandState,
+  players: HandInitPlayerState[],
+  betting: HandState['betting']
+): HandState {
+  const pots = buildSidePots(players);
+  const payouts = settleUncontestedPots(players, pots);
+
+  return {
+    ...previous,
+    phase: 'hand_end',
+    players,
+    currentActorSeat: null,
+    pendingActorIds: [],
+    potTotal: computePotTotal(players),
+    pots,
+    payouts,
     betting
   };
 }
@@ -159,14 +172,7 @@ function getNextBettingStreet(
 
 function advanceStreet(previous: HandState, players: HandInitPlayerState[]): HandState | null {
   if (previous.phase === 'betting_river') {
-    return {
-      ...previous,
-      phase: 'hand_end',
-      players,
-      currentActorSeat: null,
-      pendingActorIds: [],
-      pots: buildSidePots(players)
-    };
+    return buildHandEndState(previous, players, previous.betting);
   }
 
   const nextStreet = getNextBettingStreet(previous.phase);
@@ -204,6 +210,7 @@ function advanceStreet(previous: HandState, players: HandInitPlayerState[]): Han
     deck,
     currentActorSeat,
     pendingActorIds: currentActorSeat === null ? [] : pendingActorIds,
+    payouts: [],
     betting: {
       currentBetToMatch: 0,
       lastFullRaiseSize: previous.blinds.bigBlind,

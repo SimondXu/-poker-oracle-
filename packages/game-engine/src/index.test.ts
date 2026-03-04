@@ -378,6 +378,10 @@ test('street progression deals turn and river then ends hand after river betting
       eligiblePlayerIds: ['p0', 'p1', 'p2']
     }
   ]);
+  assert.deepEqual(riverP0Check.value.payouts, []);
+  for (const player of riverP0Check.value.players) {
+    assert.equal(player.stack, 980);
+  }
 });
 
 function committedPlayer(
@@ -472,4 +476,18 @@ test('hand_end builds pot with folded contributions and surviving eligible playe
       eligiblePlayerIds: ['p0']
     }
   ]);
+  assert.deepEqual(fold2.value.payouts, [
+    {
+      potIndex: 0,
+      playerId: 'p0',
+      amount: 90
+    }
+  ]);
+
+  const p0 = fold2.value.players.find((player) => player.id === 'p0');
+  const p1 = fold2.value.players.find((player) => player.id === 'p1');
+  const p2 = fold2.value.players.find((player) => player.id === 'p2');
+  assert.equal(p0?.stack, 1030);
+  assert.equal(p1?.stack, 990);
+  assert.equal(p2?.stack, 980);
 });
