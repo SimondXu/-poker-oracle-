@@ -98,6 +98,50 @@ function waitForActionRequired(
   });
 }
 
+function waitForEitherActionRequired(
+  leftSocket: ReturnType<typeof createClient>,
+  rightSocket: ReturnType<typeof createClient>,
+  predicate: (payload: any) => boolean,
+  timeoutMs = 2000
+): Promise<'left' | 'right'> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      leftSocket.off('game:action_required', onLeft);
+      rightSocket.off('game:action_required', onRight);
+      reject(new Error('timed out waiting for game:action_required on either socket'));
+    }, timeoutMs);
+
+    const onLeft = (payload: any) => {
+      if (!predicate(payload)) {
+        return;
+      }
+      clearTimeout(timer);
+      leftSocket.off('game:action_required', onLeft);
+      rightSocket.off('game:action_required', onRight);
+      resolve('left');
+    };
+
+    const onRight = (payload: any) => {
+      if (!predicate(payload)) {
+        return;
+      }
+      clearTimeout(timer);
+      leftSocket.off('game:action_required', onLeft);
+      rightSocket.off('game:action_required', onRight);
+      resolve('right');
+    };
+
+    leftSocket.on('game:action_required', onLeft);
+    rightSocket.on('game:action_required', onRight);
+  });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function waitForHandResult(
   socket: ReturnType<typeof createClient>,
   predicate: (payload: any) => boolean,
@@ -144,6 +188,35 @@ function waitForGameEvent(
 
     socket.on('game:event', onGameEvent);
   });
+}
+
+async function issueGuestSession(
+  baseUrl: string,
+  username?: string
+): Promise<{ cookie: string; user: { id: string; username: string; isGuest: boolean } }> {
+  const response = await fetch(`${baseUrl}/api/auth/guest`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify(username ? { username } : {})
+  });
+  assert.equal(response.status, 200);
+
+  const setCookie = response.headers.get('set-cookie');
+  if (!setCookie) {
+    throw new Error('missing auth cookie');
+  }
+
+  const body = (await response.json()) as { ok: boolean; user: { id: string; username: string; isGuest: boolean } };
+  if (!body.ok) {
+    throw new Error('failed to issue guest session');
+  }
+
+  return {
+    cookie: setCookie.split(';', 1)[0] ?? setCookie,
+    user: body.user
+  };
 }
 
 test('room:join returns ack and tracks room player count', async (t) => {
@@ -215,6 +288,118 @@ test('room:join rejects invalid payload', async (t) => {
   });
 
   assert.deepEqual(ack, { ok: false, error: 'invalid_payload' });
+});
+
+test('room:join binds human player identity to cookie session when playerId is omitted', async (t) => {
+  const nowMs = () => 42;
+  const app = createServer({ nowMs });
+  const io = attachRealtime(app, { nowMs });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+  const guest = await issueGuestSession(url, 'Alice');
+
+  const socket = createClient(url, {
+    transports: ['websocket'],
+    forceNew: true,
+    reconnection: false,
+    extraHeaders: {
+      Cookie: guest.cookie
+    }
+  });
+
+  t.after(() => {
+    socket.close();
+  });
+
+  await once(socket, 'connect');
+
+  const statePromise = waitForRoomState(socket, (payload) => payload.roomId === 'room-auth-1' && payload.playerCount === 1);
+  const joinAck = await emitWithAck<{ ok: boolean; error?: string }>(socket, 'room:join', {
+    roomId: 'room-auth-1',
+    playerName: 'Alice'
+  });
+
+  assert.deepEqual(joinAck, { ok: true, roomId: 'room-auth-1', playerCount: 1 });
+  const state = await statePromise;
+  assert.equal(state.players[0]?.id, guest.user.id);
+});
+
+test('room:join rejects spoofed playerId when cookie session is present', async (t) => {
+  const nowMs = () => 42;
+  const app = createServer({ nowMs });
+  const io = attachRealtime(app, { nowMs });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+  const guest = await issueGuestSession(url, 'Alice');
+
+  const socket = createClient(url, {
+    transports: ['websocket'],
+    forceNew: true,
+    reconnection: false,
+    extraHeaders: {
+      Cookie: guest.cookie
+    }
+  });
+
+  t.after(() => {
+    socket.close();
+  });
+
+  await once(socket, 'connect');
+  const joinAck = await emitWithAck<{ ok: boolean; error?: string }>(socket, 'room:join', {
+    roomId: 'room-auth-2',
+    playerId: 'spoofed-player-id',
+    playerName: 'Alice'
+  });
+
+  assert.deepEqual(joinAck, { ok: false, error: 'unauthorized' });
+});
+
+test('room:join rejects unauthenticated human join when authStrict is enabled', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, { authStrict: true });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const socket = createClient(url, {
+    transports: ['websocket'],
+    forceNew: true,
+    reconnection: false
+  });
+
+  t.after(() => {
+    socket.close();
+  });
+
+  await once(socket, 'connect');
+  const joinAck = await emitWithAck<{ ok: boolean; error?: string }>(socket, 'room:join', {
+    roomId: 'room-auth-strict',
+    playerId: 'p0',
+    playerName: 'Alice'
+  });
+
+  assert.deepEqual(joinAck, { ok: false, error: 'unauthorized' });
 });
 
 test('room:ready marks membership as ready and updates room state', async (t) => {
@@ -484,6 +669,100 @@ test('game:start emits action_required to current human actor', async (t) => {
   assert.equal(actionRequired.validActions.canRaise, true);
   assert.equal(actionRequired.validActions.minBetOrRaiseTo, 200);
   assert.equal(actionRequired.validActions.maxBetOrRaiseTo, 1000);
+});
+
+test('room:join during active hand does not re-emit action_required to existing actor sockets', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const charlie = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+    charlie.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+  await once(charlie, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-join-no-duplicate-action-required',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-join-no-duplicate-action-required',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-join-no-duplicate-action-required',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  let aliceActionRequiredCount = 0;
+  let bobActionRequiredCount = 0;
+  alice.on('game:action_required', () => {
+    aliceActionRequiredCount += 1;
+  });
+  bob.on('game:action_required', () => {
+    bobActionRequiredCount += 1;
+  });
+
+  const initialActionRequired = waitForEitherActionRequired(
+    alice,
+    bob,
+    (payload) => payload.roomId === 'room-join-no-duplicate-action-required'
+  );
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-join-no-duplicate-action-required',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+  await initialActionRequired;
+
+  const baselineAliceCount = aliceActionRequiredCount;
+  const baselineBobCount = bobActionRequiredCount;
+  assert.equal(baselineAliceCount + baselineBobCount, 1);
+
+  const joinAck = await emitWithAck<{ ok: boolean; roomId?: string; playerCount?: number; error?: string }>(
+    charlie,
+    'room:join',
+    {
+      roomId: 'room-join-no-duplicate-action-required',
+      playerId: 'p2',
+      playerName: 'Charlie',
+      seatIndex: 2,
+      stack: 1000
+    }
+  );
+  assert.deepEqual(joinAck, {
+    ok: true,
+    roomId: 'room-join-no-duplicate-action-required',
+    playerCount: 3
+  });
+
+  await sleep(80);
+  assert.equal(aliceActionRequiredCount, baselineAliceCount);
+  assert.equal(bobActionRequiredCount, baselineBobCount);
 });
 
 test('game:start action_required timeout follows configured actionTimeoutMs', async (t) => {

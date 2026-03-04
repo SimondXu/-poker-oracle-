@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.1.0",
     "@aipoker/bot-engine": "workspace:*",
     "@aipoker/game-engine": "workspace:*",
     "@aipoker/shared": "workspace:*",

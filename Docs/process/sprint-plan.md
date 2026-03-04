@@ -79,7 +79,7 @@ Sprint 1（Week 1-2）：游戏引擎核心 ─── Agent 2
 └── ✅ 目标：单测全绿，Node.js 中可运行完整一手
 
 Sprint 2（Week 3-4）：后端基础设施 ─── Agent 3
-├── Fastify 服务器 + JWT 认证
+├── Fastify 服务器 + Guest-first cookie 认证（可选账号升级）
 ├── PostgreSQL schema + Drizzle ORM
 ├── 房间状态：MVP 内存为主（可选 Redis）
 ├── Socket.io 基础（房间加入/状态广播）

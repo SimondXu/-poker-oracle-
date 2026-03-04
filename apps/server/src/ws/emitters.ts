@@ -26,35 +26,53 @@ function toClientValidActions(hand: EngineHandState, validActions: EngineValidAc
   };
 }
 
-function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<string, RoomMembership>): void {
+interface ActionRequiredPayload {
+  roomId: string;
+  playerId: string;
+  stateVersion: number;
+  timeoutMs: number;
+  validActions: ClientValidActions;
+}
+
+function buildActionRequiredPayloadForSocket(
+  socketId: string,
+  room: RuntimeRoom,
+  memberships: Map<string, RoomMembership>
+): ActionRequiredPayload | null {
   if (!room.hand || room.hand.currentActorSeat === null) {
-    return;
+    return null;
   }
 
   const actor = getRoomPlayerBySeat(room, room.hand.currentActorSeat);
   if (!actor || actor.isBot) {
-    return;
+    return null;
   }
 
-  const validActions = toClientValidActions(room.hand, getValidActions(room.hand, actor.id));
+  const membership = memberships.get(socketId);
+  if (!membership || membership.roomId !== room.id || membership.playerId !== actor.id) {
+    return null;
+  }
+
+  return {
+    roomId: room.id,
+    playerId: actor.id,
+    stateVersion: room.stateVersion,
+    timeoutMs: room.actionTimeoutMs,
+    validActions: toClientValidActions(room.hand, getValidActions(room.hand, actor.id))
+  };
+}
+
+function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<string, RoomMembership>): void {
   const roomSocketIds = io.sockets.adapter.rooms.get(room.id);
   if (!roomSocketIds) {
     return;
   }
 
   for (const socketId of roomSocketIds) {
-    const membership = memberships.get(socketId);
-    if (!membership || membership.roomId !== room.id || membership.playerId !== actor.id) {
-      continue;
+    const payload = buildActionRequiredPayloadForSocket(socketId, room, memberships);
+    if (payload) {
+      io.to(socketId).emit('game:action_required', payload);
     }
-
-    io.to(socketId).emit('game:action_required', {
-      roomId: room.id,
-      playerId: actor.id,
-      stateVersion: room.stateVersion,
-      timeoutMs: room.actionTimeoutMs,
-      validActions
-    });
   }
 }
 
@@ -136,4 +154,40 @@ export function emitGameState(io: Server, room: RuntimeRoom, memberships: Map<st
   emitGameEvents(io, room);
   emitActionRequired(io, room, memberships);
   emitHandResult(io, room);
+}
+
+export function emitGameStateToSocket(
+  io: Server,
+  socketId: string,
+  room: RuntimeRoom,
+  memberships: Map<string, RoomMembership>
+): void {
+  if (!room.hand) {
+    return;
+  }
+
+  const membership = memberships.get(socketId);
+  const viewerPlayerId = membership?.roomId === room.id ? membership.playerId : null;
+  const viewerHand = buildViewerHand(room, viewerPlayerId);
+
+  io.to(socketId).emit('game:state', {
+    roomId: room.id,
+    stateVersion: room.stateVersion,
+    hand: viewerHand
+  });
+
+  const actionRequiredPayload = buildActionRequiredPayloadForSocket(socketId, room, memberships);
+  if (actionRequiredPayload) {
+    io.to(socketId).emit('game:action_required', actionRequiredPayload);
+  }
+
+  if (room.hand.phase === 'hand_end') {
+    const handResultPayload = buildHandResultPayload(room);
+    if (handResultPayload) {
+      io.to(socketId).emit('game:hand_result', {
+        ...handResultPayload,
+        stateVersion: room.stateVersion
+      });
+    }
+  }
 }

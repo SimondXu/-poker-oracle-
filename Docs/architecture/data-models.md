@@ -294,12 +294,12 @@ interface ServerEvents {
 
 ## 5. REST API
 
-> 认证策略：默认使用 **JWT 存 httpOnly cookie**（不返回 `{ token }` 到 JS）。服务端通过 cookie 鉴权 REST 与 Socket.io。
+> 认证策略（MVP）：**Guest-first**。用户无需注册即可进入；服务端签发 guest token 到 **httpOnly cookie**（不返回 `{ token }` 到 JS）。  
+> 可选账号升级（Phase 2）：在保留 guest 会话连续性的前提下，支持绑定邮箱/密码。
 
 ```
-POST   /api/auth/register     → { username, email, password } → { ok, user } (Set-Cookie)
-POST   /api/auth/login        → { email, password } → { ok, user } (Set-Cookie)
-POST   /api/auth/guest        → {} → { ok, user } (Set-Cookie)
+POST   /api/auth/guest        → { username? } → { ok, user } (Set-Cookie)
+GET    /api/auth/me           → { ok, user } | 401
 POST   /api/auth/logout       → {} → { ok } (Clear-Cookie)
 
 GET    /api/rooms             → RoomSummary[]
@@ -310,3 +310,10 @@ GET    /api/hands/:id/replay  → { initialState, actions: GameAction[] }
 GET    /api/users/me/stats    → UserStats
 GET    /api/users/me/history  → HandSummary[] (paginated)
 ```
+
+### 5.1 Socket 身份约定（MVP）
+
+- `room number` 负责定位房间；不负责权限。
+- 玩家操作权限由 cookie 会话身份决定（服务端映射 `socket -> userId`）。
+- 客户端可上传 `playerName` 作为显示名；服务端保留最终裁决权。
+- 旁观（view）和入座（join as player）使用同一会话身份，但授权规则不同。

@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Server } from 'socket.io';
 
-import { parseServerConfig } from './config.ts';
+import { parseServerConfig, type ServerConfig } from './config.ts';
 import { createServer } from './index.ts';
 import { attachRealtime } from './realtime.ts';
 
@@ -26,7 +26,7 @@ export interface StartedServer {
   close: () => Promise<void>;
 }
 
-function resolveListenConfig(options: StartServerOptions): { host: string; port: number } {
+function resolveServerConfig(options: StartServerOptions): ServerConfig {
   const parsed = parseServerConfig(options.env ?? process.env);
   if (!parsed.ok) {
     throw new Error('invalid_server_config');
@@ -34,7 +34,13 @@ function resolveListenConfig(options: StartServerOptions): { host: string; port:
 
   return {
     host: options.host ?? parsed.value.host,
-    port: options.port ?? parsed.value.port
+    port: options.port ?? parsed.value.port,
+    corsOrigin: parsed.value.corsOrigin,
+    authSecret: parsed.value.authSecret,
+    authCookieName: parsed.value.authCookieName,
+    authTtlSeconds: parsed.value.authTtlSeconds,
+    secureCookies: parsed.value.secureCookies,
+    authStrict: parsed.value.authStrict
   };
 }
 
@@ -84,24 +90,38 @@ function installSignalHandlers(started: StartedServer): void {
 }
 
 export async function startServer(options: StartServerOptions = {}): Promise<StartedServer> {
-  const listenConfig = resolveListenConfig(options);
+  const serverConfig = resolveServerConfig(options);
   const app = createServer({
-    nowMs: options.nowMs ?? (() => Date.now())
+    nowMs: options.nowMs ?? (() => Date.now()),
+    corsOrigin: serverConfig.corsOrigin,
+    authSecret: serverConfig.authSecret,
+    authCookieName: serverConfig.authCookieName,
+    authTtlSeconds: serverConfig.authTtlSeconds,
+    secureCookies: serverConfig.secureCookies
   });
+  const realtimeOptions = {
+    authSecret: serverConfig.authSecret,
+    authCookieName: serverConfig.authCookieName,
+    authStrict: serverConfig.authStrict,
+    ...(options.nowMs ? { nowMs: options.nowMs } : {})
+  };
   const io =
     options.actionTimeoutMs === undefined
-      ? attachRealtime(app)
-      : attachRealtime(app, { actionTimeoutMs: options.actionTimeoutMs });
+      ? attachRealtime(app, realtimeOptions)
+      : attachRealtime(app, {
+          ...realtimeOptions,
+          actionTimeoutMs: options.actionTimeoutMs,
+        });
 
   await app.listen({
-    host: listenConfig.host,
-    port: listenConfig.port
+    host: serverConfig.host,
+    port: serverConfig.port
   });
 
   const started: StartedServer = {
     app,
     io,
-    host: listenConfig.host,
+    host: serverConfig.host,
     port: resolveBoundPort(app),
     close: () => closeStartedServer(app, io)
   };

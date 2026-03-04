@@ -8,8 +8,8 @@ export const roomCreatePayloadSchema = z.object({
 
 export const joinRoomPayloadSchema = z.object({
   roomId: z.string().trim().min(1),
-  playerId: z.string().trim().min(1),
-  playerName: z.string().trim().min(1),
+  playerId: z.string().trim().min(1).optional(),
+  playerName: z.string().trim().min(1).optional(),
   seatIndex: z.coerce.number().int().min(0).optional(),
   stack: z.coerce.number().int().min(1).optional(),
   isBot: z.boolean().optional(),
@@ -26,7 +26,7 @@ export const gameStartPayloadSchema = z.object({
 
 export const gameActionPayloadSchema = z.object({
   roomId: z.string().trim().min(1),
-  playerId: z.string().trim().min(1),
+  playerId: z.string().trim().min(1).optional(),
   type: z.enum(['fold', 'check', 'call', 'bet', 'raise_to', 'all_in']),
   amount: z.coerce.number().int().min(1).optional(),
   seq: z.coerce.number().int().min(0),
@@ -35,7 +35,7 @@ export const gameActionPayloadSchema = z.object({
 
 export type JoinRoomAck =
   | { ok: true; roomId: string; playerCount: number }
-  | { ok: false; error: 'invalid_payload' };
+  | { ok: false; error: 'invalid_payload' | 'unauthorized' };
 
 export type RoomCreateAck = { ok: true; roomId: string } | { ok: false; error: 'invalid_payload' };
 

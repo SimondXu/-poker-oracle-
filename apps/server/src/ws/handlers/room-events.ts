@@ -1,10 +1,11 @@
 import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 
+import type { GuestSession } from '../../auth/session-token.ts';
 import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop/action-timeout.ts';
 import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
-import { emitRoomState } from '../emitters.ts';
+import { emitGameStateToSocket, emitRoomState } from '../emitters.ts';
 import {
   joinRoomPayloadSchema,
   roomLeavePayloadSchema,
@@ -22,11 +23,12 @@ interface RegisterRoomEventsInput {
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
   roomActionTimeouts: RoomActionTimeouts;
+  authStrict: boolean;
   actionTimeoutMs: number;
 }
 
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
-  const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts, authStrict, actionTimeoutMs } = input;
 
   function shouldKeepSeatDuringHand(room: RuntimeRoom, playerId: string): boolean {
     return (
@@ -66,7 +68,26 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
 
-    const { roomId, playerId, playerName } = parsed.data;
+    const { roomId } = parsed.data;
+    const isBot = parsed.data.isBot === true;
+    const authSession = (socket.data.authSession ?? null) as GuestSession | null;
+    if (!isBot && authStrict && !authSession) {
+      ack?.({ ok: false, error: 'unauthorized' });
+      return;
+    }
+
+    const resolvedPlayerId = isBot ? parsed.data.playerId : (authSession?.userId ?? parsed.data.playerId);
+    const resolvedPlayerName = isBot ? parsed.data.playerName : (parsed.data.playerName ?? authSession?.username);
+    if (!resolvedPlayerId || !resolvedPlayerName) {
+      ack?.({ ok: false, error: 'invalid_payload' });
+      return;
+    }
+
+    if (!isBot && authSession && parsed.data.playerId && parsed.data.playerId !== authSession.userId) {
+      ack?.({ ok: false, error: 'unauthorized' });
+      return;
+    }
+
     const previousMembership = memberships.get(socket.id);
 
     if (previousMembership && previousMembership.roomId !== roomId) {
@@ -92,35 +113,48 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     const requestedSeat = parsed.data.seatIndex;
     const seatTakenByOther =
       requestedSeat !== undefined
-        ? [...room.players.values()].some((player) => player.seatIndex === requestedSeat && player.id !== playerId)
+        ? [...room.players.values()].some((player) => player.seatIndex === requestedSeat && player.id !== resolvedPlayerId)
         : false;
     if (seatTakenByOther) {
       ack?.({ ok: false, error: 'invalid_payload' });
       return;
     }
 
-    const isBot = parsed.data.isBot ?? false;
-    room.players.set(playerId, {
-      id: playerId,
-      name: playerName,
-      seatIndex: requestedSeat ?? pickSeatIndex(room),
-      stack: parsed.data.stack ?? 1000,
+    // Preserve seat index and stack for players re-joining during an active hand
+    const existingPlayer = room.players.get(resolvedPlayerId);
+    const preserveSeat = existingPlayer && room.hand && room.hand.phase !== 'hand_end';
+    const seatIndex = preserveSeat
+      ? existingPlayer.seatIndex
+      : (requestedSeat ?? pickSeatIndex(room));
+    const stack = preserveSeat
+      ? existingPlayer.stack
+      : (parsed.data.stack ?? 1000);
+
+    room.players.set(resolvedPlayerId, {
+      id: resolvedPlayerId,
+      name: resolvedPlayerName,
+      seatIndex,
+      stack,
       isBot,
       ...(parsed.data.botStrategy ? { botStrategy: parsed.data.botStrategy } : {}),
     });
-    room.pendingDisconnectPlayerIds.delete(playerId);
+    room.pendingDisconnectPlayerIds.delete(resolvedPlayerId);
     // Bots are auto-ready; humans start un-ready
     if (isBot) {
-      room.readyPlayerIds.add(playerId);
+      room.readyPlayerIds.add(resolvedPlayerId);
     } else {
-      room.readyPlayerIds.delete(playerId);
+      room.readyPlayerIds.delete(resolvedPlayerId);
     }
 
-    memberships.set(socket.id, { roomId, playerId });
+    if (!isBot) {
+      memberships.set(socket.id, { roomId, playerId: resolvedPlayerId });
+    }
     await socket.join(roomId);
 
     ack?.({ ok: true, roomId, playerCount: room.players.size });
     emitRoomState(io, room);
+    // Re-entry or late join should receive an immediate hand snapshot without re-broadcasting turn prompts.
+    emitGameStateToSocket(io, socket.id, room, memberships);
   });
 
   socket.on('room:ready', (payload: unknown, ack?: (result: RoomReadyAck) => void) => {

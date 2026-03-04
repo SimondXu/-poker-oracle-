@@ -120,7 +120,7 @@ src/
 ## 5. Security Checklist
 
 - [ ] 输入三道校验：Client UI → Server Zod → Engine rules
-- [ ] JWT 存 httpOnly cookie，不放 localStorage
+- [ ] Guest/用户 token 存 httpOnly cookie，不放 localStorage
 - [ ] HTTP rate limit: 100 req/min/user
 - [ ] Socket rate limit: 20 actions/min/user
 - [ ] Server 发给玩家的 state 清空他人 holeCards

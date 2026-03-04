@@ -204,7 +204,13 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       }
 
       const membership = memberships.get(socket.id);
-      if (!membership || membership.roomId !== parsed.data.roomId || membership.playerId !== parsed.data.playerId) {
+      if (!membership || membership.roomId !== parsed.data.roomId) {
+        ack?.({ ok: false, error: 'not_room_member' });
+        return;
+      }
+
+      const actionPlayerId = membership.playerId;
+      if (parsed.data.playerId && parsed.data.playerId !== actionPlayerId) {
         ack?.({ ok: false, error: 'not_room_member' });
         return;
       }
@@ -214,7 +220,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
         return;
       }
 
-      if (isDuplicateOrStaleActionSeq(room, parsed.data.playerId, parsed.data.seq)) {
+      if (isDuplicateOrStaleActionSeq(room, actionPlayerId, parsed.data.seq)) {
         ack?.({ ok: false, error: 'duplicate_action_seq' });
         return;
       }
@@ -223,11 +229,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       const action: PlayerActionInput =
         parsed.data.amount === undefined
           ? {
-              playerId: parsed.data.playerId,
+              playerId: actionPlayerId,
               type: mappedType
             }
           : {
-              playerId: parsed.data.playerId,
+              playerId: actionPlayerId,
               type: mappedType,
               amount: parsed.data.amount
             };
@@ -239,7 +245,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       }
 
       room.hand = result.value;
-      recordActionSeq(room, parsed.data.playerId, parsed.data.seq);
+      recordActionSeq(room, actionPlayerId, parsed.data.seq);
       syncRoomPlayersFromHand(room);
       ack?.({ ok: true });
       await emitStateAndProgress(room);
