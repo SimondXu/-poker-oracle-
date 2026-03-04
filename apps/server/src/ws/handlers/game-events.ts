@@ -99,6 +99,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
+    if (room.readyPlayerIds.size > 0 && room.readyPlayerIds.size < room.players.size) {
+      ack?.({ ok: false, error: 'players_not_ready' });
+      return;
+    }
+
     if (room.hand && room.hand.phase !== 'hand_end') {
       ack?.({ ok: false, error: 'hand_already_started' });
       return;

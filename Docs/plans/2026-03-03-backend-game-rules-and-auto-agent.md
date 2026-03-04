@@ -159,3 +159,5 @@ Expected: 仅出现本次实现相关变更。
   - 消除固定 30s 常量，改为房间级 `actionTimeoutMs`，保证客户端提示与服务端真实超时一致。
 - feat(server): emit `game:event` action stream
   - 基于 `hand.actions` 增量广播 `action_applied` 事件，统一覆盖真人、Bot 与超时自动动作，且避免重复广播。
+- feat(server): wire `room:ready` into start gate
+  - 新增 `room:ready` 状态跟踪；一旦房间进入 ready 流程，`game:start` 需全员 ready 才允许开局（错误码 `players_not_ready`）。

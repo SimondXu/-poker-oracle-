@@ -53,6 +53,7 @@ export type GameStartAck =
         | 'invalid_payload'
         | 'room_not_found'
         | 'not_room_member'
+        | 'players_not_ready'
         | 'hand_already_started'
         | 'not_enough_players'
         | 'invalid_blind_structure';

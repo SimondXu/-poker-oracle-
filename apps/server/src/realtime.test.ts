@@ -259,6 +259,69 @@ test('room:ready marks membership as ready and updates room state', async (t) =>
   assert.equal(roomState.readyCount, 1);
 });
 
+test('game:start requires all players ready once readiness flow starts', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-ready-2',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-ready-2',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-ready-2',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const aliceReadyAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'room:ready', {});
+  assert.deepEqual(aliceReadyAck, { ok: true, roomId: 'room-ready-2', readyCount: 1, playerCount: 2 });
+
+  const blockedStartAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-ready-2',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(blockedStartAck, { ok: false, error: 'players_not_ready' });
+
+  const bobReadyAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'room:ready', {});
+  assert.deepEqual(bobReadyAck, { ok: true, roomId: 'room-ready-2', readyCount: 2, playerCount: 2 });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-ready-2',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+});
+
 test('game:start initializes hand and game:action enforces current actor', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
