@@ -201,10 +201,9 @@ function advanceStreet(previous: HandState, players: HandInitPlayerState[]): Han
 
   const pendingActorIds = getPendingActorIds(players);
   const currentActorSeat = determineNextActorSeat(players, previous.buttonMarkerSeat, pendingActorIds);
-
-  return {
+  const nextState: HandState = {
     ...previous,
-    phase: currentActorSeat === null ? 'street_complete' : nextStreet.phase,
+    phase: nextStreet.phase,
     players,
     communityCards,
     deck,
@@ -216,6 +215,16 @@ function advanceStreet(previous: HandState, players: HandInitPlayerState[]): Han
       lastFullRaiseSize: previous.blinds.bigBlind,
       lastAggressorId: null
     }
+  };
+
+  if (currentActorSeat !== null) {
+    return nextState;
+  }
+
+  const runoutState = advanceStreet(nextState, players);
+  return runoutState ?? {
+    ...nextState,
+    phase: 'street_complete'
   };
 }
 

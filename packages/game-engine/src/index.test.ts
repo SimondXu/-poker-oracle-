@@ -384,6 +384,47 @@ test('street progression deals turn and river then ends hand after river betting
   }
 });
 
+test('preflop all-in runout deals remaining board and reaches hand_end', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 100 },
+      { id: 'p1', seatIndex: 1, stack: 100 },
+      { id: 'p2', seatIndex: 2, stack: 100 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(106)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const p0AllIn = applyAction(initialized.value, { playerId: 'p0', type: 'all_in' });
+  assert.equal(p0AllIn.ok, true);
+  if (!p0AllIn.ok) return;
+
+  const p1AllIn = applyAction(p0AllIn.value, { playerId: 'p1', type: 'all_in' });
+  assert.equal(p1AllIn.ok, true);
+  if (!p1AllIn.ok) return;
+
+  const p2AllIn = applyAction(p1AllIn.value, { playerId: 'p2', type: 'all_in' });
+  assert.equal(p2AllIn.ok, true);
+  if (!p2AllIn.ok) return;
+
+  assert.equal(p2AllIn.value.phase, 'hand_end');
+  assert.equal(p2AllIn.value.currentActorSeat, null);
+  assert.deepEqual(p2AllIn.value.pendingActorIds, []);
+  assert.equal(p2AllIn.value.communityCards.length, 5);
+  assert.deepEqual(p2AllIn.value.pots, [
+    {
+      amount: 300,
+      eligiblePlayerIds: ['p0', 'p1', 'p2']
+    }
+  ]);
+  assert.deepEqual(p2AllIn.value.payouts, []);
+});
+
 function committedPlayer(
   id: string,
   seatIndex: number,
