@@ -21,4 +21,5 @@ export interface RuntimeRoom {
   players: Map<string, RuntimePlayer>;
   hand: HandState | null;
   lastActionSeqByPlayer: Map<string, number>;
+  lastBroadcastActionCount: number;
 }

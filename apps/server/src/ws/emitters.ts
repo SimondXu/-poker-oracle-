@@ -49,6 +49,27 @@ function emitHandResult(io: Server, room: RuntimeRoom): void {
   io.to(room.id).emit('game:hand_result', payload);
 }
 
+function emitGameEvents(io: Server, room: RuntimeRoom): void {
+  if (!room.hand) {
+    return;
+  }
+
+  if (room.hand.actions.length < room.lastBroadcastActionCount) {
+    room.lastBroadcastActionCount = 0;
+  }
+
+  const newActions = room.hand.actions.slice(room.lastBroadcastActionCount);
+  for (const action of newActions) {
+    io.to(room.id).emit('game:event', {
+      roomId: room.id,
+      type: 'action_applied',
+      action
+    });
+  }
+
+  room.lastBroadcastActionCount = room.hand.actions.length;
+}
+
 export function emitRoomState(io: Server, room: RuntimeRoom): void {
   io.to(room.id).emit('room:state', {
     roomId: room.id,
@@ -77,6 +98,7 @@ export function emitGameState(io: Server, room: RuntimeRoom, memberships: Map<st
     });
   }
 
+  emitGameEvents(io, room);
   emitActionRequired(io, room, memberships);
   emitHandResult(io, room);
 }

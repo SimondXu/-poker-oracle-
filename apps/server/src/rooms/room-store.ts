@@ -41,7 +41,8 @@ export function getOrCreateRoom(
     actionTimeoutMs: config?.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS,
     players: new Map(),
     hand: null,
-    lastActionSeqByPlayer: new Map()
+    lastActionSeqByPlayer: new Map(),
+    lastBroadcastActionCount: 0
   };
   rooms.set(roomId, room);
   return room;
