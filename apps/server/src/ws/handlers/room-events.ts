@@ -136,6 +136,15 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
 
+    const keepSeatDuringHand =
+      room.hand !== null &&
+      room.hand.phase !== 'hand_end' &&
+      room.hand.players.some((player) => player.id === membership.playerId);
+    if (keepSeatDuringHand) {
+      emitRoomState(io, room);
+      return;
+    }
+
     room.players.delete(membership.playerId);
     room.readyPlayerIds.delete(membership.playerId);
     if (room.players.size === 0) {
