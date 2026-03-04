@@ -56,6 +56,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       const previousRoom = rooms.get(previousMembership.roomId);
       previousRoom?.players.delete(previousMembership.playerId);
       previousRoom?.readyPlayerIds.delete(previousMembership.playerId);
+      previousRoom?.pendingDisconnectPlayerIds.delete(previousMembership.playerId);
       if (previousRoom && previousRoom.players.size === 0) {
         clearRoomActionTimeout(roomActionTimeouts, previousMembership.roomId);
         rooms.delete(previousMembership.roomId);
@@ -87,6 +88,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       isBot: parsed.data.isBot ?? false
     });
     room.readyPlayerIds.delete(playerId);
+    room.pendingDisconnectPlayerIds.delete(playerId);
 
     memberships.set(socket.id, { roomId, playerId });
     void socket.join(roomId);
@@ -141,12 +143,14 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       room.hand.phase !== 'hand_end' &&
       room.hand.players.some((player) => player.id === membership.playerId);
     if (keepSeatDuringHand) {
+      room.pendingDisconnectPlayerIds.add(membership.playerId);
       emitRoomState(io, room);
       return;
     }
 
     room.players.delete(membership.playerId);
     room.readyPlayerIds.delete(membership.playerId);
+    room.pendingDisconnectPlayerIds.delete(membership.playerId);
     if (room.players.size === 0) {
       clearRoomActionTimeout(roomActionTimeouts, membership.roomId);
       rooms.delete(membership.roomId);

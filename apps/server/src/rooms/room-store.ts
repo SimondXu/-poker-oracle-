@@ -36,11 +36,13 @@ export function getOrCreateRoom(
 
   const room: RuntimeRoom = {
     id: roomId,
+    handNumber: 0,
     smallBlind: config?.smallBlind ?? DEFAULT_SMALL_BLIND,
     bigBlind: config?.bigBlind ?? DEFAULT_BIG_BLIND,
     actionTimeoutMs: config?.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS,
     players: new Map(),
     readyPlayerIds: new Set(),
+    pendingDisconnectPlayerIds: new Set(),
     hand: null,
     lastActionSeqByPlayer: new Map(),
     lastBroadcastActionCount: 0

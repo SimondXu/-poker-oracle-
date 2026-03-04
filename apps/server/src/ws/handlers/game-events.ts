@@ -1,4 +1,4 @@
-import { applyAction, getValidActions, initializeHand, type PlayerActionInput } from '@aipoker/game-engine';
+import { applyAction, getValidActions, initializeHand, type ActionType as EngineActionType, type PlayerActionInput } from '@aipoker/game-engine';
 import type { Server, Socket } from 'socket.io';
 
 import { isDuplicateOrStaleActionSeq, recordActionSeq, resetActionSeqTracker } from '../../game-loop/action-seq.ts';
@@ -7,6 +7,7 @@ import {
   scheduleRoomActionTimeout,
   type RoomActionTimeouts
 } from '../../game-loop/action-timeout.ts';
+import { cleanupDisconnectedPlayersAfterHandEnd } from '../../game-loop/cleanup-disconnected-players.ts';
 import { runBotTurns } from '../../game-loop/run-bot-turns.ts';
 import { syncRoomPlayersFromHand } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
@@ -74,10 +75,15 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
 
       latestRoom.hand = timeoutResult.value;
       syncRoomPlayersFromHand(latestRoom);
-      emitGameState(io, latestRoom, memberships);
-      runBotTurns(io, latestRoom, memberships);
-      syncActionTimeout(latestRoom.id);
+      emitStateAndProgress(latestRoom);
     });
+  }
+
+  function emitStateAndProgress(room: RuntimeRoom): void {
+    emitGameState(io, room, memberships);
+    runBotTurns(io, room, memberships);
+    cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts);
+    syncActionTimeout(room.id);
   }
 
   socket.on('game:start', (payload: unknown, ack?: (result: GameStartAck) => void) => {
@@ -127,12 +133,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     }
 
     room.hand = initialized.value;
+    room.handNumber += 1;
     resetActionSeqTracker(room);
     syncRoomPlayersFromHand(room);
     ack?.({ ok: true });
-    emitGameState(io, room, memberships);
-    runBotTurns(io, room, memberships);
-    syncActionTimeout(room.id);
+    emitStateAndProgress(room);
   });
 
   socket.on('game:action', (payload: unknown, ack?: (result: GameActionAck) => void) => {
@@ -164,15 +169,16 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
+    const mappedType: EngineActionType = parsed.data.type === 'bet' ? 'raise_to' : parsed.data.type;
     const action: PlayerActionInput =
       parsed.data.amount === undefined
         ? {
             playerId: parsed.data.playerId,
-            type: parsed.data.type
+            type: mappedType
           }
         : {
             playerId: parsed.data.playerId,
-            type: parsed.data.type,
+            type: mappedType,
             amount: parsed.data.amount
           };
 
@@ -186,8 +192,6 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     recordActionSeq(room, parsed.data.playerId, parsed.data.seq);
     syncRoomPlayersFromHand(room);
     ack?.({ ok: true });
-    emitGameState(io, room, memberships);
-    runBotTurns(io, room, memberships);
-    syncActionTimeout(room.id);
+    emitStateAndProgress(room);
   });
 }
