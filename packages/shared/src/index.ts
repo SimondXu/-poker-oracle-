@@ -121,12 +121,22 @@ export interface ValidActions {
   canAllIn: boolean;
 }
 
-export interface RoomState {
-  id: string;
-  name: string;
-  status: 'waiting' | 'playing' | 'finished';
-  players: Array<{ id: string; name: string; seatIndex: number; isReady: boolean }>;
+export interface RoomStateEvent {
+  roomId: string;
+  players: Array<{
+    id: string;
+    name: string;
+    seatIndex: number;
+    isBot: boolean;
+    botStrategy: BotPersonality | null;
+    isReady: boolean;
+  }>;
+  playerCount: number;
+  readyCount: number;
+  isPlaying: boolean;
 }
+
+export type RoomState = RoomStateEvent;
 
 export interface GameStateEvent {
   roomId: string;

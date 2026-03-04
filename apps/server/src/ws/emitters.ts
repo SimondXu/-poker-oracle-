@@ -88,10 +88,20 @@ function emitGameEvents(io: Server, room: RuntimeRoom): void {
 }
 
 export function emitRoomState(io: Server, room: RuntimeRoom): void {
+  const players = [...room.players.values()].map((p) => ({
+    id: p.id,
+    name: p.name,
+    seatIndex: p.seatIndex,
+    isBot: p.isBot,
+    botStrategy: p.botStrategy ?? null,
+    isReady: room.readyPlayerIds.has(p.id),
+  }));
   io.to(room.id).emit('room:state', {
     roomId: room.id,
+    players,
     playerCount: room.players.size,
-    readyCount: room.readyPlayerIds.size
+    readyCount: room.readyPlayerIds.size,
+    isPlaying: room.hand !== null && room.hand.phase !== 'hand_end',
   });
 }
 
