@@ -5,8 +5,6 @@ import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildHandResultPayload } from './view-models/hand-result.ts';
 import { buildViewerHand } from './view-models/viewer-hand.ts';
 
-const DEFAULT_ACTION_TIMEOUT_MS = 30000;
-
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
 }
@@ -36,7 +34,7 @@ function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<stri
     io.to(socketId).emit('game:action_required', {
       roomId: room.id,
       playerId: actor.id,
-      timeoutMs: DEFAULT_ACTION_TIMEOUT_MS,
+      timeoutMs: room.actionTimeoutMs,
       validActions
     });
   }

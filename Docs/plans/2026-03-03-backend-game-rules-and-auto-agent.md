@@ -155,3 +155,5 @@ Expected: 仅出现本次实现相关变更。
   - 在手牌结束时向房间广播结算摘要（pot/payout/player stacks），为回放与结果面板提供稳定事件源。
 - feat(server): add action timer auto-fold/check loop
   - 新增 per-room 行动超时调度，超时按规则执行 `toCall==0 -> check` / `toCall>0 -> fold`，并自动衔接 bot 回合与后续计时。
+- fix(server): align `game:action_required.timeoutMs` with configured timer
+  - 消除固定 30s 常量，改为房间级 `actionTimeoutMs`，保证客户端提示与服务端真实超时一致。

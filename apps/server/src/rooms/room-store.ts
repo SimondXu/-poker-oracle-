@@ -2,6 +2,7 @@ import type { RuntimeRoom } from './types.ts';
 
 const DEFAULT_SMALL_BLIND = 10;
 const DEFAULT_BIG_BLIND = 20;
+const DEFAULT_ACTION_TIMEOUT_MS = 30000;
 
 export function pickSeatIndex(room: RuntimeRoom): number {
   const occupied = new Set([...room.players.values()].map((player) => player.seatIndex));
@@ -15,13 +16,20 @@ export function pickSeatIndex(room: RuntimeRoom): number {
 export function getOrCreateRoom(
   rooms: Map<string, RuntimeRoom>,
   roomId: string,
-  config?: { smallBlind: number; bigBlind: number }
+  config?: { smallBlind?: number; bigBlind?: number; actionTimeoutMs?: number }
 ): RuntimeRoom {
   const existing = rooms.get(roomId);
   if (existing) {
     if (config) {
-      existing.smallBlind = config.smallBlind;
-      existing.bigBlind = config.bigBlind;
+      if (config.smallBlind !== undefined) {
+        existing.smallBlind = config.smallBlind;
+      }
+      if (config.bigBlind !== undefined) {
+        existing.bigBlind = config.bigBlind;
+      }
+      if (config.actionTimeoutMs !== undefined) {
+        existing.actionTimeoutMs = config.actionTimeoutMs;
+      }
     }
     return existing;
   }
@@ -30,6 +38,7 @@ export function getOrCreateRoom(
     id: roomId,
     smallBlind: config?.smallBlind ?? DEFAULT_SMALL_BLIND,
     bigBlind: config?.bigBlind ?? DEFAULT_BIG_BLIND,
+    actionTimeoutMs: config?.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS,
     players: new Map(),
     hand: null,
     lastActionSeqByPlayer: new Map()

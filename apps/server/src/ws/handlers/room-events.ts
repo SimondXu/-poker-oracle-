@@ -12,10 +12,11 @@ interface RegisterRoomEventsInput {
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
   roomActionTimeouts: RoomActionTimeouts;
+  actionTimeoutMs: number;
 }
 
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
-  const { io, socket, rooms, memberships, roomActionTimeouts } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
 
   socket.on('room:create', (payload: unknown, ack?: (result: RoomCreateAck) => void) => {
     const parsed = roomCreatePayloadSchema.safeParse(payload);
@@ -26,7 +27,8 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     const room = getOrCreateRoom(rooms, parsed.data.roomId, {
       smallBlind: parsed.data.smallBlind,
-      bigBlind: parsed.data.bigBlind
+      bigBlind: parsed.data.bigBlind,
+      actionTimeoutMs
     });
 
     ack?.({ ok: true, roomId: room.id });
@@ -56,7 +58,9 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       }
     }
 
-    const room = getOrCreateRoom(rooms, roomId);
+    const room = getOrCreateRoom(rooms, roomId, {
+      actionTimeoutMs
+    });
     const requestedSeat = parsed.data.seatIndex;
     const seatTakenByOther =
       requestedSeat !== undefined

@@ -28,7 +28,8 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       socket,
       rooms,
       memberships,
-      roomActionTimeouts
+      roomActionTimeouts,
+      actionTimeoutMs
     });
 
     registerGameEvents({
