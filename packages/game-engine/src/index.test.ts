@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createDeck, initializeHand } from './index.ts';
+import { applyAction, createDeck, getValidActions, initializeHand } from './index.ts';
 
 function sequenceRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -105,4 +105,163 @@ test('initializeHand returns error when active players are fewer than two', () =
     ok: false,
     error: 'not_enough_players'
   });
+});
+
+test('getValidActions returns call and raise options for first preflop actor', () => {
+  const result = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 1000 },
+      { id: 'p2', seatIndex: 2, stack: 1000 },
+      { id: 'p3', seatIndex: 3, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(99)
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  const valid = getValidActions(result.value, 'p3');
+
+  assert.deepEqual(valid, {
+    canFold: true,
+    canCheck: false,
+    canCall: true,
+    callAmount: 20,
+    canRaise: true,
+    minRaiseTo: 40,
+    maxRaiseTo: 1000,
+    canAllIn: true
+  });
+});
+
+test('applyAction raise_to resets pending actors to everyone except raiser', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 1000 },
+      { id: 'p2', seatIndex: 2, stack: 1000 },
+      { id: 'p3', seatIndex: 3, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(100)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const next = applyAction(initialized.value, {
+    playerId: 'p3',
+    type: 'raise_to',
+    amount: 60
+  });
+
+  assert.equal(next.ok, true);
+  if (!next.ok) return;
+
+  assert.equal(next.value.currentActorSeat, 0);
+  assert.deepEqual(next.value.pendingActorIds.sort(), ['p0', 'p1', 'p2']);
+  assert.equal(next.value.betting.currentBetToMatch, 60);
+  assert.equal(next.value.betting.lastFullRaiseSize, 40);
+});
+
+test('short all-in does not re-open betting for a player who already acted', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 250 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 50,
+    bigBlind: 100,
+    rng: sequenceRng(101)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const a = applyAction(initialized.value, {
+    playerId: 'p0',
+    type: 'raise_to',
+    amount: 200
+  });
+  assert.equal(a.ok, true);
+  if (!a.ok) return;
+
+  const b = applyAction(a.value, {
+    playerId: 'p1',
+    type: 'all_in'
+  });
+  assert.equal(b.ok, true);
+  if (!b.ok) return;
+
+  const c = applyAction(b.value, {
+    playerId: 'p2',
+    type: 'call'
+  });
+  assert.equal(c.ok, true);
+  if (!c.ok) return;
+
+  const validForP0 = getValidActions(c.value, 'p0');
+  assert.equal(validForP0.canRaise, false);
+  assert.equal(validForP0.canCall, true);
+  assert.equal(validForP0.callAmount, 50);
+});
+
+test('multiple short all-ins can cumulatively re-open betting', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 250 },
+      { id: 'p1', seatIndex: 1, stack: 300 },
+      { id: 'p2', seatIndex: 2, stack: 1200 },
+      { id: 'p3', seatIndex: 3, stack: 1200 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 50,
+    bigBlind: 100,
+    rng: sequenceRng(102)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const a = applyAction(initialized.value, {
+    playerId: 'p3',
+    type: 'raise_to',
+    amount: 200
+  });
+  assert.equal(a.ok, true);
+  if (!a.ok) return;
+
+  const b = applyAction(a.value, {
+    playerId: 'p0',
+    type: 'all_in'
+  });
+  assert.equal(b.ok, true);
+  if (!b.ok) return;
+
+  const c = applyAction(b.value, {
+    playerId: 'p1',
+    type: 'all_in'
+  });
+  assert.equal(c.ok, true);
+  if (!c.ok) return;
+
+  const d = applyAction(c.value, {
+    playerId: 'p2',
+    type: 'call'
+  });
+  assert.equal(d.ok, true);
+  if (!d.ok) return;
+
+  const validForP3 = getValidActions(d.value, 'p3');
+  assert.equal(validForP3.canRaise, true);
+  assert.equal(validForP3.callAmount, 100);
+  assert.equal(validForP3.minRaiseTo, 400);
 });

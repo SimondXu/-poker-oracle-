@@ -1,0 +1,52 @@
+import { z } from 'zod';
+
+export const roomCreatePayloadSchema = z.object({
+  roomId: z.string().trim().min(1),
+  smallBlind: z.coerce.number().int().min(1),
+  bigBlind: z.coerce.number().int().min(1)
+});
+
+export const joinRoomPayloadSchema = z.object({
+  roomId: z.string().trim().min(1),
+  playerId: z.string().trim().min(1),
+  playerName: z.string().trim().min(1),
+  seatIndex: z.coerce.number().int().min(0).optional(),
+  stack: z.coerce.number().int().min(1).optional(),
+  isBot: z.boolean().optional()
+});
+
+export const gameStartPayloadSchema = z.object({
+  roomId: z.string().trim().min(1),
+  buttonMarkerSeat: z.coerce.number().int().min(0).optional()
+});
+
+export const gameActionPayloadSchema = z.object({
+  roomId: z.string().trim().min(1),
+  playerId: z.string().trim().min(1),
+  type: z.enum(['fold', 'check', 'call', 'raise_to', 'all_in']),
+  amount: z.coerce.number().int().min(1).optional()
+});
+
+export type JoinRoomAck =
+  | { ok: true; roomId: string; playerCount: number }
+  | { ok: false; error: 'invalid_payload' };
+
+export type RoomCreateAck = { ok: true; roomId: string } | { ok: false; error: 'invalid_payload' };
+
+export type GameStartAck =
+  | { ok: true }
+  | { ok: false; error: 'invalid_payload' | 'room_not_found' | 'not_enough_players' | 'invalid_blind_structure' };
+
+export type GameActionAck =
+  | { ok: true }
+  | {
+      ok: false;
+      error:
+        | 'invalid_payload'
+        | 'room_not_found'
+        | 'hand_not_started'
+        | 'not_room_member'
+        | 'hand_not_actionable'
+        | 'not_current_actor'
+        | 'invalid_action';
+    };
