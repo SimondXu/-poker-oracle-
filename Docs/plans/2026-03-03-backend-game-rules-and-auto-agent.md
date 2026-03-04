@@ -171,3 +171,5 @@ Expected: 仅出现本次实现相关变更。
   - 新增切房回归测试：玩家在手局中切换到新房间时，旧房间仍可推进至 `hand_end` 并在结束后正确清理席位。
 - `807f89c` fix(server): unref room action timers to avoid hanging tests
   - `scheduleRoomActionTimeout` 对 timeout handle 执行 `unref`，并新增 `action-timeout` 单测，修复 `pnpm --filter @aipoker/server test` 运行后挂起问题。
+- `329f2be` feat(server): rate limit `game:action` to 20 req/min per socket
+  - 新增 `game-action-rate-limit` 回归测试；超过阈值的请求返回 `rate_limited`，用于防刷与服务端负载保护。
