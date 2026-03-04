@@ -169,3 +169,5 @@ Expected: 仅出现本次实现相关变更。
   - `room:leave` payload 改为严格空对象校验，拒绝未知字段，避免宽松输入被误接收。
 - `492f475` test(server): cover room switch during active hand
   - 新增切房回归测试：玩家在手局中切换到新房间时，旧房间仍可推进至 `hand_end` 并在结束后正确清理席位。
+- `807f89c` fix(server): unref room action timers to avoid hanging tests
+  - `scheduleRoomActionTimeout` 对 timeout handle 执行 `unref`，并新增 `action-timeout` 单测，修复 `pnpm --filter @aipoker/server test` 运行后挂起问题。
