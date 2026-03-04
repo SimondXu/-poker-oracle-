@@ -46,11 +46,19 @@ export interface HandState {
   potTotal: number;
   pots: Pot[];
   payouts: PotPayout[];
+  actions: HandActionRecord[];
   betting: {
     currentBetToMatch: number;
     lastFullRaiseSize: number;
     lastAggressorId: string | null;
   };
+}
+
+export interface HandActionRecord {
+  playerId: string;
+  type: ActionType;
+  amount: number;
+  phase: HandPhase;
 }
 
 export interface Pot {

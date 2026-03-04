@@ -1,4 +1,13 @@
-import type { ApplyActionError, EngineResult, HandInitPlayerState, HandPhase, HandState, PlayerActionInput, ValidActions } from '../state/types.ts';
+import type {
+  ApplyActionError,
+  EngineResult,
+  HandActionRecord,
+  HandInitPlayerState,
+  HandPhase,
+  HandState,
+  PlayerActionInput,
+  ValidActions
+} from '../state/types.ts';
 import { buildSidePots } from '../settlement/side-pots.ts';
 import { settleShowdownPots } from '../settlement/showdown.ts';
 import { err, ok } from './result.ts';
@@ -301,12 +310,33 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
   let pendingActorIds = [...state.pendingActorIds];
   let betting = { ...state.betting };
   const toCall = Math.max(0, state.betting.currentBetToMatch - actor.streetCommitted);
+  const phaseAtAction = state.phase;
+
+  function withActionLog(nextState: HandState, record: Omit<HandActionRecord, 'phase'>): HandState {
+    return {
+      ...nextState,
+      actions: [
+        ...state.actions,
+        {
+          ...record,
+          phase: phaseAtAction
+        }
+      ]
+    };
+  }
 
   if (action.type === 'fold') {
     actor.status = 'folded';
     actor.hasActedThisStreet = true;
     pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-    return ok(finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting));
+    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
+    return ok(
+      withActionLog(nextState, {
+        playerId: actor.id,
+        type: 'fold',
+        amount: 0
+      })
+    );
   }
 
   if (action.type === 'check') {
@@ -316,7 +346,14 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
     actor.hasActedThisStreet = true;
     actor.matchedBetToMatchAtLastAction = state.betting.currentBetToMatch;
     pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-    return ok(finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting));
+    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
+    return ok(
+      withActionLog(nextState, {
+        playerId: actor.id,
+        type: 'check',
+        amount: 0
+      })
+    );
   }
 
   if (action.type === 'call') {
@@ -335,22 +372,37 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
     }
 
     pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-    return ok(finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting));
+    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
+    return ok(
+      withActionLog(nextState, {
+        playerId: actor.id,
+        type: 'call',
+        amount: contribution
+      })
+    );
   }
 
   if (action.type === 'raise_to') {
     if (!Number.isInteger(action.amount)) {
       return err('invalid_action');
     }
+    const toAmount = action.amount ?? 0;
 
-    const raised = applyRaiseTo(state, players, actor, action.amount ?? 0);
+    const raised = applyRaiseTo(state, players, actor, toAmount);
     if (!raised.ok) {
       return raised;
     }
 
     pendingActorIds = raised.value.pendingActorIds;
     betting = raised.value.betting;
-    return ok(finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting));
+    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
+    return ok(
+      withActionLog(nextState, {
+        playerId: actor.id,
+        type: 'raise_to',
+        amount: toAmount
+      })
+    );
   }
 
   if (action.type === 'all_in') {
@@ -368,7 +420,14 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
       actor.hasActedThisStreet = true;
       actor.matchedBetToMatchAtLastAction = state.betting.currentBetToMatch;
       pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-      return ok(finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting));
+      const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
+      return ok(
+        withActionLog(nextState, {
+          playerId: actor.id,
+          type: 'all_in',
+          amount: contribution
+        })
+      );
     }
 
     const raised = applyRaiseTo(state, players, actor, allInTo);
@@ -377,7 +436,14 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
     }
     pendingActorIds = raised.value.pendingActorIds;
     betting = raised.value.betting;
-    return ok(finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting));
+    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
+    return ok(
+      withActionLog(nextState, {
+        playerId: actor.id,
+        type: 'all_in',
+        amount: actor.streetCommitted
+      })
+    );
   }
 
   return err('invalid_action');

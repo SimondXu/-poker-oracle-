@@ -60,6 +60,7 @@ test('initializeHand sets blinds and first actor for ring game', () => {
   assert.equal(result.value.betting.currentBetToMatch, 20);
   assert.equal(result.value.betting.lastFullRaiseSize, 20);
   assert.equal(result.value.betting.lastAggressorId, 'p2');
+  assert.deepEqual(result.value.actions, []);
 
   const seat1 = result.value.players.find((player) => player.seatIndex === 1);
   const seat2 = result.value.players.find((player) => player.seatIndex === 2);
@@ -193,6 +194,14 @@ test('applyAction raise_to resets pending actors to everyone except raiser', () 
   assert.deepEqual(next.value.pendingActorIds.sort(), ['p0', 'p1', 'p2']);
   assert.equal(next.value.betting.currentBetToMatch, 60);
   assert.equal(next.value.betting.lastFullRaiseSize, 40);
+  assert.deepEqual(next.value.actions, [
+    {
+      playerId: 'p3',
+      type: 'raise_to',
+      amount: 60,
+      phase: 'betting_preflop'
+    }
+  ]);
 });
 
 test('short all-in does not re-open betting for a player who already acted', () => {
