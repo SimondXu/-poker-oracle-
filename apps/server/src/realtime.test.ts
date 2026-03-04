@@ -446,6 +446,79 @@ test('action timer auto-folds actor when toCall is greater than zero', async (t)
   assert.equal(timedOutPlayer?.status, 'folded');
 });
 
+test('action timer auto-checks actor when toCall is zero', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, { actionTimeoutMs: 40 });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-11',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-11',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-11',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-11',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const flopStatePromise = waitForState(
+    alice,
+    (payload) =>
+      payload.hand.phase === 'betting_flop' &&
+      payload.hand.currentActorSeat === 0 &&
+      payload.hand.communityCards.length === 3,
+    1500
+  );
+
+  const callAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
+    roomId: 'room-11',
+    playerId: 'p0',
+    type: 'call',
+    seq: 1
+  });
+  assert.deepEqual(callAck, { ok: true });
+
+  const flopState = await flopStatePromise;
+  assert.equal(flopState.hand.phase, 'betting_flop');
+  assert.equal(flopState.hand.currentActorSeat, 0);
+  assert.equal(flopState.hand.communityCards.length, 3);
+});
+
 test('game:state hides opponent hole cards before hand_end', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
