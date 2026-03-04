@@ -79,6 +79,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
+    if (room.hand && room.hand.phase !== 'hand_end') {
+      ack?.({ ok: false, error: 'hand_already_started' });
+      return;
+    }
+
     const initialized = initializeHand({
       players: [...room.players.values()].map((player) => ({
         id: player.id,
