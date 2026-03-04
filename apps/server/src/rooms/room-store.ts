@@ -40,6 +40,7 @@ export function getOrCreateRoom(
     bigBlind: config?.bigBlind ?? DEFAULT_BIG_BLIND,
     actionTimeoutMs: config?.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS,
     players: new Map(),
+    readyPlayerIds: new Set(),
     hand: null,
     lastActionSeqByPlayer: new Map(),
     lastBroadcastActionCount: 0

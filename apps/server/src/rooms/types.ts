@@ -19,6 +19,7 @@ export interface RuntimeRoom {
   bigBlind: number;
   actionTimeoutMs: number;
   players: Map<string, RuntimePlayer>;
+  readyPlayerIds: Set<string>;
   hand: HandState | null;
   lastActionSeqByPlayer: Map<string, number>;
   lastBroadcastActionCount: number;

@@ -15,6 +15,8 @@ export const joinRoomPayloadSchema = z.object({
   isBot: z.boolean().optional()
 });
 
+export const roomReadyPayloadSchema = z.object({});
+
 export const gameStartPayloadSchema = z.object({
   roomId: z.string().trim().min(1),
   buttonMarkerSeat: z.coerce.number().int().min(0).optional()
@@ -33,6 +35,15 @@ export type JoinRoomAck =
   | { ok: false; error: 'invalid_payload' };
 
 export type RoomCreateAck = { ok: true; roomId: string } | { ok: false; error: 'invalid_payload' };
+
+export type RoomReadyAck =
+  | {
+      ok: true;
+      roomId: string;
+      readyCount: number;
+      playerCount: number;
+    }
+  | { ok: false; error: 'invalid_payload' | 'not_room_member' };
 
 export type GameStartAck =
   | { ok: true }

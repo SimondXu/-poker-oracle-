@@ -4,7 +4,14 @@ import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop
 import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitRoomState } from '../emitters.ts';
-import { joinRoomPayloadSchema, roomCreatePayloadSchema, type JoinRoomAck, type RoomCreateAck } from '../schemas.ts';
+import {
+  joinRoomPayloadSchema,
+  roomCreatePayloadSchema,
+  roomReadyPayloadSchema,
+  type JoinRoomAck,
+  type RoomCreateAck,
+  type RoomReadyAck
+} from '../schemas.ts';
 
 interface RegisterRoomEventsInput {
   io: Server;
@@ -48,6 +55,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     if (previousMembership && previousMembership.roomId !== roomId) {
       const previousRoom = rooms.get(previousMembership.roomId);
       previousRoom?.players.delete(previousMembership.playerId);
+      previousRoom?.readyPlayerIds.delete(previousMembership.playerId);
       if (previousRoom && previousRoom.players.size === 0) {
         clearRoomActionTimeout(roomActionTimeouts, previousMembership.roomId);
         rooms.delete(previousMembership.roomId);
@@ -78,11 +86,41 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       stack: parsed.data.stack ?? 1000,
       isBot: parsed.data.isBot ?? false
     });
+    room.readyPlayerIds.delete(playerId);
 
     memberships.set(socket.id, { roomId, playerId });
     void socket.join(roomId);
 
     ack?.({ ok: true, roomId, playerCount: room.players.size });
+    emitRoomState(io, room);
+  });
+
+  socket.on('room:ready', (payload: unknown, ack?: (result: RoomReadyAck) => void) => {
+    const parsed = roomReadyPayloadSchema.safeParse(payload ?? {});
+    if (!parsed.success) {
+      ack?.({ ok: false, error: 'invalid_payload' });
+      return;
+    }
+
+    const membership = memberships.get(socket.id);
+    if (!membership) {
+      ack?.({ ok: false, error: 'not_room_member' });
+      return;
+    }
+
+    const room = rooms.get(membership.roomId);
+    if (!room || !room.players.has(membership.playerId)) {
+      ack?.({ ok: false, error: 'not_room_member' });
+      return;
+    }
+
+    room.readyPlayerIds.add(membership.playerId);
+    ack?.({
+      ok: true,
+      roomId: room.id,
+      readyCount: room.readyPlayerIds.size,
+      playerCount: room.players.size
+    });
     emitRoomState(io, room);
   });
 
@@ -99,6 +137,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     }
 
     room.players.delete(membership.playerId);
+    room.readyPlayerIds.delete(membership.playerId);
     if (room.players.size === 0) {
       clearRoomActionTimeout(roomActionTimeouts, membership.roomId);
       rooms.delete(membership.roomId);

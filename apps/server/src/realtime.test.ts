@@ -50,6 +50,30 @@ function waitForState(
   });
 }
 
+function waitForRoomState(
+  socket: ReturnType<typeof createClient>,
+  predicate: (payload: any) => boolean,
+  timeoutMs = 2000
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off('room:state', onRoomState);
+      reject(new Error('timed out waiting for room:state'));
+    }, timeoutMs);
+
+    const onRoomState = (payload: any) => {
+      if (!predicate(payload)) {
+        return;
+      }
+      clearTimeout(timer);
+      socket.off('room:state', onRoomState);
+      resolve(payload);
+    };
+
+    socket.on('room:state', onRoomState);
+  });
+}
+
 function waitForActionRequired(
   socket: ReturnType<typeof createClient>,
   predicate: (payload: any) => boolean,
@@ -191,6 +215,48 @@ test('room:join rejects invalid payload', async (t) => {
   });
 
   assert.deepEqual(ack, { ok: false, error: 'invalid_payload' });
+});
+
+test('room:ready marks membership as ready and updates room state', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+  });
+
+  await once(alice, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-ready-1',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-ready-1',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+
+  const roomStatePromise = waitForRoomState(alice, (payload) => payload.roomId === 'room-ready-1' && payload.readyCount === 1);
+  const readyAck = await emitWithAck<{ ok: boolean; error?: string; readyCount?: number }>(alice, 'room:ready', {});
+
+  assert.deepEqual(readyAck, { ok: true, roomId: 'room-ready-1', readyCount: 1, playerCount: 1 });
+  const roomState = await roomStatePromise;
+  assert.equal(roomState.readyCount, 1);
 });
 
 test('game:start initializes hand and game:action enforces current actor', async (t) => {

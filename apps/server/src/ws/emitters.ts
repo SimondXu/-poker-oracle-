@@ -73,7 +73,8 @@ function emitGameEvents(io: Server, room: RuntimeRoom): void {
 export function emitRoomState(io: Server, room: RuntimeRoom): void {
   io.to(room.id).emit('room:state', {
     roomId: room.id,
-    playerCount: room.players.size
+    playerCount: room.players.size,
+    readyCount: room.readyPlayerIds.size
   });
 }
 
