@@ -23,7 +23,7 @@ interface RegisterRoomEventsInput {
   actionTimeoutMs: number;
 }
 
-const roomLeavePayloadSchema = z.object({});
+const roomLeavePayloadSchema = z.object({}).strict();
 
 type RoomLeaveAck =
   | {

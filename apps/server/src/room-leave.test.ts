@@ -74,6 +74,45 @@ function waitForState(
   });
 }
 
+test('room:leave rejects payload with unknown fields', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => {
+    alice.close();
+  });
+
+  await once(alice, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-leave-invalid',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-leave-invalid',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+
+  const invalidLeaveAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'room:leave', {
+    unexpected: true
+  });
+  assert.deepEqual(invalidLeaveAck, { ok: false, error: 'invalid_payload' });
+});
+
 test('room:leave removes room membership and broadcasts updated room state', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
