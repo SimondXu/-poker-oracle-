@@ -135,13 +135,13 @@ export const ActionPanel = memo(function ActionPanel({
         exit={{ opacity: 0, y: 20 }}
         transition={{ type: 'spring', stiffness: 400, damping: 28 }}
         className={cn(
-          'flex flex-col gap-3',
-          'p-4 rounded-2xl',
-          'bg-[var(--color-glass-heavy)] backdrop-blur-xl',
-          'border border-white/8',
+          'flex flex-col gap-5',
+          'rounded-[24px] p-4 sm:p-5',
+          'bg-[rgba(8,14,24,0.9)] backdrop-blur-xl',
+          'border border-white/12',
           className,
         )}
-        style={{ boxShadow: 'var(--shadow-float)' }}
+        style={{ boxShadow: 'var(--shadow-float), var(--shadow-hairline)' }}
       >
         {/* 加注滑块（展开时显示） */}
         <AnimatePresence>
@@ -153,14 +153,14 @@ export const ActionPanel = memo(function ActionPanel({
               transition={{ duration: 0.2, ease: 'easeOut' }}
               className="overflow-hidden"
             >
-              <div className="pb-3 border-b border-white/6">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[12px] text-[var(--color-text-muted)] uppercase tracking-wider">
+              <div className="rounded-2xl border border-white/8 bg-[rgba(14,23,36,0.72)] p-3.5 sm:p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="text-[12px] uppercase tracking-[0.15em] text-[var(--color-text-muted)]">
                     {validActions.canBet ? '下注金额' : '加注至'}
                   </span>
                   <button
                     onClick={() => setShowRaise(false)}
-                    className="text-[11px] text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)] transition-colors"
+                    className="text-[12px] text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text-secondary)]"
                   >
                     收起 ↑
                   </button>
@@ -178,7 +178,10 @@ export const ActionPanel = memo(function ActionPanel({
         </AnimatePresence>
 
         {/* 操作按钮行 */}
-        <div className="flex items-center gap-2.5">
+        <div className={cn(
+          'grid items-stretch gap-2.5 sm:gap-3',
+          showRaise ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3',
+        )}>
           {buttons.map(({ key, label, sublabel, shortcut, variant, onClick, disabled }) => (
             <ActionButton
               key={key}
@@ -199,19 +202,19 @@ export const ActionPanel = memo(function ActionPanel({
               animate={{ opacity: 1, scale: 1 }}
               onClick={handleRaise}
               className={cn(
-                'flex-1 flex flex-col items-center justify-center',
-                'px-5 py-3 rounded-xl',
+                'col-span-2 flex h-[62px] flex-col items-center justify-center sm:col-span-1',
+                'rounded-[14px] px-4 py-3',
                 'bg-gradient-to-br from-[var(--color-gold)] to-[var(--color-gold-muted)]',
                 'text-[#0D1117] font-bold',
-                'border border-[var(--color-gold)]/20',
-                'hover:opacity-90 active:scale-[0.98] transition-all',
-                'shadow-[0_0_20px_rgba(255,215,0,0.3)]',
+                'border border-[var(--color-gold)]/28',
+                'hover:brightness-105 active:scale-[0.98] transition-all',
+                'shadow-[0_10px_26px_rgba(255,215,0,0.28)]',
               )}
             >
-              <span className="text-[14px] leading-none">
+              <span className="text-[15px] leading-none tracking-[0.01em]">
                 {raiseAmount >= validActions.maxBetOrRaiseTo ? 'All-in' : (validActions.canBet ? '下注' : '加注')}
               </span>
-              <span className="text-[12px] font-chips font-semibold opacity-80 mt-0.5">
+              <span className="mt-1 text-[13px] font-chips font-semibold opacity-80">
                 {formatChips(raiseAmount)}
               </span>
             </motion.button>
@@ -219,16 +222,16 @@ export const ActionPanel = memo(function ActionPanel({
         </div>
 
         {/* 底栏：底池赔率提示 */}
-        <div className="flex items-center justify-between text-[10px] text-[var(--color-text-dim)]">
-          <span>底池: <span className="font-chips text-[var(--color-text-muted)]">{formatChips(pot)}</span></span>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[12px] text-[var(--color-text-dim)]">
+          <span>底池: <span className="font-chips text-[var(--color-text-secondary)]">{formatChips(pot)}</span></span>
           {validActions.canCall && validActions.callAmount > 0 && (
             <span>
-              赔率: <span className="font-chips text-[var(--color-text-muted)]">
+              赔率: <span className="font-chips text-[var(--color-text-secondary)]">
                 {Math.round((validActions.callAmount / (pot + validActions.callAmount)) * 100)}%
               </span>
             </span>
           )}
-          <span className="text-[9px] opacity-60">F · K/C · R · A</span>
+          <span className="font-mono text-[11px] opacity-70">F · K/C · R · A</span>
         </div>
       </motion.div>
     </AnimatePresence>
@@ -239,20 +242,20 @@ export const ActionPanel = memo(function ActionPanel({
 
 const BUTTON_STYLES = {
   fold: {
-    base: 'border-[var(--color-error)]/25 text-[var(--color-error)] hover:bg-[var(--color-error)]/10 hover:border-[var(--color-error)]/40',
+    base: 'border-[var(--color-error)]/28 text-[#ff8f8d] hover:bg-[var(--color-error)]/12 hover:border-[var(--color-error)]/45',
     active: '',
   },
   neutral: {
-    base: 'border-white/10 text-[var(--color-text-secondary)] hover:bg-white/5 hover:border-white/20',
+    base: 'border-white/12 text-[var(--color-text-secondary)] hover:bg-white/[0.07] hover:border-white/24',
     active: '',
   },
   call: {
-    base: 'border-[var(--color-info)]/30 text-[#4FC3F7] hover:bg-[var(--color-info)]/10 hover:border-[var(--color-info)]/50',
+    base: 'border-[var(--color-info)]/35 text-[#7dd6ff] hover:bg-[var(--color-info)]/12 hover:border-[var(--color-info)]/52',
     active: '',
   },
   raise: {
-    base: 'border-[var(--color-gold)]/25 text-[var(--color-gold)] hover:bg-[var(--color-gold)]/8 hover:border-[var(--color-gold)]/45',
-    active: 'bg-[var(--color-gold)]/12 border-[var(--color-gold)]/50 shadow-[0_0_12px_rgba(255,215,0,0.2)]',
+    base: 'border-[var(--color-gold)]/28 text-[var(--color-gold)] hover:bg-[var(--color-gold)]/10 hover:border-[var(--color-gold)]/48',
+    active: 'bg-[var(--color-gold)]/14 border-[var(--color-gold)]/56 shadow-[0_0_12px_rgba(255,215,0,0.24)]',
   },
 };
 
@@ -282,8 +285,8 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'flex-1 flex flex-col items-center justify-center gap-0.5',
-        'px-4 py-3 rounded-xl',
+        'flex h-[62px] w-full flex-col items-center justify-center gap-1.5',
+        'rounded-[14px] px-3.5 py-2.5',
         'border transition-all duration-150',
         'bg-[var(--color-bg-elevated)]',
         'active:scale-[0.97]',
@@ -292,13 +295,13 @@ function ActionButton({
       )}
     >
       <div className="flex items-baseline gap-1.5">
-        <span className="text-[14px] font-semibold leading-none">{label}</span>
+        <span className="text-[14px] font-semibold leading-none sm:text-[15px]">{label}</span>
         {sublabel && (
-          <span className="font-chips text-[13px] font-bold leading-none">{sublabel}</span>
+          <span className="font-chips text-[13px] font-bold leading-none sm:text-[14px]">{sublabel}</span>
         )}
       </div>
       {shortcut && (
-        <span className="text-[9px] opacity-40 font-mono uppercase tracking-widest">[{shortcut}]</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-50">[{shortcut}]</span>
       )}
     </button>
   );

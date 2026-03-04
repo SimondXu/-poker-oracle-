@@ -40,7 +40,7 @@ function ThinkingDots() {
 /** 位置徽章 */
 function PositionBadge({ label }: { label: string }) {
   return (
-    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-[var(--color-gold)]/10 text-[var(--color-gold)] border border-[var(--color-gold)]/25">
+    <span className="rounded-md border border-[var(--color-gold)]/28 bg-[var(--color-gold)]/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--color-gold)]">
       {label}
     </span>
   );
@@ -72,13 +72,13 @@ export const Seat = memo(function Seat({
       <div
         className={cn(
           'flex items-center justify-center',
-          'w-[120px] rounded-xl',
-          'border border-dashed border-white/10',
-          'px-3 py-2',
+          'w-[128px] rounded-[14px]',
+          'border border-dashed border-white/14 bg-white/[0.02]',
+          'px-3 py-2.5',
           className,
         )}
       >
-        <span className="text-[11px] text-[var(--color-text-dim)] select-none">空位</span>
+        <span className="select-none text-[12px] text-[var(--color-text-dim)]">空位</span>
       </div>
     );
   }
@@ -87,20 +87,20 @@ export const Seat = memo(function Seat({
   return (
     <motion.div
       className={cn(
-        'relative flex flex-col gap-1.5 rounded-xl px-3 py-2.5',
+        'relative flex flex-col gap-2 rounded-[14px] px-3.5 py-3',
         'border transition-all duration-300',
         // 基础玻璃样式
-        'bg-[var(--color-glass)] backdrop-blur-md',
+        'bg-[rgba(11,19,31,0.86)] backdrop-blur-md',
         // 边框状态
         isCurrentActor
           ? 'border-[var(--color-gold)]/60'
           : isCurrentUser
-            ? 'border-white/15'
-            : 'border-white/6',
+            ? 'border-white/18'
+            : 'border-white/10',
         // 弃牌暗化
         (isFolded || isOut) && 'opacity-50 grayscale-[50%]',
         // 宽度
-        isCurrentUser ? 'min-w-[160px]' : 'min-w-[120px]',
+        isCurrentUser ? 'min-w-[182px]' : 'min-w-[136px]',
         className,
       )}
       animate={
@@ -126,13 +126,13 @@ export const Seat = memo(function Seat({
       </AnimatePresence>
 
       {/* Top 行：头像 + 名字 + 位置 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         {/* 头像 */}
         <div
           className={cn(
-            'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold',
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold',
             player.isBot
-              ? 'bg-[#1C2333] text-[var(--color-text-secondary)] border border-white/10'
+              ? 'bg-[#1C2333] text-[var(--color-text-secondary)] border border-white/12'
               : 'bg-gradient-to-br from-[var(--color-gold-muted)] to-[var(--color-gold)] text-[#0D1117]',
           )}
         >
@@ -144,8 +144,8 @@ export const Seat = memo(function Seat({
           <div className="flex items-center gap-1.5">
             <span
               className={cn(
-                'text-[12px] font-medium truncate leading-none',
-                isCurrentUser ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]',
+                'truncate text-[13px] font-semibold leading-none',
+                isCurrentUser ? 'text-[var(--color-text-primary)]' : 'text-[#c9d4e1]',
               )}
             >
               {player.name}
@@ -155,13 +155,13 @@ export const Seat = memo(function Seat({
 
           {/* 状态标签 */}
           {isAllIn && (
-            <span className="text-[10px] font-bold text-[var(--color-success)] leading-none">ALL IN</span>
+            <span className="text-[11px] font-bold leading-none text-[var(--color-success)]">ALL IN</span>
           )}
           {isFolded && (
-            <span className="text-[10px] text-[var(--color-text-dim)] leading-none">弃牌</span>
+            <span className="text-[11px] leading-none text-[var(--color-text-dim)]">弃牌</span>
           )}
           {player.isBot && isCurrentActor && !isFolded && !isAllIn && (
-            <div className="mt-0.5">
+            <div className="mt-1">
               <ThinkingDots />
             </div>
           )}
@@ -170,11 +170,11 @@ export const Seat = memo(function Seat({
 
       {/* 筹码量 */}
       <div className="flex items-center justify-between">
-        <span className="text-[12px] font-chips font-semibold text-[var(--color-gold)]">
+        <span className="text-[13px] font-chips font-semibold text-[var(--color-gold)]">
           {formatChips(player.stack)}
         </span>
         {player.streetCommitted > 0 && (
-          <span className="text-[11px] font-chips text-[var(--color-text-muted)]">
+          <span className="text-[12px] font-chips text-[var(--color-text-muted)]">
             +{formatChips(player.streetCommitted)}
           </span>
         )}
@@ -182,8 +182,8 @@ export const Seat = memo(function Seat({
 
       {/* 手牌（仅当前用户或 showHoleCards 时显示） */}
       {(isCurrentUser || showHoleCards) && player.holeCards.length > 0 && (
-        <div className="flex gap-1 mt-0.5">
-          {player.holeCards.map((card, i) => (
+        <div className="mt-1 flex gap-1.5">
+          {player.holeCards.map((card) => (
             <PlayingCard
               key={card}
               card={card}
@@ -201,7 +201,7 @@ export const Seat = memo(function Seat({
           durationMs={timerDurationMs}
           startedAt={timerStartedAt}
           isActive={isCurrentActor}
-          className="mt-0.5"
+          className="mt-1"
         />
       )}
     </motion.div>

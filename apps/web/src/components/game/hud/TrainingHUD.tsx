@@ -34,7 +34,7 @@ const SUGGESTION_CONFIG = {
 function StatBar({ value, max = 1, color }: { value: number; max?: number; color: string }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
-    <div className="relative h-1.5 w-full rounded-full bg-[var(--color-bg-deep)] overflow-hidden">
+    <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-[var(--color-bg-deep)]">
       <motion.div
         className="absolute inset-y-0 left-0 rounded-full"
         style={{ background: color }}
@@ -65,39 +65,45 @@ export const TrainingHUD = memo(function TrainingHUD({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
+          initial={{ opacity: 0, x: 14 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 20 }}
+          exit={{ opacity: 0, x: 14 }}
           transition={{ type: 'spring', stiffness: 300, damping: 28 }}
           className={cn(
-            'w-[200px] rounded-2xl overflow-hidden',
-            'bg-[var(--color-glass-heavy)] backdrop-blur-xl',
-            'border border-white/8',
+            'w-full max-w-[296px] overflow-hidden rounded-2xl',
+            'bg-[rgba(8,14,24,0.92)] backdrop-blur-xl',
+            'border border-white/12',
             className,
           )}
-          style={{ boxShadow: 'var(--shadow-panel)' }}
+          style={{ boxShadow: 'var(--shadow-panel), var(--shadow-hairline)' }}
         >
           {/* Header */}
           <div
-            className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/3 transition-colors"
+            className={cn(
+              'px-4 py-3.5 transition-colors',
+              onToggle ? 'cursor-pointer hover:bg-white/5' : '',
+            )}
             onClick={onToggle}
           >
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] shadow-[0_0_6px_var(--color-success)]" />
-              <span className="text-[12px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                训练提示
-              </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="h-2 w-2 rounded-full bg-[var(--color-success)] shadow-[0_0_8px_var(--color-success)]" />
+                <span className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-secondary)]">
+                  训练提示
+                </span>
+              </div>
+              <span className="text-[16px] text-[var(--color-text-dim)]">📊</span>
             </div>
-            <span className="text-[var(--color-text-dim)] text-[11px]">📊</span>
+            <div className="mt-2 h-px bg-white/6" />
           </div>
 
           {/* Stats Body */}
-          <div className="px-4 pb-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-3.5 px-4 pb-4">
             {/* 手牌强度 */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-[var(--color-text-muted)]">手牌强度</span>
-                <span className="font-chips text-[12px] font-semibold text-[var(--color-text-primary)]">
+                <span className="text-[12px] text-[var(--color-text-muted)]">手牌强度</span>
+                <span className="font-chips text-[14px] font-semibold text-[var(--color-text-primary)]">
                   {handStrength > 0 ? `Top ${Math.round(handStrength * 100)}%` : '—'}
                 </span>
               </div>
@@ -111,8 +117,8 @@ export const TrainingHUD = memo(function TrainingHUD({
             {computedPotOdds > 0 && (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-[var(--color-text-muted)]">底池赔率</span>
-                  <span className="font-chips text-[12px] font-semibold text-[var(--color-text-primary)]">
+                  <span className="text-[12px] text-[var(--color-text-muted)]">底池赔率</span>
+                  <span className="font-chips text-[14px] font-semibold text-[var(--color-text-primary)]">
                     {Math.round(computedPotOdds * 100)}%
                   </span>
                 </div>
@@ -125,9 +131,9 @@ export const TrainingHUD = memo(function TrainingHUD({
 
             {/* 需要胜率 */}
             {computedPotOdds > 0 && (
-              <div className="flex items-center justify-between py-1 px-2 rounded-lg bg-[var(--color-bg-deep)]/60">
-                <span className="text-[10px] text-[var(--color-text-muted)]">需要胜率 &gt;</span>
-                <span className="font-chips text-[11px] font-semibold text-[var(--color-text-secondary)]">
+              <div className="flex items-center justify-between rounded-lg bg-[var(--color-bg-deep)]/60 px-2.5 py-1.5">
+                <span className="text-[11px] text-[var(--color-text-muted)]">需要胜率 &gt;</span>
+                <span className="font-chips text-[13px] font-semibold text-[var(--color-text-secondary)]">
                   {Math.round(computedPotOdds * 100)}%
                 </span>
               </div>
@@ -139,8 +145,8 @@ export const TrainingHUD = memo(function TrainingHUD({
             {/* 位置 */}
             {data?.position && (
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-[var(--color-text-muted)]">位置</span>
-                <span className="text-[12px] font-semibold text-[var(--color-text-primary)] px-2 py-0.5 rounded-md bg-[var(--color-bg-elevated)]">
+                <span className="text-[12px] text-[var(--color-text-muted)]">位置</span>
+                <span className="rounded-md bg-[var(--color-bg-elevated)] px-2 py-1 text-[12px] font-semibold text-[var(--color-text-primary)]">
                   {data.position}
                 </span>
               </div>
@@ -148,14 +154,14 @@ export const TrainingHUD = memo(function TrainingHUD({
 
             {/* 建议 */}
             {suggestionCfg && (
-              <div className={cn('flex items-center gap-2 px-3 py-2 rounded-xl', suggestionCfg.bg)}>
+              <div className={cn('flex items-center gap-2 rounded-xl px-3 py-2.5', suggestionCfg.bg)}>
                 <span>{suggestionCfg.icon}</span>
                 <div className="flex flex-col">
-                  <span className={cn('text-[12px] font-semibold', suggestionCfg.color)}>
+                  <span className={cn('text-[13px] font-semibold', suggestionCfg.color)}>
                     {suggestionCfg.label}
                   </span>
                   {data?.suggestionReason && (
-                    <span className="text-[10px] text-[var(--color-text-muted)] leading-tight mt-0.5">
+                    <span className="mt-0.5 text-[11px] leading-tight text-[var(--color-text-muted)]">
                       {data.suggestionReason}
                     </span>
                   )}
@@ -165,7 +171,7 @@ export const TrainingHUD = memo(function TrainingHUD({
 
             {/* 展开：详细说明 */}
             <Collapsible.Root open={expanded} onOpenChange={setExpanded}>
-              <Collapsible.Trigger className="flex items-center gap-1 text-[10px] text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer select-none">
+              <Collapsible.Trigger className="flex cursor-pointer select-none items-center gap-1.5 text-[12px] text-[var(--color-text-dim)] transition-colors hover:text-[var(--color-text-secondary)]">
                 <motion.span
                   animate={{ rotate: expanded ? 180 : 0 }}
                   transition={{ duration: 0.15 }}
@@ -182,7 +188,7 @@ export const TrainingHUD = memo(function TrainingHUD({
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="mt-2 text-[11px] text-[var(--color-text-muted)] leading-relaxed overflow-hidden"
+                      className="mt-2 overflow-hidden text-[12px] leading-relaxed text-[var(--color-text-muted)]"
                     >
                       <p>当前底池赔率 {Math.round(computedPotOdds * 100)}%，你需要至少 {Math.round(computedPotOdds * 100)}% 的胜率才能使跟注 EV 为正。</p>
                       {handStrength > 0 && (

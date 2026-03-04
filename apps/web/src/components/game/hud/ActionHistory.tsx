@@ -53,7 +53,7 @@ export const ActionHistory = memo(function ActionHistory({
     <div
       className={cn(
         'flex items-center gap-0 overflow-x-auto scrollbar-none',
-        'py-1.5 px-3',
+        'px-4 py-3 sm:px-5',
         className,
       )}
       ref={scrollRef}
@@ -62,11 +62,11 @@ export const ActionHistory = memo(function ActionHistory({
         <div key={phase} className="flex items-center shrink-0">
           {/* 分隔符 */}
           {gi > 0 && (
-            <div className="w-px h-3 bg-white/10 mx-2 shrink-0" />
+            <div className="mx-2.5 h-4 w-px shrink-0 bg-white/12" />
           )}
 
           {/* 街名称 */}
-          <span className="text-[10px] font-medium text-[var(--color-text-dim)] uppercase tracking-wider mr-1.5 shrink-0">
+          <span className="mr-2 shrink-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-dim)]">
             {phase}
           </span>
 
@@ -79,19 +79,19 @@ export const ActionHistory = memo(function ActionHistory({
                   key={action.sequenceNum}
                   initial={{ opacity: 0, x: 8, scale: 0.9 }}
                   animate={{ opacity: 1, x: 0, scale: 1 }}
-                  className="flex items-center shrink-0"
+                  className="flex items-center shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-1"
                 >
-                  <span className="text-[11px] text-[var(--color-text-muted)]">
+                  <span className="text-[12px] text-[var(--color-text-secondary)]">
                     {action.playerName}
                   </span>
-                  <span className={cn('text-[11px] font-medium ml-1', cfg.color)}>
+                  <span className={cn('ml-1 text-[12px] font-medium', cfg.color)}>
                     {cfg.label}
                     {action.amount > 0 && (
-                      <span className="font-chips ml-0.5">{formatChips(action.amount)}</span>
+                      <span className="ml-0.5 font-chips text-[12px]">{formatChips(action.amount)}</span>
                     )}
                   </span>
                   {i < phaseActions.length - 1 && (
-                    <span className="text-[var(--color-text-dim)] mx-1.5 text-[10px]">·</span>
+                    <span className="mx-2 text-[11px] text-[var(--color-text-dim)]">·</span>
                   )}
                 </motion.div>
               );

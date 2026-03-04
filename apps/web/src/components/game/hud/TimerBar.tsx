@@ -60,7 +60,7 @@ export const TimerBar = memo(function TimerBar({
   return (
     <div className={cn('flex items-center gap-2', className)}>
       {/* 进度条 */}
-      <div className="relative flex-1 h-1.5 rounded-full overflow-hidden bg-[var(--color-bg-deep)]">
+      <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-deep)]">
         <motion.div
           className="absolute inset-y-0 left-0 rounded-full origin-left"
           style={{
@@ -84,7 +84,7 @@ export const TimerBar = memo(function TimerBar({
       {/* 秒数 */}
       <span
         className={cn(
-          'font-chips font-semibold text-[12px] w-6 text-right leading-none transition-colors',
+          'w-9 text-right font-chips text-[13px] font-semibold leading-none transition-colors',
           isCritical ? 'text-[var(--color-error)]' :
           isUrgent   ? 'text-[var(--color-warning)]' :
                        'text-[var(--color-text-secondary)]',

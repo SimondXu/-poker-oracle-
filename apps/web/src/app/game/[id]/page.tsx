@@ -22,22 +22,30 @@ function ConnectionBanner({ status }: { status: string }) {
   if (status === 'connected') return null;
 
   const config = {
-    connecting:    { text: '正在连接...', color: 'bg-[var(--color-warning)]/90' },
-    disconnected:  { text: '连接已断开', color: 'bg-[var(--color-error)]/90' },
-    reconnecting:  { text: '正在重新连接...', color: 'bg-[var(--color-warning)]/90' },
+    connecting: {
+      text: '正在连接服务器',
+      tone: 'border-[var(--color-warning)]/35 bg-[rgba(255,152,0,0.18)] text-[#ffc778]',
+    },
+    disconnected: {
+      text: '连接已断开',
+      tone: 'border-[var(--color-error)]/40 bg-[rgba(239,83,80,0.2)] text-[#ffb7b5]',
+    },
+    reconnecting: {
+      text: '正在重新连接',
+      tone: 'border-[var(--color-warning)]/35 bg-[rgba(255,152,0,0.18)] text-[#ffc778]',
+    },
   }[status];
 
   if (!config) return null;
 
   return (
     <motion.div
-      initial={{ y: -40 }}
-      animate={{ y: 0 }}
-      exit={{ y: -40 }}
+      initial={{ y: -16, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -12, opacity: 0 }}
       className={cn(
-        'fixed top-0 inset-x-0 z-50 py-2 text-center text-[13px] font-semibold text-white',
-        config.color,
-        'backdrop-blur-sm',
+        'fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full border px-4 py-1.5 text-center text-[12px] font-semibold tracking-[0.04em] backdrop-blur-lg',
+        config.tone,
       )}
     >
       {config.text}
@@ -60,50 +68,52 @@ function GameHeader({
   onToggleHUD: () => void;
 }) {
   return (
-    <header className="flex items-center justify-between px-6 py-3 z-10 relative">
-      {/* 左：品牌 + 房间信息 */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[var(--color-gold)] font-bold text-[16px]">♠</span>
-          <span className="font-semibold text-[14px] text-[var(--color-text-primary)]">AiPoker</span>
+    <header className="relative z-10 border-b border-white/6 bg-[var(--color-bg-deep)]/72 backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
+        {/* 左：品牌 + 房间信息 */}
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-lg text-[var(--color-gold)]">♠</span>
+            <span className="font-display text-[20px] leading-none text-[var(--color-text-primary)]">AiPoker</span>
+          </div>
+          {roomName && (
+            <>
+              <div className="h-4 w-px bg-white/10" />
+              <span className="hidden text-[13px] text-[var(--color-text-secondary)] sm:inline">{roomName}</span>
+            </>
+          )}
+          {smallBlind && bigBlind && (
+            <span className="rounded-md border border-white/10 bg-[var(--color-bg-surface)] px-2.5 py-1 text-[12px] font-chips text-[var(--color-text-secondary)]">
+              {smallBlind}/{bigBlind}
+            </span>
+          )}
+          {handNumber && (
+            <span className="text-[12px] text-[var(--color-text-dim)]">#{handNumber}</span>
+          )}
         </div>
-        {roomName && (
-          <>
-            <div className="w-px h-4 bg-white/10" />
-            <span className="text-[12px] text-[var(--color-text-muted)]">{roomName}</span>
-          </>
-        )}
-        {smallBlind && bigBlind && (
-          <span className="text-[11px] font-chips text-[var(--color-text-dim)] bg-[var(--color-bg-surface)] px-2 py-0.5 rounded-md border border-white/6">
-            {smallBlind}/{bigBlind}
-          </span>
-        )}
-        {handNumber && (
-          <span className="text-[11px] text-[var(--color-text-dim)]">#{handNumber}</span>
-        )}
-      </div>
 
-      {/* 右：控制按钮 */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleHUD}
-          className="p-2 rounded-lg text-[13px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-white/5 transition-all"
-          title="切换训练提示"
-        >
-          📊
-        </button>
-        <button
-          className="p-2 rounded-lg text-[13px] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-white/5 transition-all"
-          title="设置"
-        >
-          ⚙️
-        </button>
-        <button
-          className="p-2 rounded-lg text-[13px] text-[var(--color-text-muted)] hover:text-[var(--color-error)] hover:bg-[var(--color-error-dim)] transition-all"
-          title="离开房间"
-        >
-          ✕
-        </button>
+        {/* 右：控制按钮 */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggleHUD}
+            className="rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[14px] text-[var(--color-text-muted)] transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-[var(--color-text-primary)]"
+            title="切换训练提示"
+          >
+            📊
+          </button>
+          <button
+            className="rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[14px] text-[var(--color-text-muted)] transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-[var(--color-text-primary)]"
+            title="设置"
+          >
+            ⚙️
+          </button>
+          <button
+            className="rounded-lg border border-white/10 bg-white/[0.02] p-2 text-[14px] text-[var(--color-text-muted)] transition-all hover:border-[var(--color-error)]/30 hover:bg-[var(--color-error-dim)] hover:text-[var(--color-error)]"
+            title="离开房间"
+          >
+            ✕
+          </button>
+        </div>
       </div>
     </header>
   );
@@ -138,11 +148,20 @@ export default function GamePage({ params }: GamePageProps) {
     sendAction(type as ActionType, amount);
   };
 
+  const trainingData =
+    isMyTurn && validActions
+      ? {
+          position: 'BTN',
+          ...(validActions.canCheck
+            ? { suggestion: 'check' as const }
+            : validActions.canCall
+              ? { suggestion: 'call' as const }
+              : {}),
+        }
+      : undefined;
+
   return (
-    <div
-      className="relative flex flex-col w-screen h-screen overflow-hidden"
-      style={{ background: 'radial-gradient(ellipse at center, #0D1A0D 0%, var(--color-bg-deep) 70%)' }}
-    >
+    <div className="relative flex h-screen w-full flex-col overflow-hidden">
       {/* 连接状态条 */}
       <AnimatePresence>
         <ConnectionBanner status={connectionStatus} />
@@ -157,53 +176,59 @@ export default function GamePage({ params }: GamePageProps) {
       />
 
       {/* ── 主游戏区域 ── */}
-      <main className="flex-1 flex items-center justify-center px-6 relative min-h-0">
-        {hand ? (
-          <PokerTable
-            hand={hand}
-            currentUserId={currentUserId}
-            {...(validActions ? { validActions } : {})}
-            {...(timerStartedAt !== null ? { timerStartedAt } : {})}
-            {...(timerDurationMs !== null ? { timerDurationMs } : {})}
-            winnerCards={winnerCards}
-            isWinning={isWinning}
-            className="max-w-[900px] w-full"
-          />
-        ) : (
-          /* 加载骨架屏 */
-          <div className="flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-64 h-32 rounded-full shimmer opacity-30" />
-              <span className="text-[13px] text-[var(--color-text-dim)]">等待游戏开始...</span>
-            </div>
-          </div>
-        )}
+      <main className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 px-4 pb-3 pt-4 sm:px-6 sm:pt-5">
+        <div className="grid min-h-0 w-full gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-5">
+          <section className="relative flex min-h-0 items-center justify-center rounded-[24px] border border-white/10 bg-[rgba(5,12,22,0.45)] px-3 py-4 sm:px-5">
+            {hand ? (
+              <PokerTable
+                hand={hand}
+                currentUserId={currentUserId}
+                {...(validActions ? { validActions } : {})}
+                {...(timerStartedAt !== null ? { timerStartedAt } : {})}
+                {...(timerDurationMs !== null ? { timerDurationMs } : {})}
+                winnerCards={winnerCards}
+                isWinning={isWinning}
+                className="w-full max-w-[980px]"
+              />
+            ) : (
+              /* 加载骨架屏 */
+              <div className="flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="h-36 w-72 rounded-full shimmer opacity-25" />
+                  <span className="text-[16px] text-[var(--color-text-secondary)]">等待游戏开始...</span>
+                </div>
+              </div>
+            )}
+          </section>
 
-        {/* 训练 HUD（右侧固定） */}
-        <div className="absolute right-6 top-1/2 -translate-y-1/2">
+          {/* 桌面端：右侧训练 HUD */}
+          <aside className="hidden items-center justify-end lg:flex">
+            <TrainingHUD
+              isVisible={isTrainingHUDVisible}
+              onToggle={toggleTrainingHUD}
+              {...(validActions?.callAmount !== undefined ? { callAmount: validActions.callAmount } : {})}
+              potTotal={pot}
+              {...(trainingData ? { data: trainingData } : {})}
+              className="w-full max-w-[280px]"
+            />
+          </aside>
+        </div>
+      </main>
+
+      {/* ── 底部控制区 ── */}
+      <footer className="mx-auto w-full max-w-[1400px] px-4 pb-4 sm:px-6 sm:pb-5">
+        {/* 移动端：训练 HUD */}
+        <div className="mb-2 lg:hidden">
           <TrainingHUD
             isVisible={isTrainingHUDVisible}
             onToggle={toggleTrainingHUD}
             {...(validActions?.callAmount !== undefined ? { callAmount: validActions.callAmount } : {})}
             potTotal={pot}
-            {...(isMyTurn && validActions
-              ? {
-                  data: {
-                    position: 'BTN',
-                    ...(validActions.canCheck
-                      ? { suggestion: 'check' as const }
-                      : validActions.canCall
-                        ? { suggestion: 'call' as const }
-                        : {}),
-                  },
-                }
-              : {})}
+            {...(trainingData ? { data: trainingData } : {})}
+            className="w-full max-w-none"
           />
         </div>
-      </main>
 
-      {/* ── 底部控制区 ── */}
-      <footer className="flex flex-col gap-0 pb-4 px-6">
         {/* 行动历史条 */}
         <AnimatePresence>
           {isActionHistoryVisible && hand && hand.actions.length > 0 && (
@@ -211,7 +236,7 @@ export default function GamePage({ params }: GamePageProps) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="border-t border-white/5 overflow-hidden"
+              className="overflow-hidden rounded-t-xl border border-b-0 border-white/8 bg-[rgba(8,14,24,0.76)]"
             >
               <ActionHistory actions={hand.actions} />
             </motion.div>
@@ -219,7 +244,7 @@ export default function GamePage({ params }: GamePageProps) {
         </AnimatePresence>
 
         {/* 行动面板 */}
-        <div className="flex justify-center mt-2">
+        <div className="mt-2 flex justify-center">
           <AnimatePresence>
             {isMyTurn && validActions && (
               <ActionPanel
@@ -227,11 +252,17 @@ export default function GamePage({ params }: GamePageProps) {
                 pot={pot}
                 isMyTurn={isMyTurn}
                 onAction={handleAction}
-                className="w-full max-w-[640px]"
+                className="w-full max-w-[780px]"
               />
             )}
           </AnimatePresence>
         </div>
+
+        {!isMyTurn && (
+          <p className="mt-2 text-center text-[12px] text-[var(--color-text-dim)]">
+            等待当前玩家行动
+          </p>
+        )}
       </footer>
     </div>
   );

@@ -34,7 +34,6 @@ export const BetSlider = memo(function BetSlider({
   disabled = false,
   className,
 }: BetSliderProps) {
-  const percentage = ((value - min) / (max - min)) * 100;
   const isAllIn = value >= max;
 
   const handleShortcut = useCallback(
@@ -45,9 +44,9 @@ export const BetSlider = memo(function BetSlider({
   );
 
   return (
-    <div className={cn('flex flex-col gap-2', className)}>
+    <div className={cn('flex flex-col gap-3', className)}>
       {/* 快捷尺寸按钮 */}
-      <div className="flex gap-1.5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {SHORTCUTS.map(({ label, getValue }) => {
           const shortcutVal = getValue(min, max, pot);
           const isActive = shortcutVal === value;
@@ -57,11 +56,10 @@ export const BetSlider = memo(function BetSlider({
               onClick={() => handleShortcut(getValue)}
               disabled={disabled}
               className={cn(
-                'flex-1 py-1 rounded-md text-[11px] font-medium transition-all',
-                'border',
+                'h-9 rounded-md border text-[12px] font-medium transition-all',
                 isActive
                   ? 'border-[var(--color-gold)]/50 bg-[var(--color-gold)]/10 text-[var(--color-gold)]'
-                  : 'border-white/8 bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] hover:border-white/15 hover:text-[var(--color-text-secondary)]',
+                  : 'border-white/10 bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] hover:border-white/22 hover:text-[var(--color-text-secondary)]',
                 disabled && 'opacity-50 cursor-not-allowed',
               )}
             >
@@ -75,11 +73,10 @@ export const BetSlider = memo(function BetSlider({
           onClick={() => onChange(max)}
           disabled={disabled}
           className={cn(
-            'flex-1 py-1 rounded-md text-[11px] font-bold transition-all',
-            'border',
+            'h-9 rounded-md border text-[12px] font-bold transition-all',
             isAllIn
               ? 'border-[var(--color-success)]/50 bg-[var(--color-success)]/10 text-[var(--color-success)]'
-              : 'border-white/8 bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] hover:border-[var(--color-success)]/30 hover:text-[var(--color-success)]',
+              : 'border-white/10 bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)] hover:border-[var(--color-success)]/32 hover:text-[var(--color-success)]',
             disabled && 'opacity-50 cursor-not-allowed',
           )}
         >
@@ -95,11 +92,11 @@ export const BetSlider = memo(function BetSlider({
         value={[value]}
         onValueChange={(vals) => onChange(vals[0] ?? min)}
         disabled={disabled}
-        className="relative flex items-center select-none touch-none w-full h-5"
+        className="relative flex h-7 w-full touch-none select-none items-center"
       >
         <Slider.Track
           data-radix-slider-track
-          className="relative h-1.5 flex-1 rounded-full bg-[var(--color-bg-deep)] overflow-hidden"
+          className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-deep)]"
         >
           <Slider.Range
             data-radix-slider-range
@@ -116,22 +113,22 @@ export const BetSlider = memo(function BetSlider({
 
       {/* 金额显示 */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-[var(--color-text-dim)] font-chips">{formatChips(min)}</span>
-        <div className="flex items-center gap-1.5">
+        <span className="font-chips text-[12px] text-[var(--color-text-dim)]">{formatChips(min)}</span>
+        <div className="flex items-center gap-2">
           {isAllIn && (
-            <span className="text-[10px] font-bold text-[var(--color-success)] uppercase tracking-wider">
+            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--color-success)]">
               All-in
             </span>
           )}
-          <span className="font-chips font-bold text-[15px] text-[var(--color-gold)]">
+          <span className="font-chips text-[19px] font-bold text-[var(--color-gold)]">
             {formatChips(value)}
           </span>
         </div>
-        <span className="text-[10px] text-[var(--color-text-dim)] font-chips">{formatChips(max)}</span>
+        <span className="font-chips text-[12px] text-[var(--color-text-dim)]">{formatChips(max)}</span>
       </div>
 
       {/* 进度指示（百分比位置） */}
-      <div className="text-center text-[10px] text-[var(--color-text-dim)]">
+      <div className="text-center text-[12px] text-[var(--color-text-dim)]">
         底池的 {Math.round((value / Math.max(pot, 1)) * 100)}%
       </div>
     </div>
