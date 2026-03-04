@@ -161,3 +161,11 @@ Expected: 仅出现本次实现相关变更。
   - 基于 `hand.actions` 增量广播 `action_applied` 事件，统一覆盖真人、Bot 与超时自动动作，且避免重复广播。
 - feat(server): wire `room:ready` into start gate
   - 新增 `room:ready` 状态跟踪；一旦房间进入 ready 流程，`game:start` 需全员 ready 才允许开局（错误码 `players_not_ready`）。
+- `d2fb34f` fix(server): cleanup deferred disconnect seats after hand end
+  - 断线/离席保留座位以避免手局卡死，但在 `hand_end` 后统一清理 `pendingDisconnectPlayerIds`，避免幽灵席位阻塞后续开局。
+- `965a34a` feat(server): add room:leave lifecycle handling
+  - 新增 `room:leave` 事件（含 ack），覆盖等待中离席与手局中离席（延迟清理）两条路径，并复用断线清理策略。
+- `9e4257b` fix(server): enforce strict room:leave payload validation
+  - `room:leave` payload 改为严格空对象校验，拒绝未知字段，避免宽松输入被误接收。
+- `492f475` test(server): cover room switch during active hand
+  - 新增切房回归测试：玩家在手局中切换到新房间时，旧房间仍可推进至 `hand_end` 并在结束后正确清理席位。
