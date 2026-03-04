@@ -213,7 +213,7 @@ test('game:start initializes hand and game:action enforces current actor', async
   assert.equal(nextState.hand.currentActorSeat, 1);
 });
 
-test('game loop does not auto-run bot turns yet', async (t) => {
+test('game loop auto-runs bot turns until next human actor', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
 
@@ -269,9 +269,14 @@ test('game loop does not auto-run bot turns yet', async (t) => {
     human,
     (payload) => payload.hand.phase === 'betting_preflop' && payload.hand.currentActorSeat === 1
   );
-  const streetCompleteState = waitForState(human, (payload) => payload.hand.phase === 'street_complete', 500)
-    .then(() => 'completed')
-    .catch(() => 'timeout');
+  const humanTurnAfterBotActions = waitForState(
+    human,
+    (payload) =>
+      payload.hand.phase === 'betting_flop' &&
+      payload.hand.currentActorSeat === 0 &&
+      payload.hand.communityCards.length === 3,
+    1200
+  );
   const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:action', {
     roomId: 'room-3',
     playerId: 'human-1',
@@ -283,6 +288,8 @@ test('game loop does not auto-run bot turns yet', async (t) => {
   assert.equal(pending.hand.currentActorSeat, 1);
   assert.equal(pending.hand.phase, 'betting_preflop');
 
-  const autoOutcome = await streetCompleteState;
-  assert.equal(autoOutcome, 'timeout');
+  const advanced = await humanTurnAfterBotActions;
+  assert.equal(advanced.hand.phase, 'betting_flop');
+  assert.equal(advanced.hand.currentActorSeat, 0);
+  assert.equal(advanced.hand.communityCards.length, 3);
 });
