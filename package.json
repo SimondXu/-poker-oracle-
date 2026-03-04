@@ -7,7 +7,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev --parallel --filter=@aipoker/server --filter=@aipoker/web",
+    "dev:all": "pnpm dev",
+    "dev:web": "pnpm --filter @aipoker/web dev",
+    "dev:server": "pnpm --filter @aipoker/server dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
