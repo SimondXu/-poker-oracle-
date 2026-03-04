@@ -149,3 +149,5 @@ Expected: 仅出现本次实现相关变更。
   - 拆分 `ws` 视图模型和 `game-loop` 机器人轮询逻辑，避免单文件堆积，贴合 `apps/server/src` 分层规范。
 - feat(server): enforce `game:action.seq` idempotency
   - `game:action` 增加必填 `seq`，对同一玩家重复/过期序号返回 `duplicate_action_seq`，防止网络重试导致重复推进。
+- feat(server): emit `game:action_required` for current human actor
+  - 每次状态推进后，为当前真人行动者下发 `validActions + timeoutMs`，对齐实时事件契约并为行动倒计时接入做准备。

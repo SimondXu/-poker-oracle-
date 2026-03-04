@@ -1,7 +1,45 @@
+import { getValidActions } from '@aipoker/game-engine';
 import type { Server } from 'socket.io';
 
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildViewerHand } from './view-models/viewer-hand.ts';
+
+const DEFAULT_ACTION_TIMEOUT_MS = 30000;
+
+function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
+  return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
+}
+
+function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<string, RoomMembership>): void {
+  if (!room.hand || room.hand.currentActorSeat === null) {
+    return;
+  }
+
+  const actor = getRoomPlayerBySeat(room, room.hand.currentActorSeat);
+  if (!actor || actor.isBot) {
+    return;
+  }
+
+  const validActions = getValidActions(room.hand, actor.id);
+  const roomSocketIds = io.sockets.adapter.rooms.get(room.id);
+  if (!roomSocketIds) {
+    return;
+  }
+
+  for (const socketId of roomSocketIds) {
+    const membership = memberships.get(socketId);
+    if (!membership || membership.roomId !== room.id || membership.playerId !== actor.id) {
+      continue;
+    }
+
+    io.to(socketId).emit('game:action_required', {
+      roomId: room.id,
+      playerId: actor.id,
+      timeoutMs: DEFAULT_ACTION_TIMEOUT_MS,
+      validActions
+    });
+  }
+}
 
 export function emitRoomState(io: Server, room: RuntimeRoom): void {
   io.to(room.id).emit('room:state', {
@@ -30,4 +68,6 @@ export function emitGameState(io: Server, room: RuntimeRoom, memberships: Map<st
       hand: viewerHand
     });
   }
+
+  emitActionRequired(io, room, memberships);
 }
