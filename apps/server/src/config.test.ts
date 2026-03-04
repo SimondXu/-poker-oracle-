@@ -16,6 +16,7 @@ test('parseServerConfig uses defaults when env is empty', () => {
     authSecret: 'dev-guest-secret-change-me',
     authCookieName: 'aipoker_session',
     authTtlSeconds: 2592000,
+    httpRateLimitPerMinute: 100,
     secureCookies: false,
     authStrict: false
   });
@@ -41,4 +42,15 @@ test('parseServerConfig parses boolean-like security flags', () => {
 
   assert.equal(result.value.secureCookies, true);
   assert.equal(result.value.authStrict, true);
+});
+
+test('parseServerConfig parses custom HTTP rate limit', () => {
+  const result = parseServerConfig({
+    HTTP_RATE_LIMIT_PER_MINUTE: '42'
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.httpRateLimitPerMinute, 42);
 });

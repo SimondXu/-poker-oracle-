@@ -317,3 +317,9 @@ GET    /api/users/me/history  → HandSummary[] (paginated)
 - 玩家操作权限由 cookie 会话身份决定（服务端映射 `socket -> userId`）。
 - 客户端可上传 `playerName` 作为显示名；服务端保留最终裁决权。
 - 旁观（view）和入座（join as player）使用同一会话身份，但授权规则不同。
+
+### 5.2 REST 限流（MVP）
+
+- 默认阈值：`100 req/min/identity`（可通过环境变量覆盖）。
+- identity 优先使用会话用户标识（guest/user `userId`），无会话时回退到 `IP`。
+- 超限返回：`429` + `{ ok: false, error: 'rate_limited' }`，并携带 `Retry-After`。

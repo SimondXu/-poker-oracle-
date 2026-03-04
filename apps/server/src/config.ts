@@ -20,6 +20,7 @@ const serverConfigSchema = z.object({
   AUTH_SECRET: z.string().trim().min(16).optional(),
   AUTH_COOKIE_NAME: z.string().trim().min(1).optional(),
   AUTH_TTL_SECONDS: z.coerce.number().int().min(60).optional(),
+  HTTP_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).optional(),
   SECURE_COOKIES: booleanFromEnvSchema,
   AUTH_STRICT: booleanFromEnvSchema
 });
@@ -31,6 +32,7 @@ export interface ServerConfig {
   authSecret: string;
   authCookieName: string;
   authTtlSeconds: number;
+  httpRateLimitPerMinute: number;
   secureCookies: boolean;
   authStrict: boolean;
 }
@@ -54,6 +56,7 @@ export function parseServerConfig(env: Record<string, string | undefined>): Serv
       authSecret: parsed.data.AUTH_SECRET ?? 'dev-guest-secret-change-me',
       authCookieName: parsed.data.AUTH_COOKIE_NAME ?? 'aipoker_session',
       authTtlSeconds: parsed.data.AUTH_TTL_SECONDS ?? 60 * 60 * 24 * 30,
+      httpRateLimitPerMinute: parsed.data.HTTP_RATE_LIMIT_PER_MINUTE ?? 100,
       secureCookies: parsed.data.SECURE_COOKIES ?? false,
       authStrict: parsed.data.AUTH_STRICT ?? false
     }

@@ -39,6 +39,7 @@ function resolveServerConfig(options: StartServerOptions): ServerConfig {
     authSecret: parsed.value.authSecret,
     authCookieName: parsed.value.authCookieName,
     authTtlSeconds: parsed.value.authTtlSeconds,
+    httpRateLimitPerMinute: parsed.value.httpRateLimitPerMinute,
     secureCookies: parsed.value.secureCookies,
     authStrict: parsed.value.authStrict
   };
@@ -97,6 +98,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     authSecret: serverConfig.authSecret,
     authCookieName: serverConfig.authCookieName,
     authTtlSeconds: serverConfig.authTtlSeconds,
+    httpRateLimitPerMinute: serverConfig.httpRateLimitPerMinute,
     secureCookies: serverConfig.secureCookies
   });
   const realtimeOptions = {
