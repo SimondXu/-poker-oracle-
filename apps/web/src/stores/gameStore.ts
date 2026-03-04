@@ -12,6 +12,7 @@ import type { HandState, ValidActions, RoomState } from '@aipoker/shared';
 interface GameState {
   // ── 当前手牌状态（服务端权威快照） ──
   hand: HandState | null;
+  stateVersion: number | null;
   validActions: ValidActions | null;
   timerStartedAt: number | null;   // 当前行动者计时开始时间 (Date.now())
   timerDurationMs: number;
@@ -25,7 +26,7 @@ interface GameState {
   lastError: string | null;
 
   // ── Actions ──
-  setHandState: (hand: HandState) => void;
+  setHandState: (hand: HandState, stateVersion?: number) => void;
   setValidActions: (actions: ValidActions, timeoutMs: number) => void;
   clearValidActions: () => void;
   setWinnerState: (winnerCards: string[]) => void;
@@ -37,6 +38,7 @@ interface GameState {
 
 const INITIAL_STATE = {
   hand: null,
+  stateVersion: null,
   validActions: null,
   timerStartedAt: null,
   timerDurationMs: 30000,
@@ -50,7 +52,11 @@ export const useGameStore = create<GameState>()(
   subscribeWithSelector((set) => ({
     ...INITIAL_STATE,
 
-    setHandState: (hand) => set({ hand }),
+    setHandState: (hand, stateVersion) =>
+      set((current) => ({
+        hand,
+        stateVersion: stateVersion ?? current.stateVersion
+      })),
 
     setValidActions: (actions, timeoutMs) =>
       set({

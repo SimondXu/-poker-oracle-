@@ -2,6 +2,7 @@
 
 import { useEffect, useCallback, useState } from 'react';
 import { toast } from 'sonner';
+import { ensureGuestSession } from '@/lib/auth-session';
 import { getSocket, connectSocket, disconnectSocket } from '@/lib/socket';
 import type { BotPersonality, RoomStateEvent } from '@aipoker/shared';
 
@@ -31,17 +32,21 @@ export function useRoomSocket(roomId: string, playerId: string, playerName: stri
 
     const onConnect = () => {
       setIsConnected(true);
+      setIsReady(false);
       // Join room as human player
       socket.emit(
         'room:join',
-        { roomId, playerId, playerName, stack: 1000, isBot: false },
+        { roomId, playerName, stack: 1000, isBot: false },
         (res: { ok: boolean; error?: string }) => {
           if (!res.ok) toast.error(res.error ?? '加入房间失败');
         },
       );
     };
 
-    const onDisconnect = () => setIsConnected(false);
+    const onDisconnect = () => {
+      setIsConnected(false);
+      setIsReady(false);
+    };
 
     const onRoomState = (state: RoomStateEvent) => {
       setRoomState({
@@ -55,9 +60,24 @@ export function useRoomSocket(roomId: string, playerId: string, playerName: stri
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('room:state', onRoomState);
-    connectSocket();
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureGuestSession(playerName);
+      } catch {
+        if (!cancelled) {
+          toast.error('会话初始化失败，请刷新重试');
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        connectSocket();
+      }
+    })();
 
     return () => {
+      cancelled = true;
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('room:state', onRoomState);
@@ -65,6 +85,15 @@ export function useRoomSocket(roomId: string, playerId: string, playerName: stri
       disconnectSocket();
     };
   }, [roomId, playerId, playerName]);
+
+  useEffect(() => {
+    if (!roomState) {
+      setIsReady(false);
+      return;
+    }
+    const self = roomState.players.find((p) => p.id === playerId);
+    setIsReady(Boolean(self?.isReady));
+  }, [roomState, playerId]);
 
   const addBot = useCallback(
     (strategy: BotPersonality, seatIndex: number) => {
@@ -103,9 +132,7 @@ export function useRoomSocket(roomId: string, playerId: string, playerName: stri
       'room:ready',
       {},
       (res: { ok: boolean; readyCount?: number; playerCount?: number; error?: string }) => {
-        if (res.ok) {
-          setIsReady(true);
-        } else {
+        if (!res.ok) {
           toast.error(res.error ?? '准备失败');
         }
       },

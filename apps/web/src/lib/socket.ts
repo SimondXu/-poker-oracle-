@@ -9,11 +9,13 @@ import { io, Socket } from 'socket.io-client';
 
 let socket: Socket | null = null;
 
+export function getServerUrl(): string {
+  return process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3001';
+}
+
 export function getSocket(): Socket {
   if (!socket) {
-    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:3001';
-
-    socket = io(serverUrl, {
+    socket = io(getServerUrl(), {
       autoConnect: false,
       withCredentials: true,      // 传递 httpOnly cookie
       transports: ['websocket'],  // 跳过 polling，直接 WebSocket
