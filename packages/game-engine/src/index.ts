@@ -9,6 +9,7 @@ export type {
   HandState,
   InitializeHandError,
   InitializeHandInput,
+  Pot,
   PlayerActionInput,
   PlayerStatus,
   Rank,
@@ -20,3 +21,4 @@ export type {
 export { applyAction, getValidActions } from './rules/actions.ts';
 export { createDeck } from './rules/deck.ts';
 export { initializeHand } from './rules/initialize-hand.ts';
+export { buildSidePots } from './settlement/side-pots.ts';

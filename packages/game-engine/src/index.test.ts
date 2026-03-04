@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyAction, createDeck, getValidActions, initializeHand } from './index.ts';
+import { applyAction, buildSidePots, createDeck, getValidActions, initializeHand } from './index.ts';
 
 function sequenceRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -372,4 +372,61 @@ test('street progression deals turn and river then ends hand after river betting
   if (!riverP0Check.ok) return;
   assert.equal(riverP0Check.value.phase, 'hand_end');
   assert.equal(riverP0Check.value.currentActorSeat, null);
+});
+
+function committedPlayer(
+  id: string,
+  seatIndex: number,
+  handCommitted: number,
+  status: 'active' | 'folded' | 'all_in'
+) {
+  return {
+    id,
+    seatIndex,
+    stack: 0,
+    streetCommitted: 0,
+    handCommitted,
+    status,
+    hasActedThisStreet: false,
+    matchedBetToMatchAtLastAction: 0
+  };
+}
+
+test('buildSidePots returns single main pot when all commitments are equal', () => {
+  const pots = buildSidePots([
+    committedPlayer('a', 0, 100, 'active'),
+    committedPlayer('b', 1, 100, 'active'),
+    committedPlayer('c', 2, 100, 'active')
+  ]);
+
+  assert.deepEqual(pots, [
+    {
+      amount: 300,
+      eligiblePlayerIds: ['a', 'b', 'c']
+    }
+  ]);
+});
+
+test('buildSidePots includes folded contributions and merges equal-eligible side layers', () => {
+  const pots = buildSidePots([
+    committedPlayer('a', 0, 100, 'all_in'),
+    committedPlayer('b', 1, 300, 'all_in'),
+    committedPlayer('c', 2, 500, 'active'),
+    committedPlayer('d', 3, 200, 'folded')
+  ]);
+
+  assert.deepEqual(pots, [
+    {
+      amount: 400,
+      eligiblePlayerIds: ['a', 'b', 'c']
+    },
+    {
+      amount: 500,
+      eligiblePlayerIds: ['b', 'c']
+    },
+    {
+      amount: 200,
+      eligiblePlayerIds: ['c']
+    }
+  ]);
 });

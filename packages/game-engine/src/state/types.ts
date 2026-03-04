@@ -50,6 +50,11 @@ export interface HandState {
   };
 }
 
+export interface Pot {
+  amount: number;
+  eligiblePlayerIds: string[];
+}
+
 export interface InitializeHandInput {
   players: HandInitPlayerInput[];
   buttonMarkerSeat: number;
