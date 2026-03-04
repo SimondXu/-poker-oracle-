@@ -1,6 +1,7 @@
 import { applyAction, initializeHand, type PlayerActionInput } from '@aipoker/game-engine';
 import type { Server, Socket } from 'socket.io';
 
+import { isDuplicateOrStaleActionSeq, recordActionSeq, resetActionSeqTracker } from '../../game-loop/action-seq.ts';
 import { runBotTurns } from '../../game-loop/run-bot-turns.ts';
 import { syncRoomPlayersFromHand } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
@@ -59,6 +60,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     }
 
     room.hand = initialized.value;
+    resetActionSeqTracker(room);
     syncRoomPlayersFromHand(room);
     ack?.({ ok: true });
     emitGameState(io, room, memberships);
@@ -89,6 +91,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
+    if (isDuplicateOrStaleActionSeq(room, parsed.data.playerId, parsed.data.seq)) {
+      ack?.({ ok: false, error: 'duplicate_action_seq' });
+      return;
+    }
+
     const action: PlayerActionInput =
       parsed.data.amount === undefined
         ? {
@@ -108,6 +115,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     }
 
     room.hand = result.value;
+    recordActionSeq(room, parsed.data.playerId, parsed.data.seq);
     syncRoomPlayersFromHand(room);
     ack?.({ ok: true });
     emitGameState(io, room, memberships);

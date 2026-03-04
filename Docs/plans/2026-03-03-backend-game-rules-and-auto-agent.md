@@ -142,3 +142,10 @@ Expected: 仅出现本次实现相关变更。
 - Full test: `pnpm test` -> PASS
 - Full typecheck: `pnpm typecheck` -> PASS
 - Server targeted test (bot loop): `pnpm --filter @aipoker/server test` -> PASS
+
+## Post-Plan Hardening Iterations (2026-03-04)
+
+- `73f2afe` refactor(server): separate ws view-model and bot game-loop modules
+  - 拆分 `ws` 视图模型和 `game-loop` 机器人轮询逻辑，避免单文件堆积，贴合 `apps/server/src` 分层规范。
+- feat(server): enforce `game:action.seq` idempotency
+  - `game:action` 增加必填 `seq`，对同一玩家重复/过期序号返回 `duplicate_action_seq`，防止网络重试导致重复推进。

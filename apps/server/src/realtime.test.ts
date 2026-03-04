@@ -190,14 +190,16 @@ test('game:start initializes hand and game:action enforces current actor', async
   const spoofAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:action', {
     roomId: 'room-2',
     playerId: 'p0',
-    type: 'call'
+    type: 'call',
+    seq: 1
   });
   assert.deepEqual(spoofAck, { ok: false, error: 'not_room_member' });
 
   const bobAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:action', {
     roomId: 'room-2',
     playerId: 'p1',
-    type: 'fold'
+    type: 'fold',
+    seq: 1
   });
   assert.deepEqual(bobAck, { ok: false, error: 'not_current_actor' });
 
@@ -205,7 +207,8 @@ test('game:start initializes hand and game:action enforces current actor', async
   const aliceAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
     roomId: 'room-2',
     playerId: 'p0',
-    type: 'call'
+    type: 'call',
+    seq: 1
   });
   assert.deepEqual(aliceAck, { ok: true });
 
@@ -378,6 +381,73 @@ test('game:start rejects when a hand is already in progress', async (t) => {
   assert.deepEqual(secondStartAck, { ok: false, error: 'hand_already_started' });
 });
 
+test('game:action rejects duplicate client seq for same player', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-7',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-7',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-7',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-7',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const firstActionAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
+    roomId: 'room-7',
+    playerId: 'p0',
+    type: 'call',
+    seq: 1
+  });
+  assert.deepEqual(firstActionAck, { ok: true });
+
+  const duplicateAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
+    roomId: 'room-7',
+    playerId: 'p0',
+    type: 'call',
+    seq: 1
+  });
+  assert.deepEqual(duplicateAck, { ok: false, error: 'duplicate_action_seq' });
+});
+
 test('game loop auto-runs bot turns until next human actor', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
@@ -445,7 +515,8 @@ test('game loop auto-runs bot turns until next human actor', async (t) => {
   const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:action', {
     roomId: 'room-3',
     playerId: 'human-1',
-    type: 'call'
+    type: 'call',
+    seq: 1
   });
 
   assert.deepEqual(actionAck, { ok: true });

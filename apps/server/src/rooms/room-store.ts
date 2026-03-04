@@ -31,7 +31,8 @@ export function getOrCreateRoom(
     smallBlind: config?.smallBlind ?? DEFAULT_SMALL_BLIND,
     bigBlind: config?.bigBlind ?? DEFAULT_BIG_BLIND,
     players: new Map(),
-    hand: null
+    hand: null,
+    lastActionSeqByPlayer: new Map()
   };
   rooms.set(roomId, room);
   return room;

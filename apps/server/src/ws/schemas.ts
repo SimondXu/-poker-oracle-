@@ -24,7 +24,8 @@ export const gameActionPayloadSchema = z.object({
   roomId: z.string().trim().min(1),
   playerId: z.string().trim().min(1),
   type: z.enum(['fold', 'check', 'call', 'raise_to', 'all_in']),
-  amount: z.coerce.number().int().min(1).optional()
+  amount: z.coerce.number().int().min(1).optional(),
+  seq: z.coerce.number().int().min(0)
 });
 
 export type JoinRoomAck =
@@ -55,6 +56,7 @@ export type GameActionAck =
         | 'room_not_found'
         | 'hand_not_started'
         | 'not_room_member'
+        | 'duplicate_action_seq'
         | 'hand_not_actionable'
         | 'not_current_actor'
         | 'invalid_action';
