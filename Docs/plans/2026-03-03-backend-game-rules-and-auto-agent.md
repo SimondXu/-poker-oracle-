@@ -153,3 +153,5 @@ Expected: 仅出现本次实现相关变更。
   - 每次状态推进后，为当前真人行动者下发 `validActions + timeoutMs`，对齐实时事件契约并为行动倒计时接入做准备。
 - feat(server): emit `game:hand_result` at `hand_end`
   - 在手牌结束时向房间广播结算摘要（pot/payout/player stacks），为回放与结果面板提供稳定事件源。
+- feat(server): add action timer auto-fold/check loop
+  - 新增 per-room 行动超时调度，超时按规则执行 `toCall==0 -> check` / `toCall>0 -> fold`，并自动衔接 bot 回合与后续计时。

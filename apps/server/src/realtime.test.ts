@@ -390,6 +390,62 @@ test('game:hand_result is broadcast when hand reaches hand_end', async (t) => {
   assert.deepEqual(bobHandResult, aliceHandResult);
 });
 
+test('action timer auto-folds actor when toCall is greater than zero', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, { actionTimeoutMs: 40 });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-10',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-10',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'room-10',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const handEndStatePromise = waitForState(alice, (payload) => payload.hand.phase === 'hand_end', 1500);
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-10',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const handEndState = await handEndStatePromise;
+  const timedOutPlayer = handEndState.hand.players.find((player: { id: string }) => player.id === 'p0');
+  assert.equal(timedOutPlayer?.status, 'folded');
+});
+
 test('game:state hides opponent hole cards before hand_end', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);

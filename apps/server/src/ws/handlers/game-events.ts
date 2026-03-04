@@ -1,7 +1,12 @@
-import { applyAction, initializeHand, type PlayerActionInput } from '@aipoker/game-engine';
+import { applyAction, getValidActions, initializeHand, type PlayerActionInput } from '@aipoker/game-engine';
 import type { Server, Socket } from 'socket.io';
 
 import { isDuplicateOrStaleActionSeq, recordActionSeq, resetActionSeqTracker } from '../../game-loop/action-seq.ts';
+import {
+  clearRoomActionTimeout,
+  scheduleRoomActionTimeout,
+  type RoomActionTimeouts
+} from '../../game-loop/action-timeout.ts';
 import { runBotTurns } from '../../game-loop/run-bot-turns.ts';
 import { syncRoomPlayersFromHand } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
@@ -13,10 +18,67 @@ interface RegisterGameEventsInput {
   socket: Socket;
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
+  roomActionTimeouts: RoomActionTimeouts;
+  actionTimeoutMs: number;
 }
 
 export function registerGameEvents(input: RegisterGameEventsInput): void {
-  const { io, socket, rooms, memberships } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
+
+  function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
+    return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
+  }
+
+  function syncActionTimeout(roomId: string): void {
+    const room = rooms.get(roomId);
+    if (!room || !room.hand || room.hand.currentActorSeat === null) {
+      clearRoomActionTimeout(roomActionTimeouts, roomId);
+      return;
+    }
+
+    const actor = getRoomPlayerBySeat(room, room.hand.currentActorSeat);
+    if (!actor || actor.isBot) {
+      clearRoomActionTimeout(roomActionTimeouts, roomId);
+      return;
+    }
+
+    scheduleRoomActionTimeout(roomActionTimeouts, room.id, actionTimeoutMs, () => {
+      const latestRoom = rooms.get(room.id);
+      if (!latestRoom || !latestRoom.hand || latestRoom.hand.currentActorSeat === null) {
+        clearRoomActionTimeout(roomActionTimeouts, room.id);
+        return;
+      }
+
+      const latestActor = getRoomPlayerBySeat(latestRoom, latestRoom.hand.currentActorSeat);
+      if (!latestActor || latestActor.isBot) {
+        clearRoomActionTimeout(roomActionTimeouts, room.id);
+        return;
+      }
+
+      const valid = getValidActions(latestRoom.hand, latestActor.id);
+      const timeoutAction: PlayerActionInput = valid.canCheck
+        ? {
+            playerId: latestActor.id,
+            type: 'check'
+          }
+        : {
+            playerId: latestActor.id,
+            type: 'fold'
+          };
+
+      const timeoutResult = applyAction(latestRoom.hand, timeoutAction);
+      if (!timeoutResult.ok) {
+        clearRoomActionTimeout(roomActionTimeouts, room.id);
+        return;
+      }
+
+      latestRoom.hand = timeoutResult.value;
+      syncRoomPlayersFromHand(latestRoom);
+      emitGameState(io, latestRoom, memberships);
+      runBotTurns(io, latestRoom, memberships);
+      syncActionTimeout(latestRoom.id);
+    });
+  }
 
   socket.on('game:start', (payload: unknown, ack?: (result: GameStartAck) => void) => {
     const parsed = gameStartPayloadSchema.safeParse(payload);
@@ -65,6 +127,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     ack?.({ ok: true });
     emitGameState(io, room, memberships);
     runBotTurns(io, room, memberships);
+    syncActionTimeout(room.id);
   });
 
   socket.on('game:action', (payload: unknown, ack?: (result: GameActionAck) => void) => {
@@ -120,5 +183,6 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     ack?.({ ok: true });
     emitGameState(io, room, memberships);
     runBotTurns(io, room, memberships);
+    syncActionTimeout(room.id);
   });
 }

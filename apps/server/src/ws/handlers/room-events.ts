@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 
+import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop/action-timeout.ts';
 import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitRoomState } from '../emitters.ts';
@@ -10,10 +11,11 @@ interface RegisterRoomEventsInput {
   socket: Socket;
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
+  roomActionTimeouts: RoomActionTimeouts;
 }
 
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
-  const { io, socket, rooms, memberships } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts } = input;
 
   socket.on('room:create', (payload: unknown, ack?: (result: RoomCreateAck) => void) => {
     const parsed = roomCreatePayloadSchema.safeParse(payload);
@@ -45,6 +47,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       const previousRoom = rooms.get(previousMembership.roomId);
       previousRoom?.players.delete(previousMembership.playerId);
       if (previousRoom && previousRoom.players.size === 0) {
+        clearRoomActionTimeout(roomActionTimeouts, previousMembership.roomId);
         rooms.delete(previousMembership.roomId);
       }
       void socket.leave(previousMembership.roomId);
@@ -93,6 +96,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     room.players.delete(membership.playerId);
     if (room.players.size === 0) {
+      clearRoomActionTimeout(roomActionTimeouts, membership.roomId);
       rooms.delete(membership.roomId);
       return;
     }
