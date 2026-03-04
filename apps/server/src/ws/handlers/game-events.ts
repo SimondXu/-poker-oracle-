@@ -73,6 +73,12 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
+    const membership = memberships.get(socket.id);
+    if (!membership || membership.roomId !== parsed.data.roomId || !room.players.has(membership.playerId)) {
+      ack?.({ ok: false, error: 'not_room_member' });
+      return;
+    }
+
     const initialized = initializeHand({
       players: [...room.players.values()].map((player) => ({
         id: player.id,

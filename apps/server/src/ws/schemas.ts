@@ -35,7 +35,15 @@ export type RoomCreateAck = { ok: true; roomId: string } | { ok: false; error: '
 
 export type GameStartAck =
   | { ok: true }
-  | { ok: false; error: 'invalid_payload' | 'room_not_found' | 'not_enough_players' | 'invalid_blind_structure' };
+  | {
+      ok: false;
+      error:
+        | 'invalid_payload'
+        | 'room_not_found'
+        | 'not_room_member'
+        | 'not_enough_players'
+        | 'invalid_blind_structure';
+    };
 
 export type GameActionAck =
   | { ok: true }

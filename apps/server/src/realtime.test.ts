@@ -213,6 +213,50 @@ test('game:start initializes hand and game:action enforces current actor', async
   assert.equal(nextState.hand.currentActorSeat, 1);
 });
 
+test('game:start rejects non-room member socket', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const outsider = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    outsider.close();
+  });
+
+  await once(alice, 'connect');
+  await once(outsider, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-4',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-4',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(outsider, 'game:start', {
+    roomId: 'room-4',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: false, error: 'not_room_member' });
+});
+
 test('game loop auto-runs bot turns until next human actor', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);

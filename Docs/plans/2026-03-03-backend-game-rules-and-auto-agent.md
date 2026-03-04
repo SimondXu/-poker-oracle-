@@ -115,3 +115,30 @@ Expected: PASS
 **Step 3: Sanity status**
 Run: `git status --short`
 Expected: 仅出现本次实现相关变更。
+
+## Execution Status (2026-03-04)
+
+### Completion Summary
+
+- [x] Task 1: Expand Game Engine Action Model
+- [x] Task 2: Add Re-open And PendingActors Behaviors
+- [x] Task 3: Wire Realtime Room Game Loop
+- [x] Task 4: Add Bot Auto Agent Turn Runner
+- [x] Task 5: End-to-End Workspace Verification
+
+### Implemented Commits
+
+- `66f6ad6` feat(engine): progress betting streets through river
+- `37373da` feat(engine): add side-pot builder utility
+- `5c800a7` feat(engine): attach computed pots to hand-end state
+- `801e4aa` feat(engine): settle uncontested pots at hand end
+- `d3b9a2a` feat(engine): auto-runout all-in streets to hand end
+- `ba961d9` feat(engine): deal hole cards during hand initialization
+- `39cbc21` feat(engine): settle showdown pots with hand ranking
+- `e31d85e` feat(server): auto-run bot turns in realtime loop
+
+### Verification Evidence
+
+- Full test: `pnpm test` -> PASS
+- Full typecheck: `pnpm typecheck` -> PASS
+- Server targeted test (bot loop): `pnpm --filter @aipoker/server test` -> PASS
