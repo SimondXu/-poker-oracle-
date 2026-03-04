@@ -265,3 +265,111 @@ test('multiple short all-ins can cumulatively re-open betting', () => {
   assert.equal(validForP3.callAmount, 100);
   assert.equal(validForP3.minRaiseTo, 400);
 });
+
+test('preflop completion deals flop and resets street betting state', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 1000 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(103)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const a = applyAction(initialized.value, { playerId: 'p0', type: 'call' });
+  assert.equal(a.ok, true);
+  if (!a.ok) return;
+
+  const b = applyAction(a.value, { playerId: 'p1', type: 'call' });
+  assert.equal(b.ok, true);
+  if (!b.ok) return;
+
+  const c = applyAction(b.value, { playerId: 'p2', type: 'check' });
+  assert.equal(c.ok, true);
+  if (!c.ok) return;
+
+  assert.equal(c.value.phase, 'betting_flop');
+  assert.equal(c.value.communityCards.length, 3);
+  assert.equal(c.value.currentActorSeat, 1);
+  assert.equal(c.value.betting.currentBetToMatch, 0);
+  assert.equal(c.value.betting.lastFullRaiseSize, 20);
+  assert.equal(c.value.betting.lastAggressorId, null);
+
+  for (const player of c.value.players) {
+    if (player.status !== 'folded') {
+      assert.equal(player.streetCommitted, 0);
+      assert.equal(player.hasActedThisStreet, false);
+      assert.equal(player.matchedBetToMatchAtLastAction, 0);
+    }
+  }
+});
+
+test('street progression deals turn and river then ends hand after river betting', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 1000 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(104)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const p0Call = applyAction(initialized.value, { playerId: 'p0', type: 'call' });
+  assert.equal(p0Call.ok, true);
+  if (!p0Call.ok) return;
+  const p1Call = applyAction(p0Call.value, { playerId: 'p1', type: 'call' });
+  assert.equal(p1Call.ok, true);
+  if (!p1Call.ok) return;
+  const p2Check = applyAction(p1Call.value, { playerId: 'p2', type: 'check' });
+  assert.equal(p2Check.ok, true);
+  if (!p2Check.ok) return;
+  assert.equal(p2Check.value.phase, 'betting_flop');
+
+  const flopP1Check = applyAction(p2Check.value, { playerId: 'p1', type: 'check' });
+  assert.equal(flopP1Check.ok, true);
+  if (!flopP1Check.ok) return;
+  const flopP2Check = applyAction(flopP1Check.value, { playerId: 'p2', type: 'check' });
+  assert.equal(flopP2Check.ok, true);
+  if (!flopP2Check.ok) return;
+  const flopP0Check = applyAction(flopP2Check.value, { playerId: 'p0', type: 'check' });
+  assert.equal(flopP0Check.ok, true);
+  if (!flopP0Check.ok) return;
+  assert.equal(flopP0Check.value.phase, 'betting_turn');
+  assert.equal(flopP0Check.value.communityCards.length, 4);
+
+  const turnP1Check = applyAction(flopP0Check.value, { playerId: 'p1', type: 'check' });
+  assert.equal(turnP1Check.ok, true);
+  if (!turnP1Check.ok) return;
+  const turnP2Check = applyAction(turnP1Check.value, { playerId: 'p2', type: 'check' });
+  assert.equal(turnP2Check.ok, true);
+  if (!turnP2Check.ok) return;
+  const turnP0Check = applyAction(turnP2Check.value, { playerId: 'p0', type: 'check' });
+  assert.equal(turnP0Check.ok, true);
+  if (!turnP0Check.ok) return;
+  assert.equal(turnP0Check.value.phase, 'betting_river');
+  assert.equal(turnP0Check.value.communityCards.length, 5);
+
+  const riverP1Check = applyAction(turnP0Check.value, { playerId: 'p1', type: 'check' });
+  assert.equal(riverP1Check.ok, true);
+  if (!riverP1Check.ok) return;
+  const riverP2Check = applyAction(riverP1Check.value, { playerId: 'p2', type: 'check' });
+  assert.equal(riverP2Check.ok, true);
+  if (!riverP2Check.ok) return;
+  const riverP0Check = applyAction(riverP2Check.value, { playerId: 'p0', type: 'check' });
+  assert.equal(riverP0Check.ok, true);
+  if (!riverP0Check.ok) return;
+  assert.equal(riverP0Check.value.phase, 'hand_end');
+  assert.equal(riverP0Check.value.currentActorSeat, null);
+});

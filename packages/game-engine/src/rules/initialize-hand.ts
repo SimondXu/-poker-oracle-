@@ -56,6 +56,10 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
 
   return ok({
     phase,
+    blinds: {
+      smallBlind: input.smallBlind,
+      bigBlind: input.bigBlind
+    },
     players: settledPlayers,
     buttonMarkerSeat: input.buttonMarkerSeat,
     sbSeat,

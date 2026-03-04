@@ -5,7 +5,13 @@ export type Rng = () => number;
 
 export type EngineResult<T, E> = { ok: true; value: T } | { ok: false; error: E };
 export type PlayerStatus = 'active' | 'folded' | 'all_in';
-export type HandPhase = 'betting_preflop' | 'street_complete' | 'hand_end';
+export type HandPhase =
+  | 'betting_preflop'
+  | 'betting_flop'
+  | 'betting_turn'
+  | 'betting_river'
+  | 'street_complete'
+  | 'hand_end';
 export type ActionType = 'fold' | 'check' | 'call' | 'raise_to' | 'all_in';
 
 export interface HandInitPlayerInput {
@@ -24,6 +30,10 @@ export interface HandInitPlayerState extends HandInitPlayerInput {
 
 export interface HandState {
   phase: HandPhase;
+  blinds: {
+    smallBlind: number;
+    bigBlind: number;
+  };
   players: HandInitPlayerState[];
   buttonMarkerSeat: number;
   sbSeat: number;

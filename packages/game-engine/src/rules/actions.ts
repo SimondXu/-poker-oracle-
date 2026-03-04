@@ -1,9 +1,10 @@
-import type { ApplyActionError, EngineResult, HandInitPlayerState, HandState, PlayerActionInput, ValidActions } from '../state/types.ts';
+import type { ApplyActionError, EngineResult, HandInitPlayerState, HandPhase, HandState, PlayerActionInput, ValidActions } from '../state/types.ts';
 import { err, ok } from './result.ts';
 import {
   computePotTotal,
   determineNextActorSeat,
   getActiveInHandPlayers,
+  getPendingActorIds,
   getPlayerById,
   isPlayerEligibleToAct,
   resetPendingActors
@@ -93,6 +94,14 @@ function finalizeActionResult(
 
   const nextActorSeat = determineNextActorSeat(players, actorSeat, pendingActorIds);
   if (nextActorSeat === null) {
+    const advancedStreet = advanceStreet(previous, players);
+    if (advancedStreet) {
+      return {
+        ...advancedStreet,
+        potTotal: computePotTotal(players)
+      };
+    }
+
     return {
       ...previous,
       phase: 'street_complete',
@@ -106,12 +115,97 @@ function finalizeActionResult(
 
   return {
     ...previous,
-    phase: 'betting_preflop',
+    phase: previous.phase,
     players,
     currentActorSeat: nextActorSeat,
     pendingActorIds,
     potTotal: computePotTotal(players),
     betting
+  };
+}
+
+function isBettingPhase(phase: HandPhase): boolean {
+  return phase === 'betting_preflop' || phase === 'betting_flop' || phase === 'betting_turn' || phase === 'betting_river';
+}
+
+function getNextBettingStreet(
+  phase: HandPhase
+): { phase: HandPhase; communityCardsToDeal: number } | null {
+  if (phase === 'betting_preflop') {
+    return {
+      phase: 'betting_flop',
+      communityCardsToDeal: 3
+    };
+  }
+
+  if (phase === 'betting_flop') {
+    return {
+      phase: 'betting_turn',
+      communityCardsToDeal: 1
+    };
+  }
+
+  if (phase === 'betting_turn') {
+    return {
+      phase: 'betting_river',
+      communityCardsToDeal: 1
+    };
+  }
+
+  return null;
+}
+
+function advanceStreet(previous: HandState, players: HandInitPlayerState[]): HandState | null {
+  if (previous.phase === 'betting_river') {
+    return {
+      ...previous,
+      phase: 'hand_end',
+      players,
+      currentActorSeat: null,
+      pendingActorIds: []
+    };
+  }
+
+  const nextStreet = getNextBettingStreet(previous.phase);
+  if (!nextStreet) {
+    return null;
+  }
+
+  const deck = [...previous.deck];
+  const communityCards = [...previous.communityCards];
+  for (let i = 0; i < nextStreet.communityCardsToDeal; i += 1) {
+    const nextCard = deck.shift();
+    if (!nextCard) {
+      break;
+    }
+    communityCards.push(nextCard);
+  }
+
+  for (const player of players) {
+    if (player.status === 'folded') {
+      continue;
+    }
+    player.streetCommitted = 0;
+    player.hasActedThisStreet = false;
+    player.matchedBetToMatchAtLastAction = 0;
+  }
+
+  const pendingActorIds = getPendingActorIds(players);
+  const currentActorSeat = determineNextActorSeat(players, previous.buttonMarkerSeat, pendingActorIds);
+
+  return {
+    ...previous,
+    phase: currentActorSeat === null ? 'street_complete' : nextStreet.phase,
+    players,
+    communityCards,
+    deck,
+    currentActorSeat,
+    pendingActorIds: currentActorSeat === null ? [] : pendingActorIds,
+    betting: {
+      currentBetToMatch: 0,
+      lastFullRaiseSize: previous.blinds.bigBlind,
+      lastAggressorId: null
+    }
   };
 }
 
@@ -175,7 +269,7 @@ function applyRaiseTo(
 }
 
 export function applyAction(state: HandState, action: PlayerActionInput): EngineResult<HandState, ApplyActionError> {
-  if (state.currentActorSeat === null || state.phase !== 'betting_preflop') {
+  if (state.currentActorSeat === null || !isBettingPhase(state.phase)) {
     return err('hand_not_actionable');
   }
 
