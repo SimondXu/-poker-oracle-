@@ -20,3 +20,96 @@ export type BotAction =
   | { type: 'check' }
   | { type: 'call'; amount: number }
   | { type: 'fold' };
+
+// ─────────────────────────────────────────────
+// Client-facing types (shared between web + server)
+// Aligned with data-models.md
+// ─────────────────────────────────────────────
+
+export type Suit = 'h' | 'd' | 'c' | 's';
+export type Rank = '2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'T'|'J'|'Q'|'K'|'A';
+export type Card = `${Rank}${Suit}`;
+export type ActionType = 'fold' | 'check' | 'call' | 'bet' | 'raise_to' | 'all_in';
+export type PlayerStatus = 'active' | 'folded' | 'all_in' | 'out' | 'sitting_out';
+export type Phase =
+  | 'hand_init' | 'post_forced_bets'
+  | 'deal_hole' | 'betting_preflop'
+  | 'deal_flop' | 'betting_flop'
+  | 'deal_turn' | 'betting_turn'
+  | 'deal_river'| 'betting_river'
+  | 'showdown'  | 'settle_pots' | 'hand_end';
+
+export interface PlayerState {
+  id: string;
+  name: string;
+  seatIndex: number;
+  stack: number;
+  streetCommitted: number;
+  handCommitted: number;
+  status: PlayerStatus;
+  holeCards: Card[];
+  isBot: boolean;
+  botStrategy?: string;
+  hasActedThisStreet: boolean;
+  matchedBetToMatchAtLastAction: number;
+}
+
+export interface Pot {
+  amount: number;
+  eligiblePlayerIds: string[];
+}
+
+export interface HandState {
+  id: string;
+  roomId: string;
+  handNumber: number;
+  phase: Phase;
+  maxSeats: number;
+  smallBlind: number;
+  bigBlind: number;
+  buttonMarkerSeat: number;
+  sbSeat: number | null;
+  bbSeat: number;
+  players: PlayerState[];
+  communityCards: Card[];
+  pots: Pot[];
+  betting: {
+    currentBetToMatch: number;
+    lastFullRaiseSize: number;
+    lastAggressorId: string | null;
+  };
+  currentActorSeat: number | null;
+  actions: GameAction[];
+}
+
+export interface GameAction {
+  playerId: string;
+  playerName: string;
+  seatIndex: number;
+  phase: Phase;
+  type: ActionType;
+  amount: number;
+  stackBefore: number;
+  potTotalBefore: number;
+  sequenceNum: number;
+  timestamp: number;
+}
+
+export interface ValidActions {
+  canFold: boolean;
+  canCheck: boolean;
+  canCall: boolean;
+  callAmount: number;
+  canBet: boolean;
+  canRaise: boolean;
+  minBetOrRaiseTo: number;
+  maxBetOrRaiseTo: number;
+  canAllIn: boolean;
+}
+
+export interface RoomState {
+  id: string;
+  name: string;
+  status: 'waiting' | 'playing' | 'finished';
+  players: Array<{ id: string; name: string; seatIndex: number; isReady: boolean }>;
+}
