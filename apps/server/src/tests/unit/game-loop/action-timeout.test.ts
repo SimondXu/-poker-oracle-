@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { clearRoomActionTimeout, scheduleRoomActionTimeout, type RoomActionTimeouts } from './game-loop/action-timeout.ts';
+import { clearRoomActionTimeout, scheduleRoomActionTimeout, type RoomActionTimeouts } from '../../../game-loop/action-timeout.ts';
 
 test('scheduleRoomActionTimeout stores an unrefed timer handle', () => {
   const timeouts: RoomActionTimeouts = new Map();

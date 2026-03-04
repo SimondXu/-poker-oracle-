@@ -5,8 +5,8 @@ import test from 'node:test';
 
 import { io as createClient } from 'socket.io-client';
 
-import { createServer } from './index.ts';
-import { attachRealtime } from './realtime.ts';
+import { createServer } from '../../../index.ts';
+import { attachRealtime } from '../../../realtime.ts';
 
 function emitWithAck<T>(
   socket: ReturnType<typeof createClient>,

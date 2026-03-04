@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { enqueueRoomTask, type RoomTaskQueues } from './rooms/room-queue.ts';
+import { enqueueRoomTask, type RoomTaskQueues } from '../../../rooms/room-queue.ts';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

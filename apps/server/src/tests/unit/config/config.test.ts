@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseServerConfig } from './config.ts';
+import { parseServerConfig } from '../../../config.ts';
 
 test('parseServerConfig uses defaults when env is empty', () => {
   const result = parseServerConfig({});

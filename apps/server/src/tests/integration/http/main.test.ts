@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { startServer } from './main.ts';
+import { startServer } from '../../../main.ts';
 
 test('startServer listens and serves health endpoint', async (t) => {
   const started = await startServer({

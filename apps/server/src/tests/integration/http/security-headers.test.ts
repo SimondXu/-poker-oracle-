@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createServer } from './index.ts';
+import { createServer } from '../../../index.ts';
 
 test('server responses include CSP and baseline security headers', async (t) => {
   const app = createServer({ nowMs: () => 1_000 });

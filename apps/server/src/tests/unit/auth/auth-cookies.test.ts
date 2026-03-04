@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseCookies } from './auth/cookies.ts';
+import { parseCookies } from '../../../auth/cookies.ts';
 
 test('parseCookies parses basic cookie pairs', () => {
   const parsed = parseCookies('a=1; b=hello%20world');

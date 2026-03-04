@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createGuestSessionToken, verifyGuestSessionToken } from './auth/session-token.ts';
+import { createGuestSessionToken, verifyGuestSessionToken } from '../../../auth/session-token.ts';
 
 test('createGuestSessionToken and verifyGuestSessionToken round-trip guest session', () => {
   const token = createGuestSessionToken({

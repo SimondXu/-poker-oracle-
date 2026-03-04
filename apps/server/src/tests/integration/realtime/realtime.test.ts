@@ -5,8 +5,8 @@ import test from 'node:test';
 
 import { io as createClient } from 'socket.io-client';
 
-import { createServer } from './index.ts';
-import { attachRealtime } from './realtime.ts';
+import { createServer } from '../../../index.ts';
+import { attachRealtime } from '../../../realtime.ts';
 
 function emitWithAck<T>(
   socket: ReturnType<typeof createClient>,
@@ -442,6 +442,10 @@ test('room:ready marks membership as ready and updates room state', async (t) =>
   assert.deepEqual(readyAck, { ok: true, roomId: 'room-ready-1', readyCount: 1, playerCount: 1 });
   const roomState = await roomStatePromise;
   assert.equal(roomState.readyCount, 1);
+  assert.equal(roomState.table.activeStackPlayerCount, 1);
+  assert.equal(roomState.table.canStartNextHand, false);
+  assert.equal(roomState.table.isTableFinished, false);
+  assert.equal(roomState.players[0]?.stack, 1000);
 });
 
 test('game:start requires all players ready once readiness flow starts', async (t) => {
@@ -884,6 +888,19 @@ test('game:hand_result is broadcast when hand reaches hand_end', async (t) => {
   assert.equal(aliceHandResult.roomId, 'room-9');
   assert.equal(aliceHandResult.phase, 'hand_end');
   assert.equal(Array.isArray(aliceHandResult.payouts), true);
+  assert.equal(Array.isArray(aliceHandResult.players), true);
+  assert.equal(aliceHandResult.players.length, 2);
+  assert.equal(aliceHandResult.table.activeStackPlayerCount, 2);
+  assert.equal(typeof aliceHandResult.table.canStartNextHand, 'boolean');
+  assert.equal(typeof aliceHandResult.table.isTableFinished, 'boolean');
+  const aliceSnapshot = aliceHandResult.players.find((player: any) => player.id === 'p0');
+  const bobSnapshot = aliceHandResult.players.find((player: any) => player.id === 'p1');
+  assert.equal(aliceSnapshot?.name, 'Alice');
+  assert.equal(bobSnapshot?.name, 'Bob');
+  assert.equal(Array.isArray(aliceSnapshot?.holeCards), true);
+  assert.equal(Array.isArray(bobSnapshot?.holeCards), true);
+  assert.equal(aliceSnapshot?.holeCards.length, 2);
+  assert.equal(bobSnapshot?.holeCards.length, 2);
   assert.deepEqual(bobHandResult, aliceHandResult);
 });
 
@@ -1288,6 +1305,12 @@ test('disconnected in-hand player is removed after hand_end so next hand can sta
     {}
   );
   assert.deepEqual(readyAck, { ok: true, roomId: 'room-15', readyCount: 1, playerCount: 1 });
+
+  const blockedByTableFinishedAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:start', {
+    roomId: 'room-15',
+    buttonMarkerSeat: 1
+  });
+  assert.deepEqual(blockedByTableFinishedAck, { ok: false, error: 'table_finished' });
 
   const charlie = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
   t.after(() => {

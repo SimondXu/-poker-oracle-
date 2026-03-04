@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createServer } from './index.ts';
+import { createServer } from '../../../index.ts';
 
 test('API routes return 429 after per-minute limit is exceeded', async (t) => {
   let now = 1_000;

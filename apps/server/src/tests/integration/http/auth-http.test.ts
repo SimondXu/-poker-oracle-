@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createServer } from './index.ts';
+import { createServer } from '../../../index.ts';
 
 function cookiePair(setCookieHeader: string): string {
   return setCookieHeader.split(';', 1)[0] ?? setCookieHeader;
