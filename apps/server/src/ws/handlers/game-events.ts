@@ -87,9 +87,12 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
 
   function emitStateAndProgress(room: RuntimeRoom): void {
     emitGameState(io, room, memberships);
-    runBotTurns(io, room, memberships);
-    cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts);
-    syncActionTimeout(room.id);
+    // Run bot turns asynchronously (thinking delay) then do post-turn cleanup
+    void runBotTurns(io, room, memberships).then(() => {
+      emitGameState(io, room, memberships);
+      cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts);
+      syncActionTimeout(room.id);
+    });
   }
 
   function isActionRateLimited(): boolean {

@@ -1,4 +1,5 @@
-import { getValidActions } from '@aipoker/game-engine';
+import { getValidActions, type HandState as EngineHandState, type ValidActions as EngineValidActions } from '@aipoker/game-engine';
+import type { ValidActions as ClientValidActions } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
@@ -7,6 +8,22 @@ import { buildViewerHand } from './view-models/viewer-hand.ts';
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
+}
+
+function toClientValidActions(hand: EngineHandState, validActions: EngineValidActions): ClientValidActions {
+  const isUnopenedStreet = hand.betting.currentBetToMatch === 0;
+
+  return {
+    canFold: validActions.canFold,
+    canCheck: validActions.canCheck,
+    canCall: validActions.canCall,
+    callAmount: validActions.callAmount,
+    canBet: isUnopenedStreet && validActions.canRaise,
+    canRaise: !isUnopenedStreet && validActions.canRaise,
+    minBetOrRaiseTo: validActions.minRaiseTo,
+    maxBetOrRaiseTo: validActions.maxRaiseTo,
+    canAllIn: validActions.canAllIn
+  };
 }
 
 function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<string, RoomMembership>): void {
@@ -19,7 +36,7 @@ function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<stri
     return;
   }
 
-  const validActions = getValidActions(room.hand, actor.id);
+  const validActions = toClientValidActions(room.hand, getValidActions(room.hand, actor.id));
   const roomSocketIds = io.sockets.adapter.rooms.get(room.id);
   if (!roomSocketIds) {
     return;
@@ -91,7 +108,7 @@ export function emitGameState(io: Server, room: RuntimeRoom, memberships: Map<st
   for (const socketId of roomSocketIds) {
     const membership = memberships.get(socketId);
     const viewerPlayerId = membership?.roomId === room.id ? membership.playerId : null;
-    const viewerHand = buildViewerHand(room.hand, viewerPlayerId);
+    const viewerHand = buildViewerHand(room, viewerPlayerId);
 
     io.to(socketId).emit('game:state', {
       roomId: room.id,

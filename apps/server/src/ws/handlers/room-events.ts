@@ -112,7 +112,8 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       name: playerName,
       seatIndex: requestedSeat ?? pickSeatIndex(room),
       stack: parsed.data.stack ?? 1000,
-      isBot: parsed.data.isBot ?? false
+      isBot: parsed.data.isBot ?? false,
+      ...(parsed.data.botStrategy ? { botStrategy: parsed.data.botStrategy } : {}),
     });
     room.readyPlayerIds.delete(playerId);
     room.pendingDisconnectPlayerIds.delete(playerId);

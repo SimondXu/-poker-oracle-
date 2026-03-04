@@ -12,10 +12,12 @@ export const joinRoomPayloadSchema = z.object({
   playerName: z.string().trim().min(1),
   seatIndex: z.coerce.number().int().min(0).optional(),
   stack: z.coerce.number().int().min(1).optional(),
-  isBot: z.boolean().optional()
+  isBot: z.boolean().optional(),
+  botStrategy: z.enum(['fish', 'tag', 'lag']).optional(),
 });
 
 export const roomReadyPayloadSchema = z.object({});
+export const roomLeavePayloadSchema = z.object({}).strict();
 
 export const gameStartPayloadSchema = z.object({
   roomId: z.string().trim().min(1),
@@ -25,7 +27,7 @@ export const gameStartPayloadSchema = z.object({
 export const gameActionPayloadSchema = z.object({
   roomId: z.string().trim().min(1),
   playerId: z.string().trim().min(1),
-  type: z.enum(['fold', 'check', 'call', 'raise_to', 'all_in']),
+  type: z.enum(['fold', 'check', 'call', 'bet', 'raise_to', 'all_in']),
   amount: z.coerce.number().int().min(1).optional(),
   seq: z.coerce.number().int().min(0)
 });
@@ -41,6 +43,14 @@ export type RoomReadyAck =
       ok: true;
       roomId: string;
       readyCount: number;
+      playerCount: number;
+    }
+  | { ok: false; error: 'invalid_payload' | 'not_room_member' };
+
+export type RoomLeaveAck =
+  | {
+      ok: true;
+      roomId: string;
       playerCount: number;
     }
   | { ok: false; error: 'invalid_payload' | 'not_room_member' };

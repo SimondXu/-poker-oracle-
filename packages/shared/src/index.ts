@@ -10,16 +10,30 @@ export function err<E>(error: E): Result<never, E> {
   return { ok: false, error };
 }
 
+export type BotPersonality = 'fish' | 'tag' | 'lag';
+
 export interface BotValidActions {
+  canFold: boolean;
   canCheck: boolean;
   canCall: boolean;
   callAmount: number;
+  canRaise: boolean;
+  minRaiseTo: number;
+  maxRaiseTo: number;
+  canAllIn: boolean;
+  // Decision context
+  potTotal: number;
+  myStack: number;
+  holeCards: Card[];
+  communityCards: Card[];
 }
 
 export type BotAction =
-  | { type: 'check' }
-  | { type: 'call'; amount: number }
-  | { type: 'fold' };
+  | { type: 'fold';     thinkingDelayMs: number }
+  | { type: 'check';    thinkingDelayMs: number }
+  | { type: 'call';     amount: number; thinkingDelayMs: number }
+  | { type: 'raise_to'; amount: number; thinkingDelayMs: number }
+  | { type: 'all_in';   thinkingDelayMs: number };
 
 // ─────────────────────────────────────────────
 // Client-facing types (shared between web + server)
@@ -112,4 +126,16 @@ export interface RoomState {
   name: string;
   status: 'waiting' | 'playing' | 'finished';
   players: Array<{ id: string; name: string; seatIndex: number; isReady: boolean }>;
+}
+
+export interface GameStateEvent {
+  roomId: string;
+  hand: HandState;
+}
+
+export interface GameActionRequiredEvent {
+  roomId: string;
+  playerId: string;
+  validActions: ValidActions;
+  timeoutMs: number;
 }

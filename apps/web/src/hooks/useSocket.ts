@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { getSocket, connectSocket, disconnectSocket } from '@/lib/socket';
 import { useGameStore } from '@/stores/gameStore';
-import type { ActionType } from '@aipoker/shared';
+import type { ActionType, GameActionRequiredEvent, GameStateEvent, HandState } from '@aipoker/shared';
 
 /**
  * useSocket — 管理 Socket.io 连接与游戏事件绑定
@@ -53,11 +53,12 @@ export function useSocket(roomId: string) {
     };
 
     // ── 游戏事件 ──
-    const onGameState = (state: Parameters<typeof setHandState>[0]) => {
-      setHandState(state);
+    const onGameState = (payload: GameStateEvent | HandState) => {
+      const hand = 'hand' in payload ? payload.hand : payload;
+      setHandState(hand);
     };
 
-    const onActionRequired = (data: { validActions: Parameters<typeof setValidActions>[0]; timeoutMs: number }) => {
+    const onActionRequired = (data: GameActionRequiredEvent) => {
       setValidActions(data.validActions, data.timeoutMs);
     };
 

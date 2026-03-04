@@ -11,6 +11,7 @@ export interface RuntimePlayer {
   seatIndex: number;
   stack: number;
   isBot: boolean;
+  botStrategy?: 'fish' | 'tag' | 'lag';
 }
 
 export interface RuntimeRoom {
