@@ -23,8 +23,14 @@ interface RegisterGameEventsInput {
   actionTimeoutMs: number;
 }
 
+const ACTION_RATE_LIMIT_WINDOW_MS = 60_000;
+const MAX_ACTIONS_PER_WINDOW = 20;
+
+type GameActionAckWithRateLimit = GameActionAck | { ok: false; error: 'rate_limited' };
+
 export function registerGameEvents(input: RegisterGameEventsInput): void {
   const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
+  const actionTimestamps: number[] = [];
 
   function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
     return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
@@ -86,6 +92,23 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     syncActionTimeout(room.id);
   }
 
+  function isActionRateLimited(): boolean {
+    const now = Date.now();
+    while (actionTimestamps.length > 0) {
+      const oldest = actionTimestamps[0];
+      if (oldest === undefined || now - oldest < ACTION_RATE_LIMIT_WINDOW_MS) {
+        break;
+      }
+      actionTimestamps.shift();
+    }
+    if (actionTimestamps.length >= MAX_ACTIONS_PER_WINDOW) {
+      return true;
+    }
+
+    actionTimestamps.push(now);
+    return false;
+  }
+
   socket.on('game:start', (payload: unknown, ack?: (result: GameStartAck) => void) => {
     const parsed = gameStartPayloadSchema.safeParse(payload);
     if (!parsed.success) {
@@ -140,7 +163,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     emitStateAndProgress(room);
   });
 
-  socket.on('game:action', (payload: unknown, ack?: (result: GameActionAck) => void) => {
+  socket.on('game:action', (payload: unknown, ack?: (result: GameActionAckWithRateLimit) => void) => {
     const parsed = gameActionPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       ack?.({ ok: false, error: 'invalid_payload' });
@@ -161,6 +184,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     const membership = memberships.get(socket.id);
     if (!membership || membership.roomId !== parsed.data.roomId || membership.playerId !== parsed.data.playerId) {
       ack?.({ ok: false, error: 'not_room_member' });
+      return;
+    }
+
+    if (isActionRateLimited()) {
+      ack?.({ ok: false, error: 'rate_limited' });
       return;
     }
 
