@@ -1,4 +1,5 @@
 import type { ApplyActionError, EngineResult, HandInitPlayerState, HandPhase, HandState, PlayerActionInput, ValidActions } from '../state/types.ts';
+import { buildSidePots } from '../settlement/side-pots.ts';
 import { err, ok } from './result.ts';
 import {
   computePotTotal,
@@ -88,6 +89,7 @@ function finalizeActionResult(
       currentActorSeat: null,
       pendingActorIds: [],
       potTotal: computePotTotal(players),
+      pots: buildSidePots(players),
       betting
     };
   }
@@ -162,7 +164,8 @@ function advanceStreet(previous: HandState, players: HandInitPlayerState[]): Han
       phase: 'hand_end',
       players,
       currentActorSeat: null,
-      pendingActorIds: []
+      pendingActorIds: [],
+      pots: buildSidePots(players)
     };
   }
 

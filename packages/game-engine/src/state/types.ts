@@ -43,6 +43,7 @@ export interface HandState {
   communityCards: Card[];
   deck: Card[];
   potTotal: number;
+  pots: Pot[];
   betting: {
     currentBetToMatch: number;
     lastFullRaiseSize: number;

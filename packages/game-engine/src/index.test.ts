@@ -372,6 +372,12 @@ test('street progression deals turn and river then ends hand after river betting
   if (!riverP0Check.ok) return;
   assert.equal(riverP0Check.value.phase, 'hand_end');
   assert.equal(riverP0Check.value.currentActorSeat, null);
+  assert.deepEqual(riverP0Check.value.pots, [
+    {
+      amount: 60,
+      eligiblePlayerIds: ['p0', 'p1', 'p2']
+    }
+  ]);
 });
 
 function committedPlayer(
@@ -427,6 +433,43 @@ test('buildSidePots includes folded contributions and merges equal-eligible side
     {
       amount: 200,
       eligiblePlayerIds: ['c']
+    }
+  ]);
+});
+
+test('hand_end builds pot with folded contributions and surviving eligible player', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 1000 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(105)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const raise = applyAction(initialized.value, { playerId: 'p0', type: 'raise_to', amount: 60 });
+  assert.equal(raise.ok, true);
+  if (!raise.ok) return;
+
+  const fold1 = applyAction(raise.value, { playerId: 'p1', type: 'fold' });
+  assert.equal(fold1.ok, true);
+  if (!fold1.ok) return;
+
+  const fold2 = applyAction(fold1.value, { playerId: 'p2', type: 'fold' });
+  assert.equal(fold2.ok, true);
+  if (!fold2.ok) return;
+
+  assert.equal(fold2.value.phase, 'hand_end');
+  assert.deepEqual(fold2.value.pots, [
+    {
+      amount: 90,
+      eligiblePlayerIds: ['p0']
     }
   ]);
 });
