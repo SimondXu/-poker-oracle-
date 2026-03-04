@@ -24,6 +24,7 @@ export interface HandInitPlayerState extends HandInitPlayerInput {
   streetCommitted: number;
   handCommitted: number;
   status: PlayerStatus;
+  holeCards: Card[];
   hasActedThisStreet: boolean;
   matchedBetToMatchAtLastAction: number;
 }

@@ -50,6 +50,7 @@ export function toSettledPlayer(
     streetCommitted: committed,
     handCommitted: committed,
     status,
+    holeCards: [],
     hasActedThisStreet: false,
     matchedBetToMatchAtLastAction: currentBetToMatch
   };

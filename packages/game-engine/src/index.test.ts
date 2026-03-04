@@ -107,6 +107,31 @@ test('initializeHand returns error when active players are fewer than two', () =
   });
 });
 
+test('initializeHand deals two hole cards per player and removes them from deck', () => {
+  const result = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 1000 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(12)
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  const dealtCards = result.value.players.flatMap((player) => player.holeCards);
+  assert.equal(dealtCards.length, 6);
+  assert.equal(new Set(dealtCards).size, 6);
+  for (const player of result.value.players) {
+    assert.equal(player.holeCards.length, 2);
+  }
+  assert.equal(result.value.deck.length, 46);
+});
+
 test('getValidActions returns call and raise options for first preflop actor', () => {
   const result = initializeHand({
     players: [
@@ -438,6 +463,7 @@ function committedPlayer(
     streetCommitted: 0,
     handCommitted,
     status,
+    holeCards: [],
     hasActedThisStreet: false,
     matchedBetToMatchAtLastAction: 0
   };

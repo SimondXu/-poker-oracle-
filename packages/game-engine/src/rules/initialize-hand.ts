@@ -9,6 +9,16 @@ import {
   toSettledPlayer
 } from './shared.ts';
 
+function orderedDealingSeats(seats: number[], firstSeat: number): number[] {
+  const ordered = [...seats].sort((a, b) => a - b);
+  const startIndex = ordered.indexOf(firstSeat);
+  if (startIndex === -1) {
+    return ordered;
+  }
+
+  return [...ordered.slice(startIndex), ...ordered.slice(0, startIndex)];
+}
+
 export function initializeHand(input: InitializeHandInput): EngineResult<HandState, InitializeHandError> {
   const players = input.players.filter((player) => player.stack > 0);
   if (players.length < 2) {
@@ -28,6 +38,7 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
   }
 
   const bbSeat = findNextOccupiedSeat(players, sbSeat);
+  const deck = createDeck(input.rng);
   const settledPlayers = players.map((player) => {
     if (player.seatIndex === sbSeat) {
       const sbCommitted = Math.min(input.smallBlind, player.stack);
@@ -41,6 +52,21 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
 
     return toSettledPlayer(player, 0, 0);
   });
+  const playerBySeat = new Map(settledPlayers.map((player) => [player.seatIndex, player] as const));
+  const dealOrder = orderedDealingSeats(
+    settledPlayers.map((player) => player.seatIndex),
+    sbSeat
+  );
+  for (let round = 0; round < 2; round += 1) {
+    for (const seat of dealOrder) {
+      const player = playerBySeat.get(seat);
+      const nextCard = deck.shift();
+      if (!player || !nextCard) {
+        continue;
+      }
+      player.holeCards.push(nextCard);
+    }
+  }
 
   const sbPlayer = settledPlayers.find((player) => player.seatIndex === sbSeat) ?? null;
   const bbPlayer = settledPlayers.find((player) => player.seatIndex === bbSeat) ?? null;
@@ -67,7 +93,7 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
     currentActorSeat,
     pendingActorIds,
     communityCards: [],
-    deck: createDeck(input.rng),
+    deck,
     potTotal: computePotTotal(settledPlayers),
     pots: [],
     payouts: [],
