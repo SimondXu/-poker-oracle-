@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 
 import { DEFAULT_AUTH_COOKIE_NAME } from './auth/cookies.ts';
 import { verifyGuestSessionToken } from './auth/session-token.ts';
@@ -49,6 +50,18 @@ export function createServer(deps: ServerDependencies): FastifyInstance {
     credentials: true
   });
   void server.register(cookie);
+  void server.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        connectSrc: ["'self'", corsOrigin, 'ws:', 'wss:']
+      }
+    },
+    crossOriginEmbedderPolicy: false
+  });
   server.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/')) {
       return;

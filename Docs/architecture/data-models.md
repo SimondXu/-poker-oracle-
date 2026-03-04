@@ -323,3 +323,8 @@ GET    /api/users/me/history  → HandSummary[] (paginated)
 - 默认阈值：`100 req/min/identity`（可通过环境变量覆盖）。
 - identity 优先使用会话用户标识（guest/user `userId`），无会话时回退到 `IP`。
 - 超限返回：`429` + `{ ok: false, error: 'rate_limited' }`，并携带 `Retry-After`。
+
+### 5.3 安全响应头（MVP）
+
+- 统一开启安全头（Helmet）：`Content-Security-Policy`、`X-Content-Type-Options`、`X-Frame-Options` 等。
+- CSP 基线：`default-src 'self'`，并允许前后端联调所需的 `connect-src`（同源 + 配置的前端 origin + `ws:`/`wss:`）。
