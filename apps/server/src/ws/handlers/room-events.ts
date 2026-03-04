@@ -1,4 +1,5 @@
 import type { Server, Socket } from 'socket.io';
+import { z } from 'zod';
 
 import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop/action-timeout.ts';
 import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
@@ -22,8 +23,32 @@ interface RegisterRoomEventsInput {
   actionTimeoutMs: number;
 }
 
+const roomLeavePayloadSchema = z.object({});
+
+type RoomLeaveAck =
+  | {
+      ok: true;
+      roomId: string;
+      playerCount: number;
+    }
+  | { ok: false; error: 'invalid_payload' | 'not_room_member' };
+
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
   const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
+
+  function shouldKeepSeatDuringHand(room: RuntimeRoom, playerId: string): boolean {
+    return (
+      room.hand !== null &&
+      room.hand.phase !== 'hand_end' &&
+      room.hand.players.some((player) => player.id === playerId)
+    );
+  }
+
+  function removePlayerFromRoom(room: RuntimeRoom, playerId: string): void {
+    room.players.delete(playerId);
+    room.readyPlayerIds.delete(playerId);
+    room.pendingDisconnectPlayerIds.delete(playerId);
+  }
 
   socket.on('room:create', (payload: unknown, ack?: (result: RoomCreateAck) => void) => {
     const parsed = roomCreatePayloadSchema.safeParse(payload);
@@ -54,15 +79,17 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     if (previousMembership && previousMembership.roomId !== roomId) {
       const previousRoom = rooms.get(previousMembership.roomId);
-      previousRoom?.players.delete(previousMembership.playerId);
-      previousRoom?.readyPlayerIds.delete(previousMembership.playerId);
-      previousRoom?.pendingDisconnectPlayerIds.delete(previousMembership.playerId);
-      if (previousRoom && previousRoom.players.size === 0) {
-        clearRoomActionTimeout(roomActionTimeouts, previousMembership.roomId);
-        rooms.delete(previousMembership.roomId);
-      }
       void socket.leave(previousMembership.roomId);
       if (previousRoom) {
+        if (shouldKeepSeatDuringHand(previousRoom, previousMembership.playerId)) {
+          previousRoom.pendingDisconnectPlayerIds.add(previousMembership.playerId);
+        } else {
+          removePlayerFromRoom(previousRoom, previousMembership.playerId);
+        }
+        if (previousRoom.players.size === 0) {
+          clearRoomActionTimeout(roomActionTimeouts, previousMembership.roomId);
+          rooms.delete(previousMembership.roomId);
+        }
         emitRoomState(io, previousRoom);
       }
     }
@@ -126,6 +153,47 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     emitRoomState(io, room);
   });
 
+  socket.on('room:leave', (payload: unknown, ack?: (result: RoomLeaveAck) => void) => {
+    const parsed = roomLeavePayloadSchema.safeParse(payload ?? {});
+    if (!parsed.success) {
+      ack?.({ ok: false, error: 'invalid_payload' });
+      return;
+    }
+
+    const membership = memberships.get(socket.id);
+    if (!membership) {
+      ack?.({ ok: false, error: 'not_room_member' });
+      return;
+    }
+
+    memberships.delete(socket.id);
+    void socket.leave(membership.roomId);
+
+    const room = rooms.get(membership.roomId);
+    if (!room) {
+      ack?.({ ok: false, error: 'not_room_member' });
+      return;
+    }
+
+    if (shouldKeepSeatDuringHand(room, membership.playerId)) {
+      room.pendingDisconnectPlayerIds.add(membership.playerId);
+      ack?.({ ok: true, roomId: room.id, playerCount: room.players.size });
+      emitRoomState(io, room);
+      return;
+    }
+
+    removePlayerFromRoom(room, membership.playerId);
+    ack?.({ ok: true, roomId: room.id, playerCount: room.players.size });
+
+    if (room.players.size === 0) {
+      clearRoomActionTimeout(roomActionTimeouts, membership.roomId);
+      rooms.delete(membership.roomId);
+      return;
+    }
+
+    emitRoomState(io, room);
+  });
+
   socket.on('disconnect', () => {
     const membership = memberships.get(socket.id);
     if (!membership) {
@@ -138,19 +206,13 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
 
-    const keepSeatDuringHand =
-      room.hand !== null &&
-      room.hand.phase !== 'hand_end' &&
-      room.hand.players.some((player) => player.id === membership.playerId);
-    if (keepSeatDuringHand) {
+    if (shouldKeepSeatDuringHand(room, membership.playerId)) {
       room.pendingDisconnectPlayerIds.add(membership.playerId);
       emitRoomState(io, room);
       return;
     }
 
-    room.players.delete(membership.playerId);
-    room.readyPlayerIds.delete(membership.playerId);
-    room.pendingDisconnectPlayerIds.delete(membership.playerId);
+    removePlayerFromRoom(room, membership.playerId);
     if (room.players.size === 0) {
       clearRoomActionTimeout(roomActionTimeouts, membership.roomId);
       rooms.delete(membership.roomId);
