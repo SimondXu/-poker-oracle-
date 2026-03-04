@@ -5,17 +5,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatChips } from '@/lib/utils';
 import { PlayingCard } from '../cards/PlayingCard';
 import { TimerBar } from '../hud/TimerBar';
-import type { PlayerState } from '@aipoker/shared';
+import type { Phase, PlayerState } from '@aipoker/shared';
 
 interface SeatProps {
   player: PlayerState | null;        // null = 空座位
   seatIndex: number;
+  handNumber?: number | undefined;
+  phase: Phase;
   isCurrentUser: boolean;
   isCurrentActor: boolean;           // 当前需要行动的玩家
   isButton: boolean;                 // 庄家位
   isSB: boolean;
   isBB: boolean;
+  seatCount?: number | undefined;
   showHoleCards: boolean;            // 回放/摊牌时展示手牌
+  dealDelayBase?: number | undefined; // 发牌延迟基准（秒），按座位错开
+  dealFromX?: number | undefined;
+  dealFromY?: number | undefined;
   timerDurationMs?: number | undefined;
   timerStartedAt?: number | undefined;
   className?: string | undefined;
@@ -49,12 +55,18 @@ function PositionBadge({ label }: { label: string }) {
 export const Seat = memo(function Seat({
   player,
   seatIndex: _seatIndex,
+  handNumber,
+  phase,
   isCurrentUser,
   isCurrentActor,
   isButton,
   isSB,
   isBB,
+  seatCount = 6,
   showHoleCards,
+  dealDelayBase = 0,
+  dealFromX = -120,
+  dealFromY = -90,
   timerDurationMs = 30000,
   timerStartedAt,
   className,
@@ -63,6 +75,8 @@ export const Seat = memo(function Seat({
   const isFolded = player?.status === 'folded';
   const isAllIn = player?.status === 'all_in';
   const isOut = player?.status === 'out';
+  const isHoleDealPhase = phase === 'betting_preflop';
+  const secondPassDelay = Math.max(0.52, seatCount * 0.085 + 0.08);
 
   const posLabel = isButton ? 'BTN' : isSB ? 'SB' : isBB ? 'BB' : null;
 
@@ -180,20 +194,53 @@ export const Seat = memo(function Seat({
         )}
       </div>
 
-      {/* 手牌（仅当前用户或 showHoleCards 时显示） */}
-      {(isCurrentUser || showHoleCards) && player.holeCards.length > 0 && (
-        <div className="mt-1 flex gap-1.5">
-          {player.holeCards.map((card) => (
-            <PlayingCard
-              key={card}
-              card={card}
-              size="xs"
-              animateDeal
-              highlight={false}
-            />
-          ))}
-        </div>
-      )}
+      {/* 手牌 */}
+      {(() => {
+        const hasVisibleCards = player.holeCards.length > 0;
+        const isActiveInHand = player.status !== 'folded' && player.status !== 'out';
+        const cardSize = isCurrentUser ? 'sm' : 'xs';
+
+        // 当前用户或摊牌：显示正面牌
+        if ((isCurrentUser || showHoleCards) && hasVisibleCards) {
+          return (
+            <div className="mt-1 flex gap-1.5">
+              {player.holeCards.map((card, i) => (
+                <PlayingCard
+                  key={`${handNumber ?? 'hand'}-${card}-${i}`}
+                  card={card}
+                  size={cardSize}
+                  animateDeal={isHoleDealPhase}
+                  dealDelay={isHoleDealPhase ? dealDelayBase + i * secondPassDelay : 0}
+                  dealFromX={dealFromX}
+                  dealFromY={dealFromY}
+                  highlight={false}
+                />
+              ))}
+            </div>
+          );
+        }
+
+        // 其他活跃玩家：显示牌背（表示他们有牌但不可见）
+        if (!isCurrentUser && !showHoleCards && isActiveInHand && !hasVisibleCards) {
+          return (
+            <div className="mt-1 flex gap-1">
+              {[0, 1].map((i) => (
+                <PlayingCard
+                  key={`${handNumber ?? 'hand'}-back-${i}`}
+                  faceDown
+                  size="xs"
+                  animateDeal={isHoleDealPhase}
+                  dealDelay={isHoleDealPhase ? dealDelayBase + i * secondPassDelay : 0}
+                  dealFromX={dealFromX}
+                  dealFromY={dealFromY}
+                />
+              ))}
+            </div>
+          );
+        }
+
+        return null;
+      })()}
 
       {/* 计时器（仅当前行动者显示） */}
       {isCurrentActor && !player.isBot && timerStartedAt && (

@@ -11,6 +11,14 @@ interface CommunityCardsProps {
   className?: string;
 }
 
+function getCommunityDealDelay(index: number, cardsLength: number): number {
+  // 更接近真实桌面节奏：Flop 先停顿再连发，Turn/River 单张停顿略长
+  if (cardsLength === 3 && index < 3) return 0.08 + index * 0.13;
+  if (cardsLength === 4 && index === 3) return 0.18;
+  if (cardsLength >= 5 && index === 4) return 0.18;
+  return 0;
+}
+
 export const CommunityCards = memo(function CommunityCards({
   cards,
   winnerCards = [],
@@ -24,8 +32,8 @@ export const CommunityCards = memo(function CommunityCards({
       <AnimatePresence>
         {slots.map((card, i) => (
           <motion.div
-            key={`slot-${i}`}
-            initial={{ opacity: 0, y: -12, scale: 0.85 }}
+            key={`slot-${i}-${card ?? 'empty'}`}
+            initial={{ opacity: 0, y: -18, scale: 0.9 }}
             animate={
               card
                 ? { opacity: 1, y: 0, scale: 1 }
@@ -33,23 +41,26 @@ export const CommunityCards = memo(function CommunityCards({
             }
             transition={{
               type: 'spring',
-              stiffness: 350,
-              damping: 25,
-              delay: card ? i * 0.06 : 0,
+              stiffness: 220,
+              damping: 23,
+              delay: card ? getCommunityDealDelay(i, cards.length) : 0,
             }}
           >
             {card ? (
               <PlayingCard
                 card={card}
-                size="md"
+                size="lg"
                 highlight={winnerCards.includes(card)}
                 animateDeal
+                dealDelay={getCommunityDealDelay(i, cards.length)}
+                dealFromX={(i - 2) * 12}
+                dealFromY={-136}
               />
             ) : (
               /* 空牌槽位（占位） */
               <div
                 className="rounded-[var(--radius-card)] border border-dashed border-white/8 opacity-20"
-                style={{ width: 56, height: 80 }}
+                style={{ width: 72, height: 104 }}
               />
             )}
           </motion.div>

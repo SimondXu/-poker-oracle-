@@ -24,7 +24,7 @@ const TABLE = {
   viewBox: '0 0 900 520',
   cx: 450, cy: 260,        // 中心
   rx: 360, ry: 200,        // 桌布椭圆半径
-  seatRx: 420, seatRy: 240, // 座位椭圆半径（稍大，在桌边外）
+  seatRx: 420, seatRy: 214, // 座位椭圆半径（稍大，在桌边外）
   railWidth: 20,
 } as const;
 
@@ -44,11 +44,21 @@ export const PokerTable = memo(function PokerTable({
   // 座位总数以实际房间配置为准；默认 6 人桌（最大不超过 MAX_SEATS）
   const maxSeats = Math.min(hand.maxSeats ?? 6, MAX_SEATS);
 
-  // 固定 maxSeats 个座位位置，椭圆均匀分布
-  const seatPositions = useMemo(
-    () => calcSeatPositions(maxSeats, TABLE.seatRx, TABLE.seatRy),
-    [maxSeats],
+  // 找到当前用户的 seatIndex，用于旋转座位使其出现在底部
+  const currentUserSeat = useMemo(
+    () => hand.players.find((p) => p.id === currentUserId)?.seatIndex ?? null,
+    [hand.players, currentUserId],
   );
+
+  // 固定 maxSeats 个座位位置，椭圆均匀分布
+  // 旋转偏移：让当前用户的座位落在底部（angle = π/2）
+  const seatPositions = useMemo(() => {
+    const offsetAngle =
+      currentUserSeat !== null
+        ? Math.PI / 2 - (2 * Math.PI * currentUserSeat) / maxSeats
+        : -Math.PI / 2; // 无当前用户时默认 seat 0 在顶部
+    return calcSeatPositions(maxSeats, TABLE.seatRx, TABLE.seatRy, offsetAngle);
+  }, [maxSeats, currentUserSeat]);
 
   // 将 hand.players 按 seatIndex 建立查找表，方便 O(1) 取玩家
   const playerBySeat = useMemo(() => {
@@ -57,7 +67,12 @@ export const PokerTable = memo(function PokerTable({
   }, [hand.players]);
 
   return (
-    <div className={cn('relative w-full', className)} style={{ maxWidth: 900 }}>
+    <div
+      className={cn(
+        'relative mx-auto aspect-[900/520] w-full max-w-[1180px] max-h-full',
+        className,
+      )}
+    >
       {/* ── SVG 桌面背景 ── */}
       <svg
         viewBox={TABLE.viewBox}
@@ -189,6 +204,11 @@ export const PokerTable = memo(function PokerTable({
         const isButton = hand.buttonMarkerSeat === seatIndex;
         const isSB = hand.sbSeat === seatIndex;
         const isBB = hand.bbSeat === seatIndex;
+        // 发牌延迟：按座位索引错开，模拟第一轮逐位发牌
+        const dealDelayBase = seatIndex * 0.09;
+        // 以桌面中心作为发牌来源，让发牌路径更自然
+        const dealFromX = -pos.x * 0.62;
+        const dealFromY = -pos.y * 0.62;
 
         return (
           <motion.div
@@ -196,7 +216,7 @@ export const PokerTable = memo(function PokerTable({
             className="absolute -translate-x-1/2 -translate-y-1/2"
             style={{
               left: `${xPct}%`,
-              top: `${yPct}%`,
+              top: isCurrentUser ? `calc(${yPct}% - 34px)` : `${yPct}%`,
             }}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -205,12 +225,18 @@ export const PokerTable = memo(function PokerTable({
             <Seat
               player={player}
               seatIndex={seatIndex}
+              handNumber={hand.handNumber}
+              phase={hand.phase}
               isCurrentUser={isCurrentUser}
               isCurrentActor={isCurrentActor}
               isButton={isButton}
               isSB={isSB}
               isBB={isBB}
+              seatCount={maxSeats}
               showHoleCards={hand.phase === 'showdown' || hand.phase === 'hand_end'}
+              dealDelayBase={dealDelayBase}
+              dealFromX={dealFromX}
+              dealFromY={dealFromY}
               timerDurationMs={timerDurationMs}
               {...(isCurrentActor && timerStartedAt !== undefined ? { timerStartedAt } : {})}
             />

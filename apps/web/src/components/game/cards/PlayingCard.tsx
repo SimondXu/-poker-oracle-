@@ -11,8 +11,14 @@ interface PlayingCardProps {
   highlight?: boolean;   // 高亮（赢牌手牌）
   dim?: boolean;         // 暗化（输牌/弃牌）
   animateDeal?: boolean; // 触发发牌飞入动画
+  dealDelay?: number;    // 发牌延迟（秒），配合 animateDeal 实现序贯发牌
+  dealFromX?: number | undefined; // 发牌起点偏移 X（相对最终位置）
+  dealFromY?: number | undefined; // 发牌起点偏移 Y（相对最终位置）
   className?: string;
 }
+
+const LIVE_DEAL_EASE: [number, number, number, number] = [0.14, 0.9, 0.24, 1];
+const LIVE_FLIP_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const SIZE_CONFIG = {
   xs: { w: 28, h: 40, rankSize: 'text-[9px]', suitSize: 'text-[8px]', centerSize: 'text-[14px]' },
@@ -136,15 +142,30 @@ export const PlayingCard = memo(function PlayingCard({
   highlight = false,
   dim = false,
   animateDeal = false,
+  dealDelay = 0,
+  dealFromX = -130,
+  dealFromY = -96,
   className,
 }: PlayingCardProps) {
   const showFaceDown = faceDown || !card;
+  const seededRotate = Math.max(-24, Math.min(24, dealFromX * 0.07));
+  const dealDistance = Math.hypot(dealFromX, dealFromY);
+  const dealDuration = 0.34 + Math.min(0.18, dealDistance / 900 * 0.22);
 
   const dealVariants = {
     initial: animateDeal
-      ? { opacity: 0, y: -80, rotate: -15, scale: 0.6 }
-      : { opacity: 1, y: 0, rotate: 0, scale: 1 },
-    animate: { opacity: 1, y: 0, rotate: 0, scale: 1 },
+      ? { opacity: 0, x: dealFromX, y: dealFromY, rotate: seededRotate, scale: 0.48, filter: 'blur(2px)' }
+      : { opacity: 1, x: 0, y: 0, rotate: 0, scale: 1, filter: 'blur(0px)' },
+    animate: animateDeal
+      ? {
+          opacity: [0, 1, 1],
+          x: [dealFromX, dealFromX * 0.16, 0],
+          y: [dealFromY, -5, 0],
+          rotate: [seededRotate, seededRotate * 0.2, 0],
+          scale: [0.48, 1.03, 1],
+          filter: ['blur(2px)', 'blur(0px)', 'blur(0px)'],
+        }
+      : { opacity: 1, x: 0, y: 0, rotate: 0, scale: 1, filter: 'blur(0px)' },
     exit:    { opacity: 0, scale: 0.8, transition: { duration: 0.2 } },
   };
 
@@ -157,22 +178,21 @@ export const PlayingCard = memo(function PlayingCard({
       initial="initial"
       animate="animate"
       exit="exit"
-      transition={{
-        type: 'spring',
-        stiffness: 300,
-        damping: 24,
-        mass: 0.8,
-      }}
-      style={{ perspective: 600 }}
+      transition={
+        animateDeal
+          ? { duration: dealDuration, times: [0, 0.8, 1], ease: LIVE_DEAL_EASE, delay: dealDelay }
+          : { duration: 0.16, ease: LIVE_DEAL_EASE }
+      }
+      style={{ perspective: 600, transformStyle: 'preserve-3d', willChange: 'transform, opacity, filter' }}
     >
       <AnimatePresence mode="wait">
         {showFaceDown ? (
           <motion.div
             key="back"
-            initial={{ rotateY: 90 }}
-            animate={{ rotateY: 0 }}
+            initial={{ opacity: 0.9, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ rotateY: 90 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            transition={{ duration: 0.2, ease: LIVE_FLIP_EASE }}
           >
             <CardBack size={size} />
           </motion.div>
@@ -182,7 +202,7 @@ export const PlayingCard = memo(function PlayingCard({
             initial={{ rotateY: 90 }}
             animate={{ rotateY: 0 }}
             exit={{ rotateY: 90 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
+            transition={{ duration: 0.38, ease: LIVE_FLIP_EASE }}
           >
             <CardFace
               rank={parsed!.rank}
