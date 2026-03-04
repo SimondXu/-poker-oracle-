@@ -21,3 +21,10 @@ node_modules/
 **/.turbo/
 *.tsbuildinfo
 node_modules
+
+# Next.js build output & auto-generated files
+**/.next/
+apps/web/next-env.d.ts
+
+# Claude memory (tool artifacts, not project code)
+memory/
