@@ -1,7 +1,7 @@
-import { chooseBotAction } from '@aipoker/bot-engine';
-import { applyAction, getValidActions, initializeHand, type PlayerActionInput } from '@aipoker/game-engine';
+import { applyAction, initializeHand, type PlayerActionInput } from '@aipoker/game-engine';
 import type { Server, Socket } from 'socket.io';
 
+import { runBotTurns } from '../../game-loop/run-bot-turns.ts';
 import { syncRoomPlayersFromHand } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameState } from '../emitters.ts';
@@ -12,49 +12,6 @@ interface RegisterGameEventsInput {
   socket: Socket;
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
-}
-
-function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
-  return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
-}
-
-function runBotTurns(io: Server, room: RuntimeRoom, memberships: Map<string, RoomMembership>): void {
-  while (room.hand && room.hand.currentActorSeat !== null) {
-    const actor = getRoomPlayerBySeat(room, room.hand.currentActorSeat);
-    if (!actor || !actor.isBot) {
-      return;
-    }
-
-    const valid = getValidActions(room.hand, actor.id);
-    const botAction = chooseBotAction(
-      {
-        canCheck: valid.canCheck,
-        canCall: valid.canCall,
-        callAmount: valid.callAmount
-      },
-      Math.random
-    );
-
-    const action: PlayerActionInput =
-      botAction.type === 'call'
-        ? {
-            playerId: actor.id,
-            type: 'call'
-          }
-        : {
-            playerId: actor.id,
-            type: botAction.type
-          };
-
-    const result = applyAction(room.hand, action);
-    if (!result.ok) {
-      return;
-    }
-
-    room.hand = result.value;
-    syncRoomPlayersFromHand(room);
-    emitGameState(io, room, memberships);
-  }
 }
 
 export function registerGameEvents(input: RegisterGameEventsInput): void {
