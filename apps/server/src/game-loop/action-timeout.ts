@@ -22,6 +22,7 @@ export function scheduleRoomActionTimeout(
     roomActionTimeouts.delete(roomId);
     onTimeout();
   }, timeoutMs);
+  handle.unref?.();
 
   roomActionTimeouts.set(roomId, handle);
 }
