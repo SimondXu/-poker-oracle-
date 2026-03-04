@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { ensureGuestSession } from '@/lib/auth-session';
 import { useAuthStore } from '@/stores/authStore';
 
 function generateId(prefix: string): string {
@@ -12,17 +13,23 @@ export default function HomePage() {
   const router = useRouter();
   const { user, setUser } = useAuthStore();
   const [name, setName] = useState(user?.username ?? '');
+  const [isStarting, setIsStarting] = useState(false);
 
-  const handleEnter = useCallback(() => {
+  const handleEnter = useCallback(async () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed || isStarting) return;
 
-    const userId = user?.id ?? generateId('user');
-    setUser({ id: userId, username: trimmed, isGuest: true, chips: 1000 });
+    setIsStarting(true);
+    try {
+      const guestUser = await ensureGuestSession(trimmed);
+      setUser({ id: guestUser.id, username: guestUser.username, isGuest: true, chips: 1000 });
 
-    const roomId = generateId('room');
-    router.push(`/room/${roomId}`);
-  }, [name, user, setUser, router]);
+      const roomId = generateId('room');
+      router.push(`/room/${roomId}`);
+    } finally {
+      setIsStarting(false);
+    }
+  }, [name, isStarting, setUser, router]);
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -89,7 +96,7 @@ export default function HomePage() {
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleEnter()}
+                    onKeyDown={(e) => e.key === 'Enter' && void handleEnter()}
                     placeholder="输入昵称"
                     maxLength={20}
                     autoFocus
@@ -98,11 +105,11 @@ export default function HomePage() {
                 </label>
 
                 <button
-                  onClick={handleEnter}
-                  disabled={!name.trim()}
+                  onClick={() => void handleEnter()}
+                  disabled={!name.trim() || isStarting}
                   className="group flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] border border-[#f6d57a]/55 bg-gradient-to-r from-[#c6a33d] via-[#dfbe65] to-[#efcf7e] px-4 text-[16px] font-semibold tracking-[0.03em] text-[#241600] shadow-[0_10px_30px_rgba(214,178,84,0.25)] transition-all hover:brightness-105 hover:shadow-[0_16px_36px_rgba(214,178,84,0.35)] disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  进入训练室
+                  {isStarting ? '连接中...' : '进入训练室'}
                   <span className="transition-transform group-hover:translate-x-0.5">→</span>
                 </button>
               </div>
