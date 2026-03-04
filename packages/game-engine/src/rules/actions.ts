@@ -1,6 +1,6 @@
 import type { ApplyActionError, EngineResult, HandInitPlayerState, HandPhase, HandState, PlayerActionInput, ValidActions } from '../state/types.ts';
-import { settleUncontestedPots } from '../settlement/payouts.ts';
 import { buildSidePots } from '../settlement/side-pots.ts';
+import { settleShowdownPots } from '../settlement/showdown.ts';
 import { err, ok } from './result.ts';
 import {
   computePotTotal,
@@ -124,7 +124,7 @@ function buildHandEndState(
   betting: HandState['betting']
 ): HandState {
   const pots = buildSidePots(players);
-  const payouts = settleUncontestedPots(players, pots);
+  const payouts = settleShowdownPots(players, pots, previous.communityCards, previous.buttonMarkerSeat);
 
   return {
     ...previous,

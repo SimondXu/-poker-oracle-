@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyAction, buildSidePots, createDeck, getValidActions, initializeHand } from './index.ts';
+import { applyAction, buildSidePots, createDeck, getValidActions, initializeHand, settleShowdownPots } from './index.ts';
 
 function sequenceRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -403,10 +403,11 @@ test('street progression deals turn and river then ends hand after river betting
       eligiblePlayerIds: ['p0', 'p1', 'p2']
     }
   ]);
-  assert.deepEqual(riverP0Check.value.payouts, []);
-  for (const player of riverP0Check.value.players) {
-    assert.equal(player.stack, 980);
-  }
+  const totalPayout = riverP0Check.value.payouts.reduce((sum, payout) => sum + payout.amount, 0);
+  assert.equal(totalPayout, 60);
+  assert.equal(riverP0Check.value.payouts.length > 0, true);
+  const totalStacks = riverP0Check.value.players.reduce((sum, player) => sum + player.stack, 0);
+  assert.equal(totalStacks, 3000);
 });
 
 test('preflop all-in runout deals remaining board and reaches hand_end', () => {
@@ -447,7 +448,10 @@ test('preflop all-in runout deals remaining board and reaches hand_end', () => {
       eligiblePlayerIds: ['p0', 'p1', 'p2']
     }
   ]);
-  assert.deepEqual(p2AllIn.value.payouts, []);
+  const totalPayout = p2AllIn.value.payouts.reduce((sum, payout) => sum + payout.amount, 0);
+  assert.equal(totalPayout, 300);
+  const totalStacks = p2AllIn.value.players.reduce((sum, player) => sum + player.stack, 0);
+  assert.equal(totalStacks, 300);
 });
 
 function committedPlayer(
@@ -466,6 +470,18 @@ function committedPlayer(
     holeCards: [],
     hasActedThisStreet: false,
     matchedBetToMatchAtLastAction: 0
+  };
+}
+
+function showdownCommittedPlayer(
+  id: string,
+  seatIndex: number,
+  handCommitted: number,
+  holeCards: [string, string]
+) {
+  return {
+    ...committedPlayer(id, seatIndex, handCommitted, 'active'),
+    holeCards: [...holeCards]
   };
 }
 
@@ -506,6 +522,53 @@ test('buildSidePots includes folded contributions and merges equal-eligible side
       eligiblePlayerIds: ['c']
     }
   ]);
+});
+
+test('settleShowdownPots awards contested pot to best five-card hand', () => {
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['Ad', 'Ac']),
+    showdownCommittedPlayer('b', 1, 100, ['Kc', 'Kh'])
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 200, eligiblePlayerIds: ['a', 'b'] }],
+    ['As', 'Kd', 'Qc', '7h', '2d'],
+    1
+  );
+
+  assert.deepEqual(payouts, [
+    {
+      potIndex: 0,
+      playerId: 'a',
+      amount: 200
+    }
+  ]);
+  const a = players.find((player) => player.id === 'a');
+  const b = players.find((player) => player.id === 'b');
+  assert.equal(a?.stack, 200);
+  assert.equal(b?.stack, 0);
+});
+
+test('settleShowdownPots splits tied pot and gives odd chip to first winner left of button', () => {
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['2c', '3d']),
+    showdownCommittedPlayer('b', 2, 100, ['4c', '5d'])
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 101, eligiblePlayerIds: ['a', 'b'] }],
+    ['Ah', 'Kd', 'Qc', 'Js', 'Tc'],
+    1
+  );
+
+  const aPayout = payouts.find((payout) => payout.playerId === 'a');
+  const bPayout = payouts.find((payout) => payout.playerId === 'b');
+  assert.equal(aPayout?.amount, 50);
+  assert.equal(bPayout?.amount, 51);
+  const a = players.find((player) => player.id === 'a');
+  const b = players.find((player) => player.id === 'b');
+  assert.equal(a?.stack, 50);
+  assert.equal(b?.stack, 51);
 });
 
 test('hand_end builds pot with folded contributions and surviving eligible player', () => {
