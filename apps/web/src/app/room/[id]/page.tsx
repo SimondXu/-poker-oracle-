@@ -204,7 +204,15 @@ export default function RoomPage({ params }: RoomPageProps) {
   const humanPlayers = roomState?.players.filter((p) => !p.isBot) ?? [];
   const allHumansReady = humanPlayers.length > 0 && humanPlayers.every((p) => p.isReady);
   const hasEnoughPlayers = (roomState?.playerCount ?? 0) >= 2;
-  const canStart = allHumansReady && hasEnoughPlayers && !roomState?.isPlaying;
+  const activeStackPlayerCount = roomState?.table.activeStackPlayerCount ?? 0;
+  const isTableFinished = roomState?.table.isTableFinished ?? false;
+  const selfPlayer = roomState?.players.find((p) => p.id === playerId) ?? null;
+  const canSelfStart = selfPlayer ? (!selfPlayer.isBot && selfPlayer.stack > 0) : true;
+  const canStart = allHumansReady
+    && hasEnoughPlayers
+    && !roomState?.isPlaying
+    && canSelfStart
+    && (roomState?.table.canStartNextHand ?? hasEnoughPlayers);
 
   const handleStartGame = useCallback(() => {
     startGame(() => router.push(`/game/${roomId}`));
@@ -328,12 +336,17 @@ export default function RoomPage({ params }: RoomPageProps) {
               style={{ boxShadow: 'var(--shadow-panel), var(--shadow-hairline)' }}
             >
               <h2 className="text-[12px] uppercase tracking-[0.2em] text-[var(--color-text-muted)]">房间状态</h2>
-              <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="mt-4 grid grid-cols-4 gap-2">
                 <Stat label="玩家数" value={roomState?.playerCount ?? 0} />
                 <Stat
                   label="已准备"
                   value={roomState ? humanPlayers.filter((p) => p.isReady).length : 0}
                   color="var(--color-success)"
+                />
+                <Stat
+                  label="有效筹码"
+                  value={activeStackPlayerCount}
+                  color="var(--color-gold)"
                 />
                 <div className="text-center">
                   <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-muted)]">状态</div>
@@ -355,20 +368,26 @@ export default function RoomPage({ params }: RoomPageProps) {
             >
               <h3 className="text-[12px] uppercase tracking-[0.2em] text-[var(--color-text-muted)]">开局控制</h3>
               <div className="mt-4 space-y-3.5">
+                {isTableFinished && (
+                  <div className="rounded-xl border border-[var(--color-gold)]/32 bg-[var(--color-gold)]/10 px-3 py-2 text-[12px] leading-[1.55] text-[var(--color-text-secondary)]">
+                    本场已结束，请返回大厅重新建局。
+                  </div>
+                )}
+
                 {!roomState?.isPlaying && (
                   <motion.button
                     whileTap={{ scale: 0.98 }}
                     onClick={markReady}
-                    disabled={isReady || !isConnected}
+                    disabled={isReady || !isConnected || !canSelfStart}
                     className={[
                       'h-[50px] w-full rounded-[14px] border text-[15px] font-semibold transition-all',
                       isReady
                         ? 'cursor-default border-[var(--color-success)]/45 bg-[var(--color-success-dim)] text-[var(--color-success)]'
                         : 'border-[var(--color-success)]/30 bg-[rgba(76,175,80,0.1)] text-[var(--color-success)] hover:border-[var(--color-success)]/45 hover:bg-[rgba(76,175,80,0.16)]',
-                      !isConnected && 'cursor-not-allowed opacity-50',
+                      (!isConnected || !canSelfStart) && 'cursor-not-allowed opacity-50',
                     ].join(' ')}
                   >
-                    {isReady ? '✓ 已准备' : '我已准备'}
+                    {canSelfStart ? (isReady ? '✓ 已准备' : '我已准备') : '已淘汰'}
                   </motion.button>
                 )}
 
@@ -396,9 +415,23 @@ export default function RoomPage({ params }: RoomPageProps) {
                   </motion.button>
                 )}
 
+                {!roomState?.isPlaying && !canSelfStart && (
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => router.push(`/game/${roomId}`)}
+                    className="h-[42px] w-full rounded-[12px] border border-white/12 bg-white/[0.04] text-[13px] font-semibold text-[var(--color-text-secondary)] transition-all hover:border-[var(--color-gold)]/34 hover:text-[var(--color-text-primary)]"
+                  >
+                    进入牌桌观战
+                  </motion.button>
+                )}
+
                 {!roomState?.isPlaying && (
                   <p className="text-[13px] leading-[1.6] text-[var(--color-text-muted)]">
-                    {!hasEnoughPlayers
+                    {isTableFinished
+                      ? '本场已结束，当前房间不再继续自动开局'
+                      : !canSelfStart
+                        ? '你已淘汰，可进入牌桌观战或返回大厅重新建局。'
+                      : !hasEnoughPlayers
                       ? '至少需要 2 名玩家（可添加机器人）'
                       : !allHumansReady
                         ? '等待所有真人玩家点击“我已准备”'

@@ -3,9 +3,14 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { ensureGuestSession } from '@/lib/auth-session';
+import { getGameStartErrorMessage } from '@/lib/game-start-errors';
 import { getSocket, connectSocket, disconnectSocket } from '@/lib/socket';
 import { useGameStore } from '@/stores/gameStore';
-import type { ActionType, GameActionRequiredEvent, GameStateEvent, HandState } from '@aipoker/shared';
+import { evaluateHandRanking, getHandRankDisplayName } from '@/lib/hand-evaluator';
+import type { ActionType, GameActionRequiredEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
+import type { PayoutInfo, HandResult } from '@/stores/gameStore';
+
+const GAME_START_ACK_TIMEOUT_MS = 5000;
 
 /**
  * useSocket — 管理 Socket.io 连接与游戏事件绑定
@@ -19,11 +24,16 @@ export function useSocket(
   enabled = true,
 ) {
   const seqRef = useRef(0);
+  const phaseTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const {
     setHandState,
     setValidActions,
     clearValidActions,
-    setWinnerState,
+    setHandResult,
+    setHandResultPhase,
+    clearHandResult,
+    markNextHandRequested,
+    clearNextHandRequested,
     setConnectionStatus,
     setError,
     reset,
@@ -60,6 +70,7 @@ export function useSocket(
 
     const onDisconnect = () => {
       setConnectionStatus('disconnected');
+      clearNextHandRequested();
       toast.warning('连接断开，正在重连...', { id: 'reconnect' });
     };
 
@@ -74,24 +85,86 @@ export function useSocket(
 
     // ── 游戏事件 ──
     const onGameState = (payload: GameStateEvent | HandState) => {
-      if ('hand' in payload) {
-        setHandState(payload.hand, payload.stateVersion);
-        return;
+      const hand = 'hand' in payload ? payload.hand : payload;
+      const version = 'stateVersion' in payload ? payload.stateVersion : undefined;
+
+      // 新手牌开始时清除上一手的结果状态
+      if (hand.phase === 'betting_preflop') {
+        for (const timer of phaseTimersRef.current) clearTimeout(timer);
+        phaseTimersRef.current = [];
+        clearHandResult();
+        clearNextHandRequested();
       }
 
-      setHandState(payload);
+      setHandState(hand, version);
     };
 
     const onActionRequired = (data: GameActionRequiredEvent) => {
       setValidActions(data.validActions, data.timeoutMs);
     };
 
-    const onHandResult = (result: { winnerCards?: string[] }) => {
+    const onHandResult = (result: HandResultEvent) => {
       clearValidActions();
-      if (result.winnerCards?.length) {
-        setWinnerState(result.winnerCards);
-        setTimeout(() => useGameStore.getState().clearWinnerState(), 3000);
+      clearNextHandRequested();
+
+      // 清除旧的phase定时器
+      for (const timer of phaseTimersRef.current) clearTimeout(timer);
+      phaseTimersRef.current = [];
+
+      // 从 gameStore 获取当前手牌状态中的玩家信息和公共牌
+      const currentHand = useGameStore.getState().hand;
+      const communityCards = currentHand?.communityCards ?? [];
+
+      // 聚合每个玩家的总收益
+      const payoutsByPlayer = new Map<string, number>();
+      for (const p of result.payouts) {
+        payoutsByPlayer.set(p.playerId, (payoutsByPlayer.get(p.playerId) ?? 0) + p.amount);
       }
+
+      // 构建 PayoutInfo 列表
+      const payoutInfos: PayoutInfo[] = [];
+      for (const [pid, amount] of payoutsByPlayer) {
+        // 从 result.players 或 currentHand 中找玩家信息
+        const resultPlayer = result.players.find((p) => p.id === pid);
+        const handPlayer = currentHand?.players.find((p) => p.id === pid);
+        const name = resultPlayer?.name ?? handPlayer?.name ?? '玩家';
+        const holeCards = resultPlayer?.holeCards ?? handPlayer?.holeCards ?? [];
+
+        let handRankName = '';
+        let bestCards: string[] = [];
+
+        const canEvaluateShowdown = holeCards.length >= 2 && communityCards.length >= 5;
+        if (canEvaluateShowdown) {
+          const evaluation = evaluateHandRanking(holeCards, communityCards);
+          handRankName = getHandRankDisplayName(evaluation.category);
+          bestCards = evaluation.bestCards;
+        }
+
+        payoutInfos.push({ playerId: pid, playerName: name, amount, handRankName, bestCards });
+      }
+
+      const winnerIds = [...payoutsByPlayer.keys()];
+
+      const handResultData: HandResult = {
+        payouts: payoutInfos,
+        winnerIds,
+        potTotal: result.potTotal,
+        phase: 'announcing',
+        table: result.table,
+      };
+
+      setHandResult(handResultData);
+
+      // 阶段自动过渡
+      const t1 = setTimeout(() => {
+        setHandResultPhase('showing');
+      }, 2500);
+
+      const t2 = setTimeout(() => {
+        setHandResultPhase('done');
+      }, 4000);
+
+      phaseTimersRef.current = [t1, t2];
     };
 
     const onError = (data: { code: string; message: string }) => {
@@ -128,6 +201,8 @@ export function useSocket(
 
     return () => {
       cancelled = true;
+      for (const timer of phaseTimersRef.current) clearTimeout(timer);
+      phaseTimersRef.current = [];
       socket.emit('room:leave', {}, () => {});
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
@@ -184,5 +259,41 @@ export function useSocket(
     [enabled, playerId, roomId],
   );
 
-  return { sendAction };
+  /** 请求发下一手牌 */
+  const startNextHand = useCallback((source: 'manual' | 'auto' | 'hotkey' = 'manual'): boolean => {
+    if (!enabled || !roomId) return false;
+
+    const store = useGameStore.getState();
+    if (store.nextHandRequested) return false;
+
+    markNextHandRequested();
+    const socket = getSocket();
+    socket.timeout(GAME_START_ACK_TIMEOUT_MS).emit(
+      'game:start',
+      { roomId },
+      (timeoutError: Error | null, res?: { ok: boolean; error?: string }) => {
+        if (timeoutError || !res) {
+          clearNextHandRequested();
+          if (source === 'manual') {
+            toast.error('请求超时，请稍后重试');
+          }
+          return;
+        }
+
+        if (res.ok) {
+          return;
+        }
+
+        clearNextHandRequested();
+        if (source !== 'manual' && res.error === 'hand_already_started') {
+          return;
+        }
+
+        toast.error(getGameStartErrorMessage(res.error, '开始下一手失败'));
+      },
+    );
+    return true;
+  }, [enabled, roomId, clearNextHandRequested, markNextHandRequested]);
+
+  return { sendAction, startNextHand };
 }

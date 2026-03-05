@@ -102,6 +102,31 @@
   border: 1px solid var(--color-glass-border-strong);
 }
 
+/* ── Seat（玩家卡片）质感工具类 ── */
+@utility seat-surface {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.03) 38%,
+      rgba(0, 0, 0, 0.14) 100%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(10, 18, 30, 0.92),
+      rgba(12, 21, 34, 0.90) 54%,
+      rgba(9, 15, 24, 0.94)
+    );
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-card), var(--shadow-hairline);
+}
+
+@utility seat-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(0, 0, 0, 0.14) 100%);
+}
+
 @utility text-gold {
   color: var(--color-gold);
 }

@@ -3,13 +3,15 @@
 import { useEffect, useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { ensureGuestSession } from '@/lib/auth-session';
+import { getGameStartErrorMessage } from '@/lib/game-start-errors';
 import { getSocket, connectSocket, disconnectSocket } from '@/lib/socket';
-import type { BotPersonality, RoomStateEvent } from '@aipoker/shared';
+import type { BotPersonality, RoomStateEvent, TableLifecycleSnapshot } from '@aipoker/shared';
 
 export interface RoomPlayer {
   id: string;
   name: string;
   seatIndex: number;
+  stack: number;
   isBot: boolean;
   botStrategy: BotPersonality | null;
   isReady: boolean;
@@ -20,6 +22,7 @@ export interface RoomState {
   playerCount: number;
   readyCount: number;
   isPlaying: boolean;
+  table: TableLifecycleSnapshot;
 }
 
 export function useRoomSocket(roomId: string, playerId: string, playerName: string) {
@@ -54,6 +57,7 @@ export function useRoomSocket(roomId: string, playerId: string, playerName: stri
         playerCount: state.playerCount,
         readyCount: state.readyCount,
         isPlaying: state.isPlaying,
+        table: state.table,
       });
     };
 
@@ -149,12 +153,7 @@ export function useRoomSocket(roomId: string, playerId: string, playerName: stri
           if (res.ok) {
             onSuccess();
           } else {
-            const messages: Record<string, string> = {
-              players_not_ready: '需要所有玩家准备完毕',
-              not_enough_players: '至少需要 2 名玩家',
-              hand_already_started: '游戏已经开始',
-            };
-            toast.error(messages[res.error ?? ''] ?? res.error ?? '开始游戏失败');
+            toast.error(getGameStartErrorMessage(res.error, '开始游戏失败'));
           }
         },
       );

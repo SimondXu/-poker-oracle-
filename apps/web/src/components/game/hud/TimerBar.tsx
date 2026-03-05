@@ -58,9 +58,15 @@ export const TimerBar = memo(function TimerBar({
   const isCritical = progress < 0.1;
 
   return (
-    <div className={cn('flex items-center gap-2', className)}>
+    <div className={cn('flex items-center gap-2.5', className)}>
       {/* 进度条 */}
-      <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-deep)]">
+      <div
+        className={cn(
+          'relative h-2.5 flex-1 overflow-hidden rounded-full',
+          'bg-[var(--color-bg-deep)] ring-1 ring-white/10',
+          'shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]',
+        )}
+      >
         <motion.div
           className="absolute inset-y-0 left-0 rounded-full origin-left"
           style={{
@@ -72,9 +78,9 @@ export const TimerBar = memo(function TimerBar({
                 ? 'linear-gradient(90deg, var(--color-warning), var(--color-error))'
                 : 'linear-gradient(90deg, var(--color-success), var(--color-gold))',
             boxShadow: isCritical
-              ? '0 0 8px var(--color-error)'
+              ? '0 0 6px var(--color-error)'
               : isUrgent
-                ? '0 0 6px var(--color-warning)'
+                ? '0 0 4px var(--color-warning)'
                 : 'none',
           }}
           transition={{ duration: 0.05 }}
@@ -84,7 +90,9 @@ export const TimerBar = memo(function TimerBar({
       {/* 秒数 */}
       <span
         className={cn(
-          'w-9 text-right font-chips text-[13px] font-semibold leading-none transition-colors',
+          'inline-flex h-7 w-[46px] items-center justify-center',
+          'rounded-md border border-white/10 bg-white/5 px-1.5 py-1',
+          'font-chips text-[12px] font-semibold leading-none transition-colors',
           isCritical ? 'text-[var(--color-error)]' :
           isUrgent   ? 'text-[var(--color-warning)]' :
                        'text-[var(--color-text-secondary)]',
