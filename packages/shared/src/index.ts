@@ -121,6 +121,17 @@ export interface ValidActions {
   canAllIn: boolean;
 }
 
+export interface TableLifecycleSnapshot {
+  activeStackPlayerCount: number;
+  activeHumanStackPlayerCount: number;
+  activeBotStackPlayerCount: number;
+  isTableFinished: boolean;
+  canStartNextHand: boolean;
+  isBotsOnlyContinuation: boolean;
+  championPlayerId: string | null;
+  championPlayerName: string | null;
+}
+
 export interface RoomStateEvent {
   roomId: string;
   stateVersion: number;
@@ -128,6 +139,7 @@ export interface RoomStateEvent {
     id: string;
     name: string;
     seatIndex: number;
+    stack: number;
     isBot: boolean;
     botStrategy: BotPersonality | null;
     isReady: boolean;
@@ -135,6 +147,7 @@ export interface RoomStateEvent {
   playerCount: number;
   readyCount: number;
   isPlaying: boolean;
+  table: TableLifecycleSnapshot;
 }
 
 export type RoomState = RoomStateEvent;
@@ -152,3 +165,42 @@ export interface GameActionRequiredEvent {
   validActions: ValidActions;
   timeoutMs: number;
 }
+
+export interface HandResultPayout {
+  potIndex: number;
+  playerId: string;
+  amount: number;
+}
+
+export interface HandResultPlayerSnapshot {
+  id: string;
+  name: string;
+  stack: number;
+  status: PlayerStatus;
+  holeCards: Card[];
+}
+
+export interface HandResultEvent {
+  roomId: string;
+  phase: 'hand_end';
+  potTotal: number;
+  pots: Pot[];
+  payouts: HandResultPayout[];
+  players: HandResultPlayerSnapshot[];
+  table: TableLifecycleSnapshot;
+  stateVersion: number;
+}
+
+export interface GameActionAppliedEvent {
+  roomId: string;
+  stateVersion: number;
+  type: 'action_applied';
+  action: {
+    playerId: string;
+    type: ActionType;
+    amount: number;
+    phase: Phase;
+  };
+}
+
+export type GameEvent = GameActionAppliedEvent;

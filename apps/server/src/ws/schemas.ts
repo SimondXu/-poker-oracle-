@@ -66,6 +66,8 @@ export type GameStartAck =
         | 'not_room_member'
         | 'players_not_ready'
         | 'hand_already_started'
+        | 'table_finished'
+        | 'starter_not_active'
         | 'not_enough_players'
         | 'invalid_blind_structure';
     };

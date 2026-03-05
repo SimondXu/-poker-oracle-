@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import type { GuestSession } from '../../auth/session-token.ts';
 import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop/action-timeout.ts';
+import { clearRoomNextHandTimeout, type RoomNextHandTimeouts } from '../../game-loop/auto-next-hand.ts';
 import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameStateToSocket, emitRoomState } from '../emitters.ts';
@@ -23,12 +24,13 @@ interface RegisterRoomEventsInput {
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
   roomActionTimeouts: RoomActionTimeouts;
+  roomNextHandTimeouts: RoomNextHandTimeouts;
   authStrict: boolean;
   actionTimeoutMs: number;
 }
 
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
-  const { io, socket, rooms, memberships, roomActionTimeouts, authStrict, actionTimeoutMs } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts, roomNextHandTimeouts, authStrict, actionTimeoutMs } = input;
 
   function shouldKeepSeatDuringHand(room: RuntimeRoom, playerId: string): boolean {
     return (
@@ -101,6 +103,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
         }
         if (previousRoom.players.size === 0) {
           clearRoomActionTimeout(roomActionTimeouts, previousMembership.roomId);
+          clearRoomNextHandTimeout(roomNextHandTimeouts, previousMembership.roomId);
           rooms.delete(previousMembership.roomId);
         }
         emitRoomState(io, previousRoom);
@@ -256,6 +259,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     if (room.players.size === 0) {
       clearRoomActionTimeout(roomActionTimeouts, membership.roomId);
+      clearRoomNextHandTimeout(roomNextHandTimeouts, membership.roomId);
       rooms.delete(membership.roomId);
       return;
     }
@@ -284,6 +288,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     removePlayerFromRoom(room, membership.playerId);
     if (room.players.size === 0) {
       clearRoomActionTimeout(roomActionTimeouts, membership.roomId);
+      clearRoomNextHandTimeout(roomNextHandTimeouts, membership.roomId);
       rooms.delete(membership.roomId);
       return;
     }

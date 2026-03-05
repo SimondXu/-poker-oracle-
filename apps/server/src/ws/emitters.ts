@@ -1,10 +1,28 @@
-import { getValidActions, type HandState as EngineHandState, type ValidActions as EngineValidActions } from '@aipoker/game-engine';
-import type { ValidActions as ClientValidActions } from '@aipoker/shared';
+import { getValidActions, type HandPhase, type HandState as EngineHandState, type ValidActions as EngineValidActions } from '@aipoker/game-engine';
+import type { GameEvent as ClientGameEvent, HandResultEvent, ValidActions as ClientValidActions } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
+import { getTableLifecycleSnapshot } from '../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildHandResultPayload } from './view-models/hand-result.ts';
 import { buildViewerHand } from './view-models/viewer-hand.ts';
+
+function mapEnginePhaseToClientPhase(phase: HandPhase): ClientGameEvent['action']['phase'] {
+  switch (phase) {
+    case 'betting_preflop':
+      return 'betting_preflop';
+    case 'betting_flop':
+      return 'betting_flop';
+    case 'betting_turn':
+      return 'betting_turn';
+    case 'betting_river':
+      return 'betting_river';
+    case 'street_complete':
+      return 'settle_pots';
+    case 'hand_end':
+      return 'hand_end';
+  }
+}
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
@@ -82,10 +100,11 @@ function emitHandResult(io: Server, room: RuntimeRoom): void {
     return;
   }
 
-  io.to(room.id).emit('game:hand_result', {
+  const event: HandResultEvent = {
     ...payload,
     stateVersion: room.stateVersion
-  });
+  };
+  io.to(room.id).emit('game:hand_result', event);
 }
 
 function emitGameEvents(io: Server, room: RuntimeRoom): void {
@@ -99,12 +118,18 @@ function emitGameEvents(io: Server, room: RuntimeRoom): void {
 
   const newActions = room.hand.actions.slice(room.lastBroadcastActionCount);
   for (const action of newActions) {
-    io.to(room.id).emit('game:event', {
+    const event: ClientGameEvent = {
       roomId: room.id,
       stateVersion: room.stateVersion,
       type: 'action_applied',
-      action
-    });
+      action: {
+        playerId: action.playerId,
+        type: action.type,
+        amount: action.amount,
+        phase: mapEnginePhaseToClientPhase(action.phase),
+      },
+    };
+    io.to(room.id).emit('game:event', event);
   }
 
   room.lastBroadcastActionCount = room.hand.actions.length;
@@ -115,6 +140,7 @@ export function emitRoomState(io: Server, room: RuntimeRoom): void {
     id: p.id,
     name: p.name,
     seatIndex: p.seatIndex,
+    stack: p.stack,
     isBot: p.isBot,
     botStrategy: p.botStrategy ?? null,
     isReady: room.readyPlayerIds.has(p.id),
@@ -126,6 +152,7 @@ export function emitRoomState(io: Server, room: RuntimeRoom): void {
     playerCount: room.players.size,
     readyCount: room.readyPlayerIds.size,
     isPlaying: room.hand !== null && room.hand.phase !== 'hand_end',
+    table: getTableLifecycleSnapshot(room),
   });
 }
 
@@ -184,10 +211,11 @@ export function emitGameStateToSocket(
   if (room.hand.phase === 'hand_end') {
     const handResultPayload = buildHandResultPayload(room);
     if (handResultPayload) {
-      io.to(socketId).emit('game:hand_result', {
+      const event: HandResultEvent = {
         ...handResultPayload,
         stateVersion: room.stateVersion
-      });
+      };
+      io.to(socketId).emit('game:hand_result', event);
     }
   }
 }

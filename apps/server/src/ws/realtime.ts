@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import { DEFAULT_AUTH_COOKIE_NAME, parseCookies } from '../auth/cookies.ts';
 import { verifyGuestSessionToken } from '../auth/session-token.ts';
 import type { RoomActionTimeouts } from '../game-loop/action-timeout.ts';
+import type { RoomNextHandTimeouts } from '../game-loop/auto-next-hand.ts';
 import type { RoomTaskQueues } from '../rooms/room-queue.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { registerGameEvents } from './handlers/game-events.ts';
@@ -32,6 +33,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const rooms = new Map<string, RuntimeRoom>();
   const memberships = new Map<string, RoomMembership>();
   const roomActionTimeouts: RoomActionTimeouts = new Map();
+  const roomNextHandTimeouts: RoomNextHandTimeouts = new Map();
   const roomTaskQueues: RoomTaskQueues = new Map();
 
   io.use((socket, next) => {
@@ -57,6 +59,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       rooms,
       memberships,
       roomActionTimeouts,
+      roomNextHandTimeouts,
       authStrict,
       actionTimeoutMs
     });
@@ -67,6 +70,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       rooms,
       memberships,
       roomActionTimeouts,
+      roomNextHandTimeouts,
       roomTaskQueues,
       actionTimeoutMs
     });

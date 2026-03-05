@@ -443,7 +443,10 @@ test('room:ready marks membership as ready and updates room state', async (t) =>
   const roomState = await roomStatePromise;
   assert.equal(roomState.readyCount, 1);
   assert.equal(roomState.table.activeStackPlayerCount, 1);
+  assert.equal(roomState.table.activeHumanStackPlayerCount, 1);
+  assert.equal(roomState.table.activeBotStackPlayerCount, 0);
   assert.equal(roomState.table.canStartNextHand, false);
+  assert.equal(roomState.table.isBotsOnlyContinuation, false);
   assert.equal(roomState.table.isTableFinished, false);
   assert.equal(roomState.players[0]?.stack, 1000);
 });
@@ -891,7 +894,10 @@ test('game:hand_result is broadcast when hand reaches hand_end', async (t) => {
   assert.equal(Array.isArray(aliceHandResult.players), true);
   assert.equal(aliceHandResult.players.length, 2);
   assert.equal(aliceHandResult.table.activeStackPlayerCount, 2);
+  assert.equal(aliceHandResult.table.activeHumanStackPlayerCount, 2);
+  assert.equal(aliceHandResult.table.activeBotStackPlayerCount, 0);
   assert.equal(typeof aliceHandResult.table.canStartNextHand, 'boolean');
+  assert.equal(typeof aliceHandResult.table.isBotsOnlyContinuation, 'boolean');
   assert.equal(typeof aliceHandResult.table.isTableFinished, 'boolean');
   const aliceSnapshot = aliceHandResult.players.find((player: any) => player.id === 'p0');
   const bobSnapshot = aliceHandResult.players.find((player: any) => player.id === 'p1');
@@ -1344,6 +1350,97 @@ test('disconnected in-hand player is removed after hand_end so next hand can sta
     buttonMarkerSeat: 1
   });
   assert.deepEqual(nextStartAck, { ok: true });
+});
+
+test('bots-only table auto-starts next hand after hand_end', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, { actionTimeoutMs: 40 });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const observer = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    observer.close();
+  });
+
+  await once(alice, 'connect');
+  await once(observer, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'room-bots-auto-next',
+    smallBlind: 10,
+    bigBlind: 20
+  });
+
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'room-bots-auto-next',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+
+  await emitWithAck(observer, 'room:join', {
+    roomId: 'room-bots-auto-next',
+    playerId: 'bot-1',
+    playerName: 'Fish Bot 1',
+    seatIndex: 1,
+    stack: 1000,
+    isBot: true,
+    botStrategy: 'fish'
+  });
+
+  await emitWithAck(observer, 'room:join', {
+    roomId: 'room-bots-auto-next',
+    playerId: 'bot-2',
+    playerName: 'Fish Bot 2',
+    seatIndex: 2,
+    stack: 1000,
+    isBot: true,
+    botStrategy: 'fish'
+  });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'room-bots-auto-next',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  alice.close();
+
+  const firstHandResult = await waitForHandResult(
+    observer,
+    (payload) => payload.roomId === 'room-bots-auto-next' && payload.phase === 'hand_end' && payload.stateVersion >= 1,
+    20_000
+  );
+  assert.equal(firstHandResult.table.isBotsOnlyContinuation, true);
+  assert.equal(firstHandResult.table.activeHumanStackPlayerCount, 0);
+
+  const unauthorizedStartAck = await emitWithAck<{ ok: boolean; error?: string }>(observer, 'game:start', {
+    roomId: 'room-bots-auto-next',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(unauthorizedStartAck, { ok: false, error: 'not_room_member' });
+
+  const nextHandState = await waitForState(
+    observer,
+    (payload) =>
+      payload.roomId === 'room-bots-auto-next'
+      && payload.hand.handNumber >= 2
+      && payload.hand.phase !== 'hand_end',
+    20_000
+  );
+  assert.equal(nextHandState.hand.handNumber >= 2, true);
 });
 
 test('game:state hides opponent hole cards before hand_end', async (t) => {
