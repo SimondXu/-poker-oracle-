@@ -601,6 +601,25 @@ MVP 推荐：
 - 玩家 `stack==0` 且不在本手参与任何 pot 争夺后，标记为 `out`。
 - 当除 1 人外其余均 `out`：锦标赛结束，冠军 = 最后存活者。
 
+### 8.5 MVP 运行态终局冻结（当前实现）
+
+- 终局判定（服务端权威）：
+  - `handNumber > 0` 且 `stack > 0` 玩家数 `<= 1` 时，`isTableFinished = true`。
+  - `canStartNextHand = false`，客户端不得再自动/手动发下一手。
+- 发牌权限（服务端权威）：
+  - 即使 `canStartNextHand = true`，也仅 `stack > 0 && !isBot` 的请求者可触发 `game:start`。
+  - 已淘汰玩家或非真人请求会收到 `starter_not_active`。
+- Bot-only 续局分支：
+  - 当 `canStartNextHand = true` 且 `activeHumanStackPlayerCount = 0` 且 `activeBotStackPlayerCount >= 2` 时，
+    `isBotsOnlyContinuation = true`。
+  - 该分支由服务端在 `hand_end` 后自动 `1500ms` 续局，不依赖客户端按钮。
+- 冠军定义：
+  - 仅在 `isTableFinished = true` 且唯一 `stack > 0` 玩家存在时，认定该玩家为冠军。
+- 交互约束：
+  - 终局后主路径为“返回大厅”，不再继续发牌。
+  - 已淘汰玩家可继续观战，但不再拥有发下一手权限。
+  - 若后续有新玩家加入并恢复到 `stack > 0` 玩家数 `>= 2`，可重新开局（重新进入可发牌态）。
+
 ---
 
 ## 9. 自由模式（练习桌）补充规则 [MVP]

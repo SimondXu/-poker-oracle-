@@ -31,6 +31,9 @@ type Phase =
   | 'deal_river'| 'betting_river'
   | 'showdown'  | 'settle_pots' | 'hand_end';
 
+// 说明：MVP 运行态不会单独广播 showdown 快照，
+// 客户端揭示行为以 hand_end 为准。
+
 // ── 动作类型（与 gameplay-rules.md §5.1 对齐）──
 
 type ActionType = 'fold' | 'check' | 'call' | 'bet' | 'raise_to' | 'all_in';
@@ -116,6 +119,59 @@ interface ValidActions {
   maxBetOrRaiseTo: number;     // = streetCommitted + stack（all-in 上限，raise_to(to) 的 to）
   canAllIn: boolean;
 }
+
+interface TableLifecycleSnapshot {
+  activeStackPlayerCount: number;   // stack > 0 的玩家数量
+  activeHumanStackPlayerCount: number; // stack > 0 且 !isBot
+  activeBotStackPlayerCount: number;   // stack > 0 且 isBot
+  isTableFinished: boolean;         // 本场是否已结束（freezeout 终局）
+  canStartNextHand: boolean;        // 是否允许继续发下一手
+  isBotsOnlyContinuation: boolean;  // 仅剩 Bot 且可继续时为 true
+  championPlayerId: PlayerId | null;
+  championPlayerName: string | null;
+}
+
+// ── 结算事件（hand_end）──
+
+interface HandResultPayout {
+  potIndex: number;
+  playerId: PlayerId;
+  amount: number;
+}
+
+interface HandResultPlayerSnapshot {
+  id: PlayerId;
+  name: string;
+  stack: number;
+  status: PlayerStatus;
+  holeCards: Card[];           // hand_end 时已揭示
+}
+
+interface HandResult {
+  roomId: RoomId;
+  phase: 'hand_end';
+  potTotal: number;
+  pots: Pot[];
+  payouts: HandResultPayout[];
+  players: HandResultPlayerSnapshot[];
+  table: TableLifecycleSnapshot;
+  stateVersion: number;
+}
+
+// ── 增量游戏事件（动画驱动）──
+
+type GameEvent =
+  | {
+      roomId: RoomId;
+      stateVersion: number;
+      type: 'action_applied';
+      action: {
+        playerId: PlayerId;
+        type: ActionType;
+        amount: number;
+        phase: Phase;
+      };
+    };
 ```
 
 ---
@@ -274,7 +330,7 @@ type AckFn = (response: { ok: true } | { ok: false; error: string }) => void;
 ```typescript
 interface ServerEvents {
   'room:state':           (state: RoomState) => void;
-  'game:state':           (state: ClientHandState) => void;  // 已清空他人手牌
+  'game:state':           (state: { roomId: RoomId; stateVersion: number; hand: HandState }) => void; // 已清空他人手牌
   'game:event':           (event: GameEvent) => void;        // 增量事件（动画用）
   'game:action_required': (data: {
     validActions: ValidActions;
@@ -284,6 +340,17 @@ interface ServerEvents {
   'error':                (data: { code: string; message: string }) => void;
 }
 ```
+
+`RoomState.players[*]` 在运行态额外包含 `stack`，并携带 `table: TableLifecycleSnapshot` 用于前端按钮 gating 与终局展示。
+
+- MVP 广播顺序固定为：`game:state -> game:event -> game:action_required -> game:hand_result`
+- `showdown` 在规则层保留，但 MVP 客户端展示触发点是 `hand_end`
+- `game:start` 失败错误码：
+  - `table_finished`：仅剩 1 名有筹码玩家且至少完成过 1 手牌
+  - `starter_not_active`：请求者不是存活真人（`stack <= 0` 或 `isBot = true`）
+- `game:start` 权限判定采用双层 gate：
+  - 桌级 gate：`table.canStartNextHand / table.isTableFinished`
+  - 请求者 gate：仅 `stack > 0 && !isBot` 可触发下一手
 
 ### 事件演进规则
 - 添加字段：安全（客户端忽略未知字段）

@@ -124,7 +124,32 @@
 | 翻牌 | 400ms | cubic-bezier | 3D Y轴翻转 |
 | 下注 | 500ms | spring | 筹码移至底池 |
 | 赢牌 | 600ms | ease-in-out | 底池飞向赢家 + 金色粒子 |
+| 弃牌 | 780ms | ease-out | 两张手牌抛物线飞入弃牌堆（muck） |
 | 当前行动者 | infinite | pulse | 边框脉冲光效 |
+
+---
+
+### Hand-End 时间线（MVP）
+
+- `game:state` 进入 `hand_end`：展示所有在手玩家底牌（showdown 概念仍保留，但 UI 触发点统一在 `hand_end`）
+- `game:hand_result` 到达后：
+  - `0ms`：赢家公告入场 + 赢家座位高亮
+  - `0-600ms`：底池飞向赢家 + 金色粒子爆发
+  - `0-780ms`：fold/muck 补间动画（若本手有弃牌动作）
+  - `2500ms`：结果状态进入 showing，可手动关闭公告
+  - `4000ms`：结果状态 done，公告自动退出
+  - 若 `table.canStartNextHand = true` 且当前用户是存活真人（`stack > 0 && !isBot`）：
+    - `5500ms`：自动发下一手（仍可手动按钮/Space 提前触发）
+  - 若 `table.canStartNextHand = true` 但当前用户已淘汰：
+    - 显示“你已淘汰”双选面板（返回大厅 / 继续观战）
+    - 继续观战后只显示观战条，不再显示发下一手按钮
+    - 禁用该用户 `Space` 快捷键发牌
+  - 若 `table.isBotsOnlyContinuation = true`（仅剩 Bot 且可继续）：
+    - 服务端在 `1500ms` 后自动开始下一手
+    - 客户端展示“Bot 自动继续”观战提示
+  - 若 `table.canStartNextHand = false`：
+    - 进入终局冻结态，底部显示“本场结束”面板与“返回大厅”主按钮
+    - 禁用自动发下一手与 `Space` 手动发牌
 
 ---
 
