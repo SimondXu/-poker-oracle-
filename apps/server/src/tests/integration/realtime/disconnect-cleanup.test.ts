@@ -101,19 +101,19 @@ test('disconnect during active hand is cleaned up after hand_end', async (t) => 
   await once(bob, 'connect');
 
   await emitWithAck(alice, 'room:create', {
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     smallBlind: 50,
     bigBlind: 100
   });
   await emitWithAck(alice, 'room:join', {
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     playerId: 'p0',
     playerName: 'Alice',
     seatIndex: 0,
     stack: 1000
   });
   await emitWithAck(bob, 'room:join', {
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     playerId: 'p1',
     playerName: 'Bob',
     seatIndex: 1,
@@ -121,7 +121,7 @@ test('disconnect during active hand is cleaned up after hand_end', async (t) => 
   });
 
   const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     buttonMarkerSeat: 0
   });
   assert.deepEqual(startAck, { ok: true });
@@ -129,7 +129,7 @@ test('disconnect during active hand is cleaned up after hand_end', async (t) => 
   const handEndStatePromise = waitForState(bob, (payload) => payload.hand.phase === 'hand_end', 1500);
   const postHandRoomStatePromise = waitForRoomState(
     bob,
-    (payload) => payload.roomId === 'room-disconnect-cleanup' && payload.playerCount === 1,
+    (payload) => payload.roomId === 'AAAAAW' && payload.playerCount === 1,
     1500
   );
 
@@ -146,7 +146,7 @@ test('disconnect during active hand is cleaned up after hand_end', async (t) => 
   );
   assert.deepEqual(bobReadyAck, {
     ok: true,
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     readyCount: 1,
     playerCount: 1
   });
@@ -155,11 +155,11 @@ test('disconnect during active hand is cleaned up after hand_end', async (t) => 
   await once(charlie, 'connect');
   const playerCountTwoStatePromise = waitForRoomState(
     bob,
-    (payload) => payload.roomId === 'room-disconnect-cleanup' && payload.playerCount === 2,
+    (payload) => payload.roomId === 'AAAAAW' && payload.playerCount === 2,
     1500
   );
   await emitWithAck(charlie, 'room:join', {
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     playerId: 'p2',
     playerName: 'Charlie',
     seatIndex: 2,
@@ -175,13 +175,13 @@ test('disconnect during active hand is cleaned up after hand_end', async (t) => 
   }>(charlie, 'room:ready', {});
   assert.deepEqual(charlieReadyAck, {
     ok: true,
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     readyCount: 2,
     playerCount: 2
   });
 
   const nextStartAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:start', {
-    roomId: 'room-disconnect-cleanup',
+    roomId: 'AAAAAW',
     buttonMarkerSeat: 1
   });
   assert.deepEqual(nextStartAck, { ok: true });

@@ -1,13 +1,20 @@
 import { z } from 'zod';
+import { isValidRoomCode, normalizeRoomCode } from '@aipoker/shared';
+
+const roomCodeSchema = z
+  .string()
+  .trim()
+  .transform((value) => normalizeRoomCode(value))
+  .refine((value) => isValidRoomCode(value));
 
 export const roomCreatePayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
+  roomId: roomCodeSchema,
   smallBlind: z.coerce.number().int().min(1),
   bigBlind: z.coerce.number().int().min(1)
 });
 
 export const joinRoomPayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
+  roomId: roomCodeSchema,
   playerId: z.string().trim().min(1).optional(),
   playerName: z.string().trim().min(1).optional(),
   seatIndex: z.coerce.number().int().min(0).optional(),
@@ -18,14 +25,18 @@ export const joinRoomPayloadSchema = z.object({
 
 export const roomReadyPayloadSchema = z.object({});
 export const roomLeavePayloadSchema = z.object({}).strict();
+export const roomRemovePlayerPayloadSchema = z.object({
+  roomId: roomCodeSchema,
+  playerId: z.string().trim().min(1),
+});
 
 export const gameStartPayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
+  roomId: roomCodeSchema,
   buttonMarkerSeat: z.coerce.number().int().min(0).optional()
 });
 
 export const gameActionPayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
+  roomId: roomCodeSchema,
   playerId: z.string().trim().min(1).optional(),
   type: z.enum(['fold', 'check', 'call', 'bet', 'raise_to', 'all_in']),
   amount: z.coerce.number().int().min(1).optional(),
@@ -35,9 +46,11 @@ export const gameActionPayloadSchema = z.object({
 
 export type JoinRoomAck =
   | { ok: true; roomId: string; playerCount: number }
-  | { ok: false; error: 'invalid_payload' | 'unauthorized' };
+  | { ok: false; error: 'invalid_payload' | 'unauthorized' | 'room_not_found' | 'player_name_taken' };
 
-export type RoomCreateAck = { ok: true; roomId: string } | { ok: false; error: 'invalid_payload' };
+export type RoomCreateAck =
+  | { ok: true; roomId: string }
+  | { ok: false; error: 'invalid_payload' | 'room_already_exists' | 'unauthorized' | 'rate_limited' };
 
 export type RoomReadyAck =
   | {

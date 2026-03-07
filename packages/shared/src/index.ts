@@ -12,6 +12,43 @@ export function err<E>(error: E): Result<never, E> {
 
 export type BotPersonality = 'fish' | 'tag' | 'lag';
 
+export const ROOM_CODE_LENGTH = 6;
+export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function sanitizeRoomCodeInput(input: string): string {
+  return input.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+}
+
+export function normalizeRoomCode(input: string): string {
+  return sanitizeRoomCodeInput(input).slice(0, ROOM_CODE_LENGTH);
+}
+
+export function isValidRoomCode(input: string): boolean {
+  const code = normalizeRoomCode(input);
+  if (code.length !== ROOM_CODE_LENGTH) {
+    return false;
+  }
+
+  for (const char of code) {
+    if (!ROOM_CODE_ALPHABET.includes(char)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function generateRoomCode(): string {
+  let code = '';
+
+  for (let index = 0; index < ROOM_CODE_LENGTH; index += 1) {
+    const randomIndex = Math.floor(Math.random() * ROOM_CODE_ALPHABET.length);
+    code += ROOM_CODE_ALPHABET[randomIndex];
+  }
+
+  return code;
+}
+
 export interface BotValidActions {
   canFold: boolean;
   canCheck: boolean;
