@@ -225,84 +225,12 @@ interface BlindLevel {
 
 ---
 
-## 3. Database Schema (PostgreSQL)
+## 3. MVP 运行态模型（当前实现）
 
-```sql
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username VARCHAR(32) UNIQUE NOT NULL,
-  is_guest BOOLEAN NOT NULL DEFAULT FALSE,
-  email VARCHAR(255) UNIQUE,          -- guest 可为空
-  password_hash TEXT,                -- guest 可为空
-  default_chips INTEGER DEFAULT 10000,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  CHECK (
-    (is_guest = true  AND email IS NULL AND password_hash IS NULL) OR
-    (is_guest = false AND email IS NOT NULL AND password_hash IS NOT NULL)
-  )
-);
-
-CREATE TABLE rooms (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(64) NOT NULL,
-  creator_id UUID REFERENCES users(id),
-  mode VARCHAR(16) NOT NULL DEFAULT 'free',
-  config JSONB NOT NULL,         -- RoomConfig
-  status VARCHAR(16) DEFAULT 'waiting',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE hands (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  room_id UUID REFERENCES rooms(id),
-  hand_number INTEGER NOT NULL,
-  button_seat INTEGER NOT NULL,
-  sb_seat INTEGER,               -- null = dead SB
-  bb_seat INTEGER NOT NULL,
-  community_cards TEXT[] DEFAULT '{}',
-  pots JSONB DEFAULT '[]',
-  winner_info JSONB,
-  started_at TIMESTAMPTZ DEFAULT NOW(),
-  ended_at TIMESTAMPTZ
-);
-
-CREATE TABLE hand_actions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  hand_id UUID REFERENCES hands(id),
-  player_id UUID,                -- null for bot
-  player_name VARCHAR(32) NOT NULL,
-  seat_index INTEGER NOT NULL,
-  phase VARCHAR(24) NOT NULL,
-  action_type VARCHAR(16) NOT NULL,
-  amount INTEGER DEFAULT 0,
-  stack_before INTEGER NOT NULL,
-  pot_total_before INTEGER NOT NULL,
-  sequence_num INTEGER NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_hand_actions_hand ON hand_actions(hand_id, sequence_num);
-
-CREATE TABLE hand_results (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  hand_id UUID REFERENCES hands(id),
-  player_id UUID,
-  player_name VARCHAR(32) NOT NULL,
-  hole_cards TEXT[] NOT NULL,
-  net_chips INTEGER NOT NULL,    -- 正=赢, 负=输
-  hand_rank VARCHAR(32),
-  went_to_showdown BOOLEAN DEFAULT FALSE
-);
-
-CREATE TABLE user_stats (
-  user_id UUID REFERENCES users(id) PRIMARY KEY,
-  total_hands INTEGER DEFAULT 0,
-  total_wins INTEGER DEFAULT 0,
-  total_profit INTEGER DEFAULT 0,
-  vpip_hands INTEGER DEFAULT 0,  -- 自愿投入底池的手数
-  pfr_hands INTEGER DEFAULT 0,   -- preflop 加注的手数
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+- 当前阶段不引入数据库持久化，房间、座位、手牌状态全部保存在服务端内存（单进程）。
+- 服务重启后房间会丢失，这是 MVP 可接受行为。
+- 仅保留 guest session cookie（`/api/auth/guest`）用于稳定 `userId`、重连恢复、防止冒名。
+- 历史回放、统计、账号注册登录对应的持久化模型延后到 Phase 2+。
 
 ---
 
@@ -311,8 +239,17 @@ CREATE TABLE user_stats (
 ### Client → Server（必须有 ack 回调）
 
 ```typescript
+type RoomCreateAck =
+  | { ok: true; roomId: RoomId }
+  | { ok: false; error: 'invalid_payload' | 'room_already_exists' };
+
+type JoinRoomAck =
+  | { ok: true; roomId: RoomId; playerCount: number }
+  | { ok: false; error: 'invalid_payload' | 'unauthorized' | 'room_not_found' | 'player_name_taken' };
+
 interface ClientEvents {
-  'room:join':     (data: { roomId: RoomId }, ack: AckFn) => void;
+  'room:create':   (data: { roomId: RoomId; smallBlind: number; bigBlind: number }, ack: (res: RoomCreateAck) => void) => void;
+  'room:join':     (data: { roomId: RoomId; playerName: string; playerId?: PlayerId; seatIndex?: number; stack?: number; isBot?: boolean }, ack: (res: JoinRoomAck) => void) => void;
   'room:ready':    (data: {}, ack: AckFn) => void;
   'room:leave':    (data: {}, ack: AckFn) => void;
   'game:action':   (data: {
@@ -341,6 +278,11 @@ interface ServerEvents {
 }
 ```
 
+`room:join` 语义（MVP）：
+- 仅允许加入已存在房间；不存在直接返回 `room_not_found`
+- 不允许同房同名（大小写不敏感、去首尾空格），冲突返回 `player_name_taken`
+- 进行中加入仅观战当前手，下一手进入玩家池
+
 `RoomState.players[*]` 在运行态额外包含 `stack`，并携带 `table: TableLifecycleSnapshot` 用于前端按钮 gating 与终局展示。
 
 - MVP 广播顺序固定为：`game:state -> game:event -> game:action_required -> game:hand_result`
@@ -361,21 +303,13 @@ interface ServerEvents {
 
 ## 5. REST API
 
-> 认证策略（MVP）：**Guest-first**。用户无需注册即可进入；服务端签发 guest token 到 **httpOnly cookie**（不返回 `{ token }` 到 JS）。  
-> 可选账号升级（Phase 2）：在保留 guest 会话连续性的前提下，支持绑定邮箱/密码。
+> 认证策略（MVP）：**Guest-only**。用户无需注册即可进入；服务端签发 guest token 到 **httpOnly cookie**（不返回 `{ token }` 到 JS）。
+> 登录注册、历史回放、统计 API 均延后到 Phase 2+。
 
 ```
 POST   /api/auth/guest        → { username? } → { ok, user } (Set-Cookie)
 GET    /api/auth/me           → { ok, user } | 401
 POST   /api/auth/logout       → {} → { ok } (Clear-Cookie)
-
-GET    /api/rooms             → RoomSummary[]
-POST   /api/rooms             → RoomConfig → { roomId }
-GET    /api/rooms/:id         → RoomDetail
-
-GET    /api/hands/:id/replay  → { initialState, actions: GameAction[] }
-GET    /api/users/me/stats    → UserStats
-GET    /api/users/me/history  → HandSummary[] (paginated)
 ```
 
 ### 5.1 Socket 身份约定（MVP）
