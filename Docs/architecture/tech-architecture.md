@@ -53,6 +53,13 @@
 | 验证 | **Zod** | 运行时类型验证，与 TypeScript 完美集成 |
 | ORM | **Drizzle ORM** | TypeScript 原生，性能好，比 Prisma 更轻 |
 
+### 身份策略（MVP）
+
+- 采用 **Guest-first**：无需注册即可开始。
+- 服务端签发 `httpOnly cookie`（guest token）作为会话身份。
+- 房间号用于发现与进入房间；动作授权以服务端会话身份为准。
+- 账号体系（邮箱/密码）作为 Phase 2 的可选升级能力，不阻断 MVP 体验。
+
 ---
 
 ## 4. 实时通信：WebSocket vs WebRTC

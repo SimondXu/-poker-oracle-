@@ -137,12 +137,18 @@ function evaluateFiveCards(cards: [Card, Card, Card, Card, Card]): RankVector {
   return [0, r0, r1, r2, r3, r4];
 }
 
-function evaluateBestSevenCards(cards: Card[]): RankVector {
+export interface EvaluatedBestHand {
+  rank: RankVector;
+  bestCards: Card[];
+}
+
+export function evaluateBestSevenCards(cards: Card[]): EvaluatedBestHand {
   if (cards.length < 5) {
-    return [0];
+    return { rank: [0], bestCards: [] };
   }
 
   let best: RankVector | null = null;
+  let bestCombo: Card[] = [];
   for (let a = 0; a < cards.length - 4; a += 1) {
     for (let b = a + 1; b < cards.length - 3; b += 1) {
       for (let c = b + 1; c < cards.length - 2; c += 1) {
@@ -160,6 +166,7 @@ function evaluateBestSevenCards(cards: Card[]): RankVector {
             const rank = evaluateFiveCards([cardA, cardB, cardC, cardD, cardE]);
             if (!best || compareRankVectors(rank, best) > 0) {
               best = rank;
+              bestCombo = [cardA, cardB, cardC, cardD, cardE];
             }
           }
         }
@@ -167,7 +174,7 @@ function evaluateBestSevenCards(cards: Card[]): RankVector {
     }
   }
 
-  return best ?? [0];
+  return { rank: best ?? [0], bestCards: bestCombo };
 }
 
 function orderWinnersFromButtonLeft(
@@ -223,7 +230,7 @@ export function settleShowdownPots(
 
     const ranked = eligiblePlayers.map((player) => ({
       player,
-      rank: evaluateBestSevenCards([...communityCards, ...player.holeCards])
+      rank: evaluateBestSevenCards([...communityCards, ...player.holeCards]).rank
     }));
 
     const firstRanked = ranked[0];

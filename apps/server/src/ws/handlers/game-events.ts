@@ -7,9 +7,16 @@ import {
   scheduleRoomActionTimeout,
   type RoomActionTimeouts
 } from '../../game-loop/action-timeout.ts';
+import {
+  clearRoomNextHandTimeout,
+  scheduleRoomNextHandTimeout,
+  type RoomNextHandTimeouts
+} from '../../game-loop/auto-next-hand.ts';
 import { cleanupDisconnectedPlayersAfterHandEnd } from '../../game-loop/cleanup-disconnected-players.ts';
 import { runBotTurns } from '../../game-loop/run-bot-turns.ts';
+import { enqueueRoomTask, type RoomTaskQueues } from '../../rooms/room-queue.ts';
 import { syncRoomPlayersFromHand } from '../../rooms/room-store.ts';
+import { canPlayerStartNextHand, getTableLifecycleSnapshot } from '../../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameState } from '../emitters.ts';
 import { gameActionPayloadSchema, gameStartPayloadSchema, type GameActionAck, type GameStartAck } from '../schemas.ts';
@@ -20,16 +27,17 @@ interface RegisterGameEventsInput {
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
   roomActionTimeouts: RoomActionTimeouts;
+  roomNextHandTimeouts: RoomNextHandTimeouts;
+  roomTaskQueues: RoomTaskQueues;
   actionTimeoutMs: number;
 }
 
 const ACTION_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_ACTIONS_PER_WINDOW = 20;
-
-type GameActionAckWithRateLimit = GameActionAck | { ok: false; error: 'rate_limited' };
+const BOTS_ONLY_AUTO_NEXT_DELAY_MS = 1_500;
 
 export function registerGameEvents(input: RegisterGameEventsInput): void {
-  const { io, socket, rooms, memberships, roomActionTimeouts, actionTimeoutMs } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts, roomNextHandTimeouts, roomTaskQueues, actionTimeoutMs } = input;
   const actionTimestamps: number[] = [];
 
   function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
@@ -49,50 +57,109 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
+    const timeoutActorId = actor.id;
+    const timeoutActionCount = room.hand.actions.length;
     scheduleRoomActionTimeout(roomActionTimeouts, room.id, actionTimeoutMs, () => {
-      const latestRoom = rooms.get(room.id);
-      if (!latestRoom || !latestRoom.hand || latestRoom.hand.currentActorSeat === null) {
-        clearRoomActionTimeout(roomActionTimeouts, room.id);
-        return;
-      }
+      void enqueueRoomTask(roomTaskQueues, room.id, async () => {
+        const latestRoom = rooms.get(room.id);
+        if (!latestRoom || !latestRoom.hand || latestRoom.hand.currentActorSeat === null) {
+          clearRoomActionTimeout(roomActionTimeouts, room.id);
+          return;
+        }
 
-      const latestActor = getRoomPlayerBySeat(latestRoom, latestRoom.hand.currentActorSeat);
-      if (!latestActor || latestActor.isBot) {
-        clearRoomActionTimeout(roomActionTimeouts, room.id);
-        return;
-      }
+        if (latestRoom.hand.actions.length !== timeoutActionCount) {
+          return;
+        }
 
-      const valid = getValidActions(latestRoom.hand, latestActor.id);
-      const timeoutAction: PlayerActionInput = valid.canCheck
-        ? {
-            playerId: latestActor.id,
-            type: 'check'
-          }
-        : {
-            playerId: latestActor.id,
-            type: 'fold'
-          };
+        const latestActor = getRoomPlayerBySeat(latestRoom, latestRoom.hand.currentActorSeat);
+        if (!latestActor || latestActor.isBot || latestActor.id !== timeoutActorId) {
+          clearRoomActionTimeout(roomActionTimeouts, room.id);
+          return;
+        }
 
-      const timeoutResult = applyAction(latestRoom.hand, timeoutAction);
-      if (!timeoutResult.ok) {
-        clearRoomActionTimeout(roomActionTimeouts, room.id);
-        return;
-      }
+        const valid = getValidActions(latestRoom.hand, latestActor.id);
+        const timeoutAction: PlayerActionInput = valid.canCheck
+          ? {
+              playerId: latestActor.id,
+              type: 'check'
+            }
+          : {
+              playerId: latestActor.id,
+              type: 'fold'
+            };
 
-      latestRoom.hand = timeoutResult.value;
-      syncRoomPlayersFromHand(latestRoom);
-      emitStateAndProgress(latestRoom);
+        const timeoutResult = applyAction(latestRoom.hand, timeoutAction);
+        if (!timeoutResult.ok) {
+          clearRoomActionTimeout(roomActionTimeouts, room.id);
+          return;
+        }
+
+        latestRoom.hand = timeoutResult.value;
+        syncRoomPlayersFromHand(latestRoom);
+        await emitStateAndProgress(latestRoom);
+      }).catch((error: unknown) => {
+        console.error('room action timeout task failed', error);
+      });
     });
   }
 
-  function emitStateAndProgress(room: RuntimeRoom): void {
-    emitGameState(io, room, memberships);
-    // Run bot turns asynchronously (thinking delay) then do post-turn cleanup
-    void runBotTurns(io, room, memberships).then(() => {
-      emitGameState(io, room, memberships);
-      cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts);
-      syncActionTimeout(room.id);
+  function syncBotsOnlyAutoNext(room: RuntimeRoom): void {
+    if (!rooms.has(room.id) || !room.hand) {
+      clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
+      return;
+    }
+
+    const tableLifecycle = getTableLifecycleSnapshot(room);
+    if (room.hand.phase !== 'hand_end' || !tableLifecycle.isBotsOnlyContinuation) {
+      clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
+      return;
+    }
+
+    scheduleRoomNextHandTimeout(roomNextHandTimeouts, room.id, BOTS_ONLY_AUTO_NEXT_DELAY_MS, () => {
+      void enqueueRoomTask(roomTaskQueues, room.id, async () => {
+        const latestRoom = rooms.get(room.id);
+        if (!latestRoom || !latestRoom.hand) {
+          return;
+        }
+
+        const latestLifecycle = getTableLifecycleSnapshot(latestRoom);
+        if (latestRoom.hand.phase !== 'hand_end' || !latestLifecycle.isBotsOnlyContinuation) {
+          return;
+        }
+
+        const initialized = initializeHand({
+          players: [...latestRoom.players.values()].map((player) => ({
+            id: player.id,
+            seatIndex: player.seatIndex,
+            stack: player.stack
+          })),
+          buttonMarkerSeat: latestRoom.hand.buttonMarkerSeat,
+          smallBlind: latestRoom.smallBlind,
+          bigBlind: latestRoom.bigBlind,
+          rng: Math.random
+        });
+        if (!initialized.ok) {
+          return;
+        }
+
+        latestRoom.hand = initialized.value;
+        latestRoom.handNumber += 1;
+        resetActionSeqTracker(latestRoom);
+        syncRoomPlayersFromHand(latestRoom);
+        await emitStateAndProgress(latestRoom);
+      }).catch((error: unknown) => {
+        console.error('bots-only auto next hand task failed', error);
+      });
     });
+  }
+
+  async function emitStateAndProgress(room: RuntimeRoom): Promise<void> {
+    room.stateVersion += 1;
+    emitGameState(io, room, memberships);
+    await runBotTurns(io, room, memberships);
+    cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts, roomNextHandTimeouts);
+    syncActionTimeout(room.id);
+    syncBotsOnlyAutoNext(room);
   }
 
   function isActionRateLimited(): boolean {
@@ -118,75 +185,81 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       ack?.({ ok: false, error: 'invalid_payload' });
       return;
     }
+    void enqueueRoomTask(roomTaskQueues, parsed.data.roomId, async () => {
+      const room = rooms.get(parsed.data.roomId);
+      if (!room) {
+        ack?.({ ok: false, error: 'room_not_found' });
+        return;
+      }
 
-    const room = rooms.get(parsed.data.roomId);
-    if (!room) {
-      ack?.({ ok: false, error: 'room_not_found' });
-      return;
-    }
+      const membership = memberships.get(socket.id);
+      if (!membership || membership.roomId !== parsed.data.roomId || !room.players.has(membership.playerId)) {
+        ack?.({ ok: false, error: 'not_room_member' });
+        return;
+      }
 
-    const membership = memberships.get(socket.id);
-    if (!membership || membership.roomId !== parsed.data.roomId || !room.players.has(membership.playerId)) {
-      ack?.({ ok: false, error: 'not_room_member' });
-      return;
-    }
+      if (room.hand && room.hand.phase !== 'hand_end') {
+        ack?.({ ok: false, error: 'hand_already_started' });
+        return;
+      }
 
-    if (room.readyPlayerIds.size > 0 && room.readyPlayerIds.size < room.players.size) {
-      ack?.({ ok: false, error: 'players_not_ready' });
-      return;
-    }
+      const tableLifecycle = getTableLifecycleSnapshot(room);
+      if (tableLifecycle.isTableFinished) {
+        ack?.({ ok: false, error: 'table_finished' });
+        return;
+      }
 
-    if (room.hand && room.hand.phase !== 'hand_end') {
-      ack?.({ ok: false, error: 'hand_already_started' });
-      return;
-    }
+      if (tableLifecycle.activeStackPlayerCount < 2) {
+        ack?.({ ok: false, error: 'not_enough_players' });
+        return;
+      }
 
-    const initialized = initializeHand({
-      players: [...room.players.values()].map((player) => ({
-        id: player.id,
-        seatIndex: player.seatIndex,
-        stack: player.stack
-      })),
-      buttonMarkerSeat: parsed.data.buttonMarkerSeat ?? 0,
-      smallBlind: room.smallBlind,
-      bigBlind: room.bigBlind,
-      rng: Math.random
+      if (!canPlayerStartNextHand(room, membership.playerId)) {
+        ack?.({ ok: false, error: 'starter_not_active' });
+        return;
+      }
+
+      // Only count stack-positive human players in the readiness gate (bots are auto-ready).
+      const humanPlayers = [...room.players.values()].filter((p) => !p.isBot && p.stack > 0);
+      const humanReadyCount = humanPlayers.filter((p) => room.readyPlayerIds.has(p.id)).length;
+      if (humanReadyCount > 0 && humanReadyCount < humanPlayers.length) {
+        ack?.({ ok: false, error: 'players_not_ready' });
+        return;
+      }
+
+      const initialized = initializeHand({
+        players: [...room.players.values()].map((player) => ({
+          id: player.id,
+          seatIndex: player.seatIndex,
+          stack: player.stack
+        })),
+        buttonMarkerSeat: parsed.data.buttonMarkerSeat ?? 0,
+        smallBlind: room.smallBlind,
+        bigBlind: room.bigBlind,
+        rng: Math.random
+      });
+
+      if (!initialized.ok) {
+        ack?.({ ok: false, error: initialized.error });
+        return;
+      }
+
+      clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
+      room.hand = initialized.value;
+      room.handNumber += 1;
+      resetActionSeqTracker(room);
+      syncRoomPlayersFromHand(room);
+      ack?.({ ok: true });
+      await emitStateAndProgress(room);
+    }).catch((error: unknown) => {
+      console.error('game:start room task failed', error);
     });
-
-    if (!initialized.ok) {
-      ack?.({ ok: false, error: initialized.error });
-      return;
-    }
-
-    room.hand = initialized.value;
-    room.handNumber += 1;
-    resetActionSeqTracker(room);
-    syncRoomPlayersFromHand(room);
-    ack?.({ ok: true });
-    emitStateAndProgress(room);
   });
 
-  socket.on('game:action', (payload: unknown, ack?: (result: GameActionAckWithRateLimit) => void) => {
+  socket.on('game:action', (payload: unknown, ack?: (result: GameActionAck) => void) => {
     const parsed = gameActionPayloadSchema.safeParse(payload);
     if (!parsed.success) {
       ack?.({ ok: false, error: 'invalid_payload' });
-      return;
-    }
-
-    const room = rooms.get(parsed.data.roomId);
-    if (!room) {
-      ack?.({ ok: false, error: 'room_not_found' });
-      return;
-    }
-
-    if (!room.hand) {
-      ack?.({ ok: false, error: 'hand_not_started' });
-      return;
-    }
-
-    const membership = memberships.get(socket.id);
-    if (!membership || membership.roomId !== parsed.data.roomId || membership.playerId !== parsed.data.playerId) {
-      ack?.({ ok: false, error: 'not_room_member' });
       return;
     }
 
@@ -194,35 +267,66 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       ack?.({ ok: false, error: 'rate_limited' });
       return;
     }
+    void enqueueRoomTask(roomTaskQueues, parsed.data.roomId, async () => {
+      const room = rooms.get(parsed.data.roomId);
+      if (!room) {
+        ack?.({ ok: false, error: 'room_not_found' });
+        return;
+      }
 
-    if (isDuplicateOrStaleActionSeq(room, parsed.data.playerId, parsed.data.seq)) {
-      ack?.({ ok: false, error: 'duplicate_action_seq' });
-      return;
-    }
+      if (!room.hand) {
+        ack?.({ ok: false, error: 'hand_not_started' });
+        return;
+      }
 
-    const mappedType: EngineActionType = parsed.data.type === 'bet' ? 'raise_to' : parsed.data.type;
-    const action: PlayerActionInput =
-      parsed.data.amount === undefined
-        ? {
-            playerId: parsed.data.playerId,
-            type: mappedType
-          }
-        : {
-            playerId: parsed.data.playerId,
-            type: mappedType,
-            amount: parsed.data.amount
-          };
+      const membership = memberships.get(socket.id);
+      if (!membership || membership.roomId !== parsed.data.roomId) {
+        ack?.({ ok: false, error: 'not_room_member' });
+        return;
+      }
 
-    const result = applyAction(room.hand, action);
-    if (!result.ok) {
-      ack?.({ ok: false, error: result.error });
-      return;
-    }
+      const actionPlayerId = membership.playerId;
+      if (parsed.data.playerId && parsed.data.playerId !== actionPlayerId) {
+        ack?.({ ok: false, error: 'not_room_member' });
+        return;
+      }
 
-    room.hand = result.value;
-    recordActionSeq(room, parsed.data.playerId, parsed.data.seq);
-    syncRoomPlayersFromHand(room);
-    ack?.({ ok: true });
-    emitStateAndProgress(room);
+      if (parsed.data.expectedVersion !== undefined && parsed.data.expectedVersion !== room.stateVersion) {
+        ack?.({ ok: false, error: 'stale_state_version' });
+        return;
+      }
+
+      if (isDuplicateOrStaleActionSeq(room, actionPlayerId, parsed.data.seq)) {
+        ack?.({ ok: false, error: 'duplicate_action_seq' });
+        return;
+      }
+
+      const mappedType: EngineActionType = parsed.data.type === 'bet' ? 'raise_to' : parsed.data.type;
+      const action: PlayerActionInput =
+        parsed.data.amount === undefined
+          ? {
+              playerId: actionPlayerId,
+              type: mappedType
+            }
+          : {
+              playerId: actionPlayerId,
+              type: mappedType,
+              amount: parsed.data.amount
+            };
+
+      const result = applyAction(room.hand, action);
+      if (!result.ok) {
+        ack?.({ ok: false, error: result.error });
+        return;
+      }
+
+      room.hand = result.value;
+      recordActionSeq(room, actionPlayerId, parsed.data.seq);
+      syncRoomPlayersFromHand(room);
+      ack?.({ ok: true });
+      await emitStateAndProgress(room);
+    }).catch((error: unknown) => {
+      console.error('game:action room task failed', error);
+    });
   });
 }

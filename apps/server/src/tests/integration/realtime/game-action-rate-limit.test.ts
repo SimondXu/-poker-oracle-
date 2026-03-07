@@ -5,8 +5,8 @@ import test from 'node:test';
 
 import { io as createClient } from 'socket.io-client';
 
-import { createServer } from './index.ts';
-import { attachRealtime } from './realtime.ts';
+import { createServer } from '../../../index.ts';
+import { attachRealtime } from '../../../realtime.ts';
 
 function emitWithAck<T>(
   socket: ReturnType<typeof createClient>,
@@ -51,19 +51,19 @@ test('game:action enforces per-socket rate limit at 20 actions per minute', asyn
   await once(bob, 'connect');
 
   await emitWithAck(alice, 'room:create', {
-    roomId: 'room-rate-limit-1',
+    roomId: 'AAAAA6',
     smallBlind: 50,
     bigBlind: 100
   });
   await emitWithAck(alice, 'room:join', {
-    roomId: 'room-rate-limit-1',
+    roomId: 'AAAAA6',
     playerId: 'p0',
     playerName: 'Alice',
     seatIndex: 0,
     stack: 1000
   });
   await emitWithAck(bob, 'room:join', {
-    roomId: 'room-rate-limit-1',
+    roomId: 'AAAAA6',
     playerId: 'p1',
     playerName: 'Bob',
     seatIndex: 1,
@@ -71,14 +71,14 @@ test('game:action enforces per-socket rate limit at 20 actions per minute', asyn
   });
 
   const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
-    roomId: 'room-rate-limit-1',
+    roomId: 'AAAAA6',
     buttonMarkerSeat: 0
   });
   assert.deepEqual(startAck, { ok: true });
 
   for (let seq = 1; seq <= 20; seq += 1) {
     const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:action', {
-      roomId: 'room-rate-limit-1',
+      roomId: 'AAAAA6',
       playerId: 'p1',
       type: 'call',
       seq
@@ -87,7 +87,7 @@ test('game:action enforces per-socket rate limit at 20 actions per minute', asyn
   }
 
   const limitedAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:action', {
-    roomId: 'room-rate-limit-1',
+    roomId: 'AAAAA6',
     playerId: 'p1',
     type: 'call',
     seq: 21

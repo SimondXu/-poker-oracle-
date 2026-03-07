@@ -12,6 +12,43 @@ export function err<E>(error: E): Result<never, E> {
 
 export type BotPersonality = 'fish' | 'tag' | 'lag';
 
+export const ROOM_CODE_LENGTH = 6;
+export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function sanitizeRoomCodeInput(input: string): string {
+  return input.toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
+}
+
+export function normalizeRoomCode(input: string): string {
+  return sanitizeRoomCodeInput(input).slice(0, ROOM_CODE_LENGTH);
+}
+
+export function isValidRoomCode(input: string): boolean {
+  const code = normalizeRoomCode(input);
+  if (code.length !== ROOM_CODE_LENGTH) {
+    return false;
+  }
+
+  for (const char of code) {
+    if (!ROOM_CODE_ALPHABET.includes(char)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function generateRoomCode(): string {
+  let code = '';
+
+  for (let index = 0; index < ROOM_CODE_LENGTH; index += 1) {
+    const randomIndex = Math.floor(Math.random() * ROOM_CODE_ALPHABET.length);
+    code += ROOM_CODE_ALPHABET[randomIndex];
+  }
+
+  return code;
+}
+
 export interface BotValidActions {
   canFold: boolean;
   canCheck: boolean;
@@ -121,12 +158,25 @@ export interface ValidActions {
   canAllIn: boolean;
 }
 
+export interface TableLifecycleSnapshot {
+  activeStackPlayerCount: number;
+  activeHumanStackPlayerCount: number;
+  activeBotStackPlayerCount: number;
+  isTableFinished: boolean;
+  canStartNextHand: boolean;
+  isBotsOnlyContinuation: boolean;
+  championPlayerId: string | null;
+  championPlayerName: string | null;
+}
+
 export interface RoomStateEvent {
   roomId: string;
+  stateVersion: number;
   players: Array<{
     id: string;
     name: string;
     seatIndex: number;
+    stack: number;
     isBot: boolean;
     botStrategy: BotPersonality | null;
     isReady: boolean;
@@ -134,18 +184,60 @@ export interface RoomStateEvent {
   playerCount: number;
   readyCount: number;
   isPlaying: boolean;
+  table: TableLifecycleSnapshot;
 }
 
 export type RoomState = RoomStateEvent;
 
 export interface GameStateEvent {
   roomId: string;
+  stateVersion: number;
   hand: HandState;
 }
 
 export interface GameActionRequiredEvent {
   roomId: string;
   playerId: string;
+  stateVersion: number;
   validActions: ValidActions;
   timeoutMs: number;
 }
+
+export interface HandResultPayout {
+  potIndex: number;
+  playerId: string;
+  amount: number;
+}
+
+export interface HandResultPlayerSnapshot {
+  id: string;
+  name: string;
+  stack: number;
+  status: PlayerStatus;
+  holeCards: Card[];
+}
+
+export interface HandResultEvent {
+  roomId: string;
+  phase: 'hand_end';
+  potTotal: number;
+  pots: Pot[];
+  payouts: HandResultPayout[];
+  players: HandResultPlayerSnapshot[];
+  table: TableLifecycleSnapshot;
+  stateVersion: number;
+}
+
+export interface GameActionAppliedEvent {
+  roomId: string;
+  stateVersion: number;
+  type: 'action_applied';
+  action: {
+    playerId: string;
+    type: ActionType;
+    amount: number;
+    phase: Phase;
+  };
+}
+
+export type GameEvent = GameActionAppliedEvent;

@@ -1,19 +1,26 @@
 import type { ReactNode } from 'react';
-import { Inter, Fira_Code } from 'next/font/google';
+import { Manrope, Noto_Serif_SC, IBM_Plex_Mono } from 'next/font/google';
 import { Toaster } from 'sonner';
 import '../styles/globals.css';
 
-const inter = Inter({
+const manrope = Manrope({
   subsets: ['latin'],
-  variable: '--font-sans',
+  variable: '--font-ui',
   display: 'swap',
 });
 
-const firaCode = Fira_Code({
+const plexMono = IBM_Plex_Mono({
   subsets: ['latin'],
-  variable: '--font-mono',
+  variable: '--font-code',
   display: 'swap',
   weight: ['400', '500'],
+});
+
+const notoSerifSC = Noto_Serif_SC({
+  subsets: ['latin'],
+  variable: '--font-brand',
+  display: 'swap',
+  weight: ['500', '600', '700'],
 });
 
 export const metadata = {
@@ -27,8 +34,12 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="zh-CN" className={`${inter.variable} ${firaCode.variable}`}>
-      <body>
+    <html
+      lang="zh-CN"
+      className={`${manrope.variable} ${plexMono.variable} ${notoSerifSC.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="antialiased" suppressHydrationWarning>
         {children}
         <Toaster
           position="top-right"

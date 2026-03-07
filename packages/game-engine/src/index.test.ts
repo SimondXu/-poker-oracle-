@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyAction, buildSidePots, createDeck, getValidActions, initializeHand, settleShowdownPots } from './index.ts';
+import { applyAction, buildSidePots, createDeck, evaluateBestSevenCards, getValidActions, initializeHand, settleShowdownPots } from './index.ts';
 
 function sequenceRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -578,6 +578,15 @@ test('settleShowdownPots splits tied pot and gives odd chip to first winner left
   const b = players.find((player) => player.id === 'b');
   assert.equal(a?.stack, 50);
   assert.equal(b?.stack, 51);
+});
+
+test('evaluateBestSevenCards returns ranking and best five-card combo', () => {
+  const evaluated = evaluateBestSevenCards([
+    'Ah', 'Kh', 'Qh', 'Jh', 'Th', '2c', '3d'
+  ]);
+
+  assert.deepEqual(evaluated.rank, [8, 14]);
+  assert.deepEqual(evaluated.bestCards, ['Ah', 'Kh', 'Qh', 'Jh', 'Th']);
 });
 
 test('hand_end builds pot with folded contributions and surviving eligible player', () => {

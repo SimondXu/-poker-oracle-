@@ -94,6 +94,7 @@ export async function runBotTurns(
     }
 
     room.hand = result.value;
+    room.stateVersion += 1;
     syncRoomPlayersFromHand(room);
     emitGameState(io, room, memberships);
   }

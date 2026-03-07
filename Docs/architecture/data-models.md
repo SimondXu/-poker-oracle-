@@ -31,6 +31,9 @@ type Phase =
   | 'deal_river'| 'betting_river'
   | 'showdown'  | 'settle_pots' | 'hand_end';
 
+// 说明：MVP 运行态不会单独广播 showdown 快照，
+// 客户端揭示行为以 hand_end 为准。
+
 // ── 动作类型（与 gameplay-rules.md §5.1 对齐）──
 
 type ActionType = 'fold' | 'check' | 'call' | 'bet' | 'raise_to' | 'all_in';
@@ -116,6 +119,59 @@ interface ValidActions {
   maxBetOrRaiseTo: number;     // = streetCommitted + stack（all-in 上限，raise_to(to) 的 to）
   canAllIn: boolean;
 }
+
+interface TableLifecycleSnapshot {
+  activeStackPlayerCount: number;   // stack > 0 的玩家数量
+  activeHumanStackPlayerCount: number; // stack > 0 且 !isBot
+  activeBotStackPlayerCount: number;   // stack > 0 且 isBot
+  isTableFinished: boolean;         // 本场是否已结束（freezeout 终局）
+  canStartNextHand: boolean;        // 是否允许继续发下一手
+  isBotsOnlyContinuation: boolean;  // 仅剩 Bot 且可继续时为 true
+  championPlayerId: PlayerId | null;
+  championPlayerName: string | null;
+}
+
+// ── 结算事件（hand_end）──
+
+interface HandResultPayout {
+  potIndex: number;
+  playerId: PlayerId;
+  amount: number;
+}
+
+interface HandResultPlayerSnapshot {
+  id: PlayerId;
+  name: string;
+  stack: number;
+  status: PlayerStatus;
+  holeCards: Card[];           // hand_end 时已揭示
+}
+
+interface HandResult {
+  roomId: RoomId;
+  phase: 'hand_end';
+  potTotal: number;
+  pots: Pot[];
+  payouts: HandResultPayout[];
+  players: HandResultPlayerSnapshot[];
+  table: TableLifecycleSnapshot;
+  stateVersion: number;
+}
+
+// ── 增量游戏事件（动画驱动）──
+
+type GameEvent =
+  | {
+      roomId: RoomId;
+      stateVersion: number;
+      type: 'action_applied';
+      action: {
+        playerId: PlayerId;
+        type: ActionType;
+        amount: number;
+        phase: Phase;
+      };
+    };
 ```
 
 ---
@@ -169,84 +225,12 @@ interface BlindLevel {
 
 ---
 
-## 3. Database Schema (PostgreSQL)
+## 3. MVP 运行态模型（当前实现）
 
-```sql
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username VARCHAR(32) UNIQUE NOT NULL,
-  is_guest BOOLEAN NOT NULL DEFAULT FALSE,
-  email VARCHAR(255) UNIQUE,          -- guest 可为空
-  password_hash TEXT,                -- guest 可为空
-  default_chips INTEGER DEFAULT 10000,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  CHECK (
-    (is_guest = true  AND email IS NULL AND password_hash IS NULL) OR
-    (is_guest = false AND email IS NOT NULL AND password_hash IS NOT NULL)
-  )
-);
-
-CREATE TABLE rooms (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(64) NOT NULL,
-  creator_id UUID REFERENCES users(id),
-  mode VARCHAR(16) NOT NULL DEFAULT 'free',
-  config JSONB NOT NULL,         -- RoomConfig
-  status VARCHAR(16) DEFAULT 'waiting',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE hands (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  room_id UUID REFERENCES rooms(id),
-  hand_number INTEGER NOT NULL,
-  button_seat INTEGER NOT NULL,
-  sb_seat INTEGER,               -- null = dead SB
-  bb_seat INTEGER NOT NULL,
-  community_cards TEXT[] DEFAULT '{}',
-  pots JSONB DEFAULT '[]',
-  winner_info JSONB,
-  started_at TIMESTAMPTZ DEFAULT NOW(),
-  ended_at TIMESTAMPTZ
-);
-
-CREATE TABLE hand_actions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  hand_id UUID REFERENCES hands(id),
-  player_id UUID,                -- null for bot
-  player_name VARCHAR(32) NOT NULL,
-  seat_index INTEGER NOT NULL,
-  phase VARCHAR(24) NOT NULL,
-  action_type VARCHAR(16) NOT NULL,
-  amount INTEGER DEFAULT 0,
-  stack_before INTEGER NOT NULL,
-  pot_total_before INTEGER NOT NULL,
-  sequence_num INTEGER NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_hand_actions_hand ON hand_actions(hand_id, sequence_num);
-
-CREATE TABLE hand_results (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  hand_id UUID REFERENCES hands(id),
-  player_id UUID,
-  player_name VARCHAR(32) NOT NULL,
-  hole_cards TEXT[] NOT NULL,
-  net_chips INTEGER NOT NULL,    -- 正=赢, 负=输
-  hand_rank VARCHAR(32),
-  went_to_showdown BOOLEAN DEFAULT FALSE
-);
-
-CREATE TABLE user_stats (
-  user_id UUID REFERENCES users(id) PRIMARY KEY,
-  total_hands INTEGER DEFAULT 0,
-  total_wins INTEGER DEFAULT 0,
-  total_profit INTEGER DEFAULT 0,
-  vpip_hands INTEGER DEFAULT 0,  -- 自愿投入底池的手数
-  pfr_hands INTEGER DEFAULT 0,   -- preflop 加注的手数
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+- 当前阶段不引入数据库持久化，房间、座位、手牌状态全部保存在服务端内存（单进程）。
+- 服务重启后房间会丢失，这是 MVP 可接受行为。
+- 仅保留 guest session cookie（`/api/auth/guest`）用于稳定 `userId`、重连恢复、防止冒名。
+- 历史回放、统计、账号注册登录对应的持久化模型延后到 Phase 2+。
 
 ---
 
@@ -255,8 +239,17 @@ CREATE TABLE user_stats (
 ### Client → Server（必须有 ack 回调）
 
 ```typescript
+type RoomCreateAck =
+  | { ok: true; roomId: RoomId }
+  | { ok: false; error: 'invalid_payload' | 'room_already_exists' };
+
+type JoinRoomAck =
+  | { ok: true; roomId: RoomId; playerCount: number }
+  | { ok: false; error: 'invalid_payload' | 'unauthorized' | 'room_not_found' | 'player_name_taken' };
+
 interface ClientEvents {
-  'room:join':     (data: { roomId: RoomId }, ack: AckFn) => void;
+  'room:create':   (data: { roomId: RoomId; smallBlind: number; bigBlind: number }, ack: (res: RoomCreateAck) => void) => void;
+  'room:join':     (data: { roomId: RoomId; playerName: string; playerId?: PlayerId; seatIndex?: number; stack?: number; isBot?: boolean }, ack: (res: JoinRoomAck) => void) => void;
   'room:ready':    (data: {}, ack: AckFn) => void;
   'room:leave':    (data: {}, ack: AckFn) => void;
   'game:action':   (data: {
@@ -274,7 +267,7 @@ type AckFn = (response: { ok: true } | { ok: false; error: string }) => void;
 ```typescript
 interface ServerEvents {
   'room:state':           (state: RoomState) => void;
-  'game:state':           (state: ClientHandState) => void;  // 已清空他人手牌
+  'game:state':           (state: { roomId: RoomId; stateVersion: number; hand: HandState }) => void; // 已清空他人手牌
   'game:event':           (event: GameEvent) => void;        // 增量事件（动画用）
   'game:action_required': (data: {
     validActions: ValidActions;
@@ -285,6 +278,22 @@ interface ServerEvents {
 }
 ```
 
+`room:join` 语义（MVP）：
+- 仅允许加入已存在房间；不存在直接返回 `room_not_found`
+- 不允许同房同名（大小写不敏感、去首尾空格），冲突返回 `player_name_taken`
+- 进行中加入仅观战当前手，下一手进入玩家池
+
+`RoomState.players[*]` 在运行态额外包含 `stack`，并携带 `table: TableLifecycleSnapshot` 用于前端按钮 gating 与终局展示。
+
+- MVP 广播顺序固定为：`game:state -> game:event -> game:action_required -> game:hand_result`
+- `showdown` 在规则层保留，但 MVP 客户端展示触发点是 `hand_end`
+- `game:start` 失败错误码：
+  - `table_finished`：仅剩 1 名有筹码玩家且至少完成过 1 手牌
+  - `starter_not_active`：请求者不是存活真人（`stack <= 0` 或 `isBot = true`）
+- `game:start` 权限判定采用双层 gate：
+  - 桌级 gate：`table.canStartNextHand / table.isTableFinished`
+  - 请求者 gate：仅 `stack > 0 && !isBot` 可触发下一手
+
 ### 事件演进规则
 - 添加字段：安全（客户端忽略未知字段）
 - 删除字段：禁止直接删，先 `@deprecated` 保留 2 sprint
@@ -294,19 +303,29 @@ interface ServerEvents {
 
 ## 5. REST API
 
-> 认证策略：默认使用 **JWT 存 httpOnly cookie**（不返回 `{ token }` 到 JS）。服务端通过 cookie 鉴权 REST 与 Socket.io。
+> 认证策略（MVP）：**Guest-only**。用户无需注册即可进入；服务端签发 guest token 到 **httpOnly cookie**（不返回 `{ token }` 到 JS）。
+> 登录注册、历史回放、统计 API 均延后到 Phase 2+。
 
 ```
-POST   /api/auth/register     → { username, email, password } → { ok, user } (Set-Cookie)
-POST   /api/auth/login        → { email, password } → { ok, user } (Set-Cookie)
-POST   /api/auth/guest        → {} → { ok, user } (Set-Cookie)
+POST   /api/auth/guest        → { username? } → { ok, user } (Set-Cookie)
+GET    /api/auth/me           → { ok, user } | 401
 POST   /api/auth/logout       → {} → { ok } (Clear-Cookie)
-
-GET    /api/rooms             → RoomSummary[]
-POST   /api/rooms             → RoomConfig → { roomId }
-GET    /api/rooms/:id         → RoomDetail
-
-GET    /api/hands/:id/replay  → { initialState, actions: GameAction[] }
-GET    /api/users/me/stats    → UserStats
-GET    /api/users/me/history  → HandSummary[] (paginated)
 ```
+
+### 5.1 Socket 身份约定（MVP）
+
+- `room number` 负责定位房间；不负责权限。
+- 玩家操作权限由 cookie 会话身份决定（服务端映射 `socket -> userId`）。
+- 客户端可上传 `playerName` 作为显示名；服务端保留最终裁决权。
+- 旁观（view）和入座（join as player）使用同一会话身份，但授权规则不同。
+
+### 5.2 REST 限流（MVP）
+
+- 默认阈值：`100 req/min/identity`（可通过环境变量覆盖）。
+- identity 优先使用会话用户标识（guest/user `userId`），无会话时回退到 `IP`。
+- 超限返回：`429` + `{ ok: false, error: 'rate_limited' }`，并携带 `Retry-After`。
+
+### 5.3 安全响应头（MVP）
+
+- 统一开启安全头（Helmet）：`Content-Security-Policy`、`X-Content-Type-Options`、`X-Frame-Options` 等。
+- CSP 基线：`default-src 'self'`，并允许前后端联调所需的 `connect-src`（同源 + 配置的前端 origin + `ws:`/`wss:`）。

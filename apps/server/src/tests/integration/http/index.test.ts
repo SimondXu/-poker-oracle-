@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createHealthStatus, createServer } from './index.ts';
+import { createHealthStatus, createServer } from '../../../index.ts';
 
 test('createHealthStatus builds stable payload', () => {
   const payload = createHealthStatus(1234);

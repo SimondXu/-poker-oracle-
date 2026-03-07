@@ -5,8 +5,8 @@ import test from 'node:test';
 
 import { io as createClient } from 'socket.io-client';
 
-import { createServer } from './index.ts';
-import { attachRealtime } from './realtime.ts';
+import { createServer } from '../../../index.ts';
+import { attachRealtime } from '../../../realtime.ts';
 
 function emitWithAck<T>(
   socket: ReturnType<typeof createClient>,
@@ -95,12 +95,12 @@ test('room:leave rejects payload with unknown fields', async (t) => {
   await once(alice, 'connect');
 
   await emitWithAck(alice, 'room:create', {
-    roomId: 'room-leave-invalid',
+    roomId: 'AAAAA3',
     smallBlind: 50,
     bigBlind: 100
   });
   await emitWithAck(alice, 'room:join', {
-    roomId: 'room-leave-invalid',
+    roomId: 'AAAAA3',
     playerId: 'p0',
     playerName: 'Alice',
     seatIndex: 0,
@@ -138,19 +138,19 @@ test('room:leave removes room membership and broadcasts updated room state', asy
   await once(bob, 'connect');
 
   await emitWithAck(alice, 'room:create', {
-    roomId: 'room-leave-1',
+    roomId: 'AAAAAZ',
     smallBlind: 50,
     bigBlind: 100
   });
   await emitWithAck(alice, 'room:join', {
-    roomId: 'room-leave-1',
+    roomId: 'AAAAAZ',
     playerId: 'p0',
     playerName: 'Alice',
     seatIndex: 0,
     stack: 1000
   });
   await emitWithAck(bob, 'room:join', {
-    roomId: 'room-leave-1',
+    roomId: 'AAAAAZ',
     playerId: 'p1',
     playerName: 'Bob',
     seatIndex: 1,
@@ -159,7 +159,7 @@ test('room:leave removes room membership and broadcasts updated room state', asy
 
   const roomStatePromise = waitForRoomState(
     alice,
-    (payload) => payload.roomId === 'room-leave-1' && payload.playerCount === 1,
+    (payload) => payload.roomId === 'AAAAAZ' && payload.playerCount === 1,
     2500
   );
   void roomStatePromise.catch(() => {});
@@ -169,13 +169,13 @@ test('room:leave removes room membership and broadcasts updated room state', asy
     'room:leave',
     {}
   );
-  assert.deepEqual(leaveAck, { ok: true, roomId: 'room-leave-1', playerCount: 1 });
+  assert.deepEqual(leaveAck, { ok: true, roomId: 'AAAAAZ', playerCount: 1 });
 
   const roomState = await roomStatePromise;
   assert.equal(roomState.readyCount, 0);
 
   const postLeaveStartAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:start', {
-    roomId: 'room-leave-1',
+    roomId: 'AAAAAZ',
     buttonMarkerSeat: 0
   });
   assert.deepEqual(postLeaveStartAck, { ok: false, error: 'not_room_member' });
@@ -208,19 +208,19 @@ test('room:leave during active hand keeps seat until hand_end then cleans it up'
   await once(bob, 'connect');
 
   await emitWithAck(alice, 'room:create', {
-    roomId: 'room-leave-2',
+    roomId: 'AAAAA2',
     smallBlind: 50,
     bigBlind: 100
   });
   await emitWithAck(alice, 'room:join', {
-    roomId: 'room-leave-2',
+    roomId: 'AAAAA2',
     playerId: 'p0',
     playerName: 'Alice',
     seatIndex: 0,
     stack: 1000
   });
   await emitWithAck(bob, 'room:join', {
-    roomId: 'room-leave-2',
+    roomId: 'AAAAA2',
     playerId: 'p1',
     playerName: 'Bob',
     seatIndex: 1,
@@ -228,7 +228,7 @@ test('room:leave during active hand keeps seat until hand_end then cleans it up'
   });
 
   const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
-    roomId: 'room-leave-2',
+    roomId: 'AAAAA2',
     buttonMarkerSeat: 0
   });
   assert.deepEqual(startAck, { ok: true });
@@ -236,7 +236,7 @@ test('room:leave during active hand keeps seat until hand_end then cleans it up'
   const handEndStatePromise = waitForState(bob, (payload) => payload.hand.phase === 'hand_end', 1500);
   const postHandRoomStatePromise = waitForRoomState(
     bob,
-    (payload) => payload.roomId === 'room-leave-2' && payload.playerCount === 1,
+    (payload) => payload.roomId === 'AAAAA2' && payload.playerCount === 1,
     1500
   );
 
@@ -245,7 +245,7 @@ test('room:leave during active hand keeps seat until hand_end then cleans it up'
     'room:leave',
     {}
   );
-  assert.deepEqual(leaveAck, { ok: true, roomId: 'room-leave-2', playerCount: 2 });
+  assert.deepEqual(leaveAck, { ok: true, roomId: 'AAAAA2', playerCount: 2 });
 
   await handEndStatePromise;
   const postHandRoomState = await postHandRoomStatePromise;
@@ -256,17 +256,17 @@ test('room:leave during active hand keeps seat until hand_end then cleans it up'
     'room:ready',
     {}
   );
-  assert.deepEqual(bobReadyAck, { ok: true, roomId: 'room-leave-2', readyCount: 1, playerCount: 1 });
+  assert.deepEqual(bobReadyAck, { ok: true, roomId: 'AAAAA2', readyCount: 1, playerCount: 1 });
 
   charlie = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
   await once(charlie, 'connect');
   const playerCountTwoStatePromise = waitForRoomState(
     bob,
-    (payload) => payload.roomId === 'room-leave-2' && payload.playerCount === 2,
+    (payload) => payload.roomId === 'AAAAA2' && payload.playerCount === 2,
     1500
   );
   await emitWithAck(charlie, 'room:join', {
-    roomId: 'room-leave-2',
+    roomId: 'AAAAA2',
     playerId: 'p2',
     playerName: 'Charlie',
     seatIndex: 2,
@@ -280,11 +280,84 @@ test('room:leave during active hand keeps seat until hand_end then cleans it up'
     readyCount?: number;
     playerCount?: number;
   }>(charlie, 'room:ready', {});
-  assert.deepEqual(charlieReadyAck, { ok: true, roomId: 'room-leave-2', readyCount: 2, playerCount: 2 });
+  assert.deepEqual(charlieReadyAck, { ok: true, roomId: 'AAAAA2', readyCount: 2, playerCount: 2 });
 
   const nextStartAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:start', {
-    roomId: 'room-leave-2',
+    roomId: 'AAAAA2',
     buttonMarkerSeat: 1
   });
   assert.deepEqual(nextStartAck, { ok: true });
+});
+
+test('room:join re-entry during active hand receives immediate game:state snapshot', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, { actionTimeoutMs: 5_000 });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'AAAAA9',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'AAAAA9',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'AAAAA9',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'AAAAA9',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const leaveAck = await emitWithAck<{ ok: boolean; roomId?: string; playerCount?: number; error?: string }>(
+    alice,
+    'room:leave',
+    {}
+  );
+  assert.deepEqual(leaveAck, { ok: true, roomId: 'AAAAA9', playerCount: 2 });
+
+  const rejoinStatePromise = waitForState(alice, (payload) => payload.roomId === 'AAAAA9', 800);
+  const rejoinAck = await emitWithAck<{ ok: boolean; roomId?: string; playerCount?: number; error?: string }>(
+    alice,
+    'room:join',
+    {
+      roomId: 'AAAAA9',
+      playerId: 'p0',
+      playerName: 'Alice',
+      seatIndex: 0,
+      stack: 1000
+    }
+  );
+  assert.deepEqual(rejoinAck, { ok: true, roomId: 'AAAAA9', playerCount: 2 });
+  await rejoinStatePromise;
 });

@@ -22,5 +22,5 @@ export type {
 export { applyAction, getValidActions } from './rules/actions.ts';
 export { createDeck } from './rules/deck.ts';
 export { initializeHand } from './rules/initialize-hand.ts';
-export { settleShowdownPots } from './settlement/showdown.ts';
+export { evaluateBestSevenCards, settleShowdownPots } from './settlement/showdown.ts';
 export { buildSidePots } from './settlement/side-pots.ts';

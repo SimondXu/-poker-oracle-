@@ -11,6 +11,7 @@
     // Next.js 15 推荐设置（覆盖 base.json 的 NodeNext）
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
     // 路径别名
     "baseUrl": ".",
     "paths": {

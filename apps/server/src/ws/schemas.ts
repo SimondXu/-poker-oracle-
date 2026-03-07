@@ -1,15 +1,22 @@
 import { z } from 'zod';
+import { isValidRoomCode, normalizeRoomCode } from '@aipoker/shared';
+
+const roomCodeSchema = z
+  .string()
+  .trim()
+  .transform((value) => normalizeRoomCode(value))
+  .refine((value) => isValidRoomCode(value));
 
 export const roomCreatePayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
+  roomId: roomCodeSchema,
   smallBlind: z.coerce.number().int().min(1),
   bigBlind: z.coerce.number().int().min(1)
 });
 
 export const joinRoomPayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
-  playerId: z.string().trim().min(1),
-  playerName: z.string().trim().min(1),
+  roomId: roomCodeSchema,
+  playerId: z.string().trim().min(1).optional(),
+  playerName: z.string().trim().min(1).optional(),
   seatIndex: z.coerce.number().int().min(0).optional(),
   stack: z.coerce.number().int().min(1).optional(),
   isBot: z.boolean().optional(),
@@ -18,25 +25,32 @@ export const joinRoomPayloadSchema = z.object({
 
 export const roomReadyPayloadSchema = z.object({});
 export const roomLeavePayloadSchema = z.object({}).strict();
+export const roomRemovePlayerPayloadSchema = z.object({
+  roomId: roomCodeSchema,
+  playerId: z.string().trim().min(1),
+});
 
 export const gameStartPayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
+  roomId: roomCodeSchema,
   buttonMarkerSeat: z.coerce.number().int().min(0).optional()
 });
 
 export const gameActionPayloadSchema = z.object({
-  roomId: z.string().trim().min(1),
-  playerId: z.string().trim().min(1),
+  roomId: roomCodeSchema,
+  playerId: z.string().trim().min(1).optional(),
   type: z.enum(['fold', 'check', 'call', 'bet', 'raise_to', 'all_in']),
   amount: z.coerce.number().int().min(1).optional(),
-  seq: z.coerce.number().int().min(0)
+  seq: z.coerce.number().int().min(0),
+  expectedVersion: z.coerce.number().int().min(0).optional()
 });
 
 export type JoinRoomAck =
   | { ok: true; roomId: string; playerCount: number }
-  | { ok: false; error: 'invalid_payload' };
+  | { ok: false; error: 'invalid_payload' | 'unauthorized' | 'room_not_found' | 'player_name_taken' };
 
-export type RoomCreateAck = { ok: true; roomId: string } | { ok: false; error: 'invalid_payload' };
+export type RoomCreateAck =
+  | { ok: true; roomId: string }
+  | { ok: false; error: 'invalid_payload' | 'room_already_exists' | 'unauthorized' | 'rate_limited' };
 
 export type RoomReadyAck =
   | {
@@ -65,6 +79,8 @@ export type GameStartAck =
         | 'not_room_member'
         | 'players_not_ready'
         | 'hand_already_started'
+        | 'table_finished'
+        | 'starter_not_active'
         | 'not_enough_players'
         | 'invalid_blind_structure';
     };
@@ -78,7 +94,9 @@ export type GameActionAck =
         | 'room_not_found'
         | 'hand_not_started'
         | 'not_room_member'
+        | 'rate_limited'
         | 'duplicate_action_seq'
+        | 'stale_state_version'
         | 'hand_not_actionable'
         | 'not_current_actor'
         | 'invalid_action';

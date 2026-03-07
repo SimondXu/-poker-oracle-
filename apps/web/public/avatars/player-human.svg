@@ -1,0 +1,25 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="playerBg" x1="14" y1="12" x2="80" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2B3246"/>
+      <stop offset="1" stop-color="#111723"/>
+    </linearGradient>
+    <linearGradient id="playerGold" x1="29" y1="18" x2="65" y2="74" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6E5A4"/>
+      <stop offset="1" stop-color="#C99B32"/>
+    </linearGradient>
+    <radialGradient id="playerGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(48 34) rotate(90) scale(42)">
+      <stop stop-color="#F5D46D" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#F5D46D" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="48" cy="48" r="46" fill="url(#playerBg)"/>
+  <circle cx="48" cy="48" r="44" stroke="#F2CF75" stroke-opacity="0.34" stroke-width="2"/>
+  <circle cx="48" cy="48" r="40" fill="url(#playerGlow)"/>
+  <path d="M48 28L58.8 41.7C62.3 46.1 61.1 52.6 56.4 55.2C54.1 56.5 51.2 56.9 48.8 56.3L54.7 68H41.3L47.2 56.3C44.8 56.9 41.9 56.5 39.6 55.2C34.9 52.6 33.7 46.1 37.2 41.7L48 28Z" fill="url(#playerGold)"/>
+  <path d="M48 18L53.1 24.5H42.9L48 18Z" fill="#F8EABA"/>
+  <path d="M38.5 21.5L42 28.2H35.7L38.5 21.5Z" fill="#F1D274" fill-opacity="0.9"/>
+  <path d="M57.5 21.5L60.3 28.2H54L57.5 21.5Z" fill="#F1D274" fill-opacity="0.9"/>
+  <circle cx="48" cy="72.5" r="4.2" fill="#EBCB70"/>
+  <path d="M24 66C31.5 74.8 40.3 79.2 48 79.2C55.7 79.2 64.5 74.8 72 66" stroke="#F0CF72" stroke-opacity="0.2" stroke-width="2.4" stroke-linecap="round"/>
+</svg>

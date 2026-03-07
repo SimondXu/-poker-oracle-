@@ -1,6 +1,9 @@
+import type { HandResultEvent } from '@aipoker/shared';
+
+import { getTableLifecycleSnapshot } from '../../rooms/table-lifecycle.ts';
 import type { RuntimeRoom } from '../../rooms/types.ts';
 
-export function buildHandResultPayload(room: RuntimeRoom) {
+export function buildHandResultPayload(room: RuntimeRoom): Omit<HandResultEvent, 'stateVersion'> | null {
   if (!room.hand || room.hand.phase !== 'hand_end') {
     return null;
   }
@@ -11,10 +14,13 @@ export function buildHandResultPayload(room: RuntimeRoom) {
     potTotal: room.hand.potTotal,
     pots: room.hand.pots,
     payouts: room.hand.payouts,
+    table: getTableLifecycleSnapshot(room),
     players: room.hand.players.map((player) => ({
       id: player.id,
+      name: room.players.get(player.id)?.name ?? player.id,
       stack: player.stack,
-      status: player.status
+      status: player.status,
+      holeCards: player.holeCards,
     }))
   };
 }

@@ -36,6 +36,7 @@ export function getOrCreateRoom(
 
   const room: RuntimeRoom = {
     id: roomId,
+    stateVersion: 0,
     handNumber: 0,
     smallBlind: config?.smallBlind ?? DEFAULT_SMALL_BLIND,
     bigBlind: config?.bigBlind ?? DEFAULT_BIG_BLIND,
