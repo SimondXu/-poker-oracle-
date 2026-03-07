@@ -1,0 +1,18 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lagBg" x1="14" y1="12" x2="82" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#33151A"/>
+      <stop offset="1" stop-color="#120A13"/>
+    </linearGradient>
+    <linearGradient id="lagFlame" x1="34" y1="24" x2="64" y2="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD46B"/>
+      <stop offset="0.45" stop-color="#FF7B39"/>
+      <stop offset="1" stop-color="#DB2D38"/>
+    </linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="46" fill="url(#lagBg)"/>
+  <circle cx="48" cy="48" r="43" stroke="#FF8B58" stroke-opacity="0.24" stroke-width="2"/>
+  <path d="M52 19C55.1 27 52.5 31.9 46.7 37.3C42 41.6 39.4 46.7 39.4 52.1C39.4 60.8 46.7 68 55.6 68C66.6 68 74.8 58.5 72.8 47.2C71.7 41 67.6 35.9 61.7 31.4C62.2 37 59.5 41.7 53.3 45C54.6 39.7 54 34.2 49.9 28.6C47.9 25.9 48.4 21.8 52 19Z" fill="url(#lagFlame)"/>
+  <path d="M44.4 51.4C44.4 45.6 48.4 41.7 53.9 38C56.6 45.3 55.2 49.9 50.1 54.5C46.5 57.7 45.3 61.3 46.2 65.1C39.7 61.8 44.4 57.1 44.4 51.4Z" fill="#FFE6A2" fill-opacity="0.86"/>
+  <path d="M24 68.5C31.8 75.6 39.8 79.2 48 79.2C56.2 79.2 64.2 75.6 72 68.5" stroke="#FFB278" stroke-opacity="0.14" stroke-width="2.6" stroke-linecap="round"/>
+</svg>

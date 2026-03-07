@@ -3,6 +3,11 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { cn, calcSeatPositions } from '@/lib/utils';
+import {
+  getSeatDealOrderIndex,
+  shouldAnimatePotAward,
+  shouldRevealShowdownCards,
+} from '@/features/game/lib/table-animation';
 import { Seat } from './Seat';
 import { FoldMuckAnimationLayer, type FoldMuckEvent } from './FoldMuckAnimationLayer';
 import { CommunityCards } from '../cards/CommunityCards';
@@ -18,6 +23,7 @@ interface PokerTableProps {
   winnerCards?: string[] | undefined;
   winnerIds?: string[] | undefined;
   winnerBestCardsByPlayer?: Record<string, string[]> | undefined;
+  payoutAmountsByPlayer?: Record<string, number> | undefined;
   handResultPhase?: 'announcing' | 'showing' | 'done' | undefined;
   isWinning?: boolean | undefined;
   className?: string | undefined;
@@ -43,6 +49,7 @@ export const PokerTable = memo(function PokerTable({
   winnerCards = [],
   winnerIds = [],
   winnerBestCardsByPlayer = {},
+  payoutAmountsByPlayer = {},
   handResultPhase,
   isWinning = false,
   className,
@@ -77,6 +84,11 @@ export const PokerTable = memo(function PokerTable({
   }, [hand.players]);
 
   const winnerIdSet = useMemo(() => new Set(winnerIds), [winnerIds]);
+  const occupiedSeatIndices = useMemo(
+    () => hand.players.map((player) => player.seatIndex),
+    [hand.players],
+  );
+  const activePlayerCount = occupiedSeatIndices.length;
 
   const winnerTargets = useMemo(() => {
     if (winnerIds.length === 0) return [];
@@ -268,7 +280,7 @@ export const PokerTable = memo(function PokerTable({
 
       <PotToWinnerAnimation
         targets={winnerTargets}
-        active={handResultPhase === 'announcing' && winnerTargets.length > 0}
+        active={shouldAnimatePotAward(handResultPhase) && winnerTargets.length > 0}
         triggerKey={potAnimationKey}
       />
 
@@ -295,7 +307,12 @@ export const PokerTable = memo(function PokerTable({
         const isWinner = Boolean(player && winnerIdSet.has(player.id));
 
         // 发牌延迟：按座位索引错开，模拟第一轮逐位发牌
-        const dealDelayBase = seatIndex * 0.09;
+        const dealOrderIndex = getSeatDealOrderIndex(
+          occupiedSeatIndices,
+          hand.buttonMarkerSeat ?? null,
+          seatIndex,
+        );
+        const dealDelayBase = dealOrderIndex * 0.09;
         // 以桌面中心作为发牌来源，让发牌路径更自然
         const dealFromX = -pos.x * 0.62;
         const dealFromY = -pos.y * 0.62;
@@ -324,8 +341,10 @@ export const PokerTable = memo(function PokerTable({
               isButton={isButton}
               isSB={isSB}
               isBB={isBB}
-              seatCount={maxSeats}
-              showHoleCards={hand.phase === 'hand_end'}
+              handResultPhase={handResultPhase}
+              payoutAmount={player ? payoutAmountsByPlayer[player.id] : undefined}
+              activePlayerCount={activePlayerCount}
+              showHoleCards={hand.phase === 'hand_end' && shouldRevealShowdownCards(handResultPhase)}
               dealDelayBase={dealDelayBase}
               dealFromX={dealFromX}
               dealFromY={dealFromY}

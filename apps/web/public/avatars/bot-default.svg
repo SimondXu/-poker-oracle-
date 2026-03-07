@@ -1,0 +1,23 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="botBg" x1="14" y1="12" x2="82" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E2838"/>
+      <stop offset="1" stop-color="#0E1520"/>
+    </linearGradient>
+    <linearGradient id="botFace" x1="31" y1="28" x2="65" y2="66" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D7E4F1"/>
+      <stop offset="1" stop-color="#88A7C8"/>
+    </linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="46" fill="url(#botBg)"/>
+  <circle cx="48" cy="48" r="43" stroke="#A9BED6" stroke-opacity="0.18" stroke-width="2"/>
+  <rect x="28" y="31" width="40" height="30" rx="12" fill="url(#botFace)"/>
+  <rect x="34" y="24" width="28" height="7" rx="3.5" fill="#91AACA"/>
+  <circle cx="40" cy="46" r="5.2" fill="#132134"/>
+  <circle cx="56" cy="46" r="5.2" fill="#132134"/>
+  <circle cx="41.2" cy="44.7" r="1.3" fill="#EDF6FE"/>
+  <circle cx="57.2" cy="44.7" r="1.3" fill="#EDF6FE"/>
+  <path d="M39 56C42.1 58.1 45.3 59.2 48 59.2C50.7 59.2 53.9 58.1 57 56" stroke="#24354D" stroke-width="2.3" stroke-linecap="round"/>
+  <path d="M48 18V24" stroke="#90AACB" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="48" cy="14.5" r="4" fill="#C0D1E3"/>
+</svg>

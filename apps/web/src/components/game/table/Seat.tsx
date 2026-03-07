@@ -2,7 +2,14 @@
 
 import { memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
+import { getPlayerAvatarMeta } from '@/lib/player-avatar';
 import { cn, formatChips } from '@/lib/utils';
+import {
+  getDisplayedSeatStack,
+  getHoleCardSecondPassDelay,
+  shouldDimLosingSeat,
+  type ResultAnimationPhase,
+} from '@/features/game/lib/table-animation';
 import { PlayingCard } from '../cards/PlayingCard';
 import { TimerBar } from '../hud/TimerBar';
 import type { Phase, PlayerState } from '@aipoker/shared';
@@ -19,7 +26,9 @@ interface SeatProps {
   isButton: boolean;                 // 庄家位
   isSB: boolean;
   isBB: boolean;
-  seatCount?: number | undefined;
+  handResultPhase?: ResultAnimationPhase;
+  payoutAmount?: number | undefined;
+  activePlayerCount?: number | undefined;
   showHoleCards: boolean;            // 回放/摊牌时展示手牌
   dealDelayBase?: number | undefined; // 发牌延迟基准（秒），按座位错开
   dealFromX?: number | undefined;
@@ -76,7 +85,9 @@ export const Seat = memo(function Seat({
   isButton,
   isSB,
   isBB,
-  seatCount = 6,
+  handResultPhase,
+  payoutAmount,
+  activePlayerCount = 2,
   showHoleCards,
   dealDelayBase = 0,
   dealFromX = -120,
@@ -90,11 +101,17 @@ export const Seat = memo(function Seat({
   const isAllIn = player?.status === 'all_in';
   const isOut = player?.status === 'out';
   const isHoleDealPhase = phase === 'betting_preflop';
-  const secondPassDelay = Math.max(0.52, seatCount * 0.085 + 0.08);
+  const secondPassDelay = getHoleCardSecondPassDelay(activePlayerCount);
   const winnerCardSet = useMemo(() => new Set(winnerBestCards), [winnerBestCards]);
+  const displayedStack = getDisplayedSeatStack(player?.stack ?? 0, payoutAmount, handResultPhase);
+  const shouldDimForResult = shouldDimLosingSeat({
+    phase,
+    resultPhase: handResultPhase,
+    isWinner,
+    status: player?.status ?? 'out',
+  });
 
   const posLabel = isButton ? 'BTN' : isSB ? 'SB' : isBB ? 'BB' : null;
-
   /* ── 空座位 ── */
   if (isEmpty) {
     return (
@@ -110,43 +127,35 @@ export const Seat = memo(function Seat({
     );
   }
 
+  const avatarMeta = getPlayerAvatarMeta({
+    name: player.name,
+    isBot: player.isBot,
+    botStrategy: player.botStrategy,
+    isHeroPlayer: isCurrentUser,
+  });
+
   /* ── 手牌渲染 ── */
   const renderCards = (() => {
-    const hasVisibleCards = player.holeCards.length > 0;
+    const hasKnownCards = player.holeCards.length > 0;
     const isActiveInHand = player.status !== 'folded' && player.status !== 'out';
     const cardSize = isCurrentUser ? 'sm' : 'xs';
+    const shouldShowFaceDownCards = !isCurrentUser && isActiveInHand && !showHoleCards;
+    const cardSlots = Array.from({ length: 2 }, (_, i) => player.holeCards[i]);
 
-    if ((isCurrentUser || showHoleCards) && hasVisibleCards) {
+    if ((isCurrentUser && hasKnownCards) || shouldShowFaceDownCards || (showHoleCards && hasKnownCards)) {
       return (
         <div className="flex gap-1">
-          {player.holeCards.map((card, i) => (
+          {cardSlots.map((card, i) => (
             <PlayingCard
-              key={`${handNumber ?? 'hand'}-${card}-${i}`}
-              card={card}
+              key={`${handNumber ?? 'hand'}-${player.id}-${i}`}
+              {...(card ? { card } : {})}
               size={cardSize}
+              faceDown={Boolean(!isCurrentUser && (!showHoleCards || !card))}
               animateDeal={isHoleDealPhase}
               dealDelay={isHoleDealPhase ? dealDelayBase + i * secondPassDelay : 0}
               dealFromX={dealFromX}
               dealFromY={dealFromY}
-              highlight={isWinner && winnerCardSet.has(card)}
-            />
-          ))}
-        </div>
-      );
-    }
-
-    if (!isCurrentUser && !showHoleCards && isActiveInHand && !hasVisibleCards) {
-      return (
-        <div className="flex gap-0.5">
-          {[0, 1].map((i) => (
-            <PlayingCard
-              key={`${handNumber ?? 'hand'}-back-${i}`}
-              faceDown
-              size="xs"
-              animateDeal={isHoleDealPhase}
-              dealDelay={isHoleDealPhase ? dealDelayBase + i * secondPassDelay : 0}
-              dealFromX={dealFromX}
-              dealFromY={dealFromY}
+              highlight={Boolean(card && isWinner && winnerCardSet.has(card))}
             />
           ))}
         </div>
@@ -173,18 +182,25 @@ export const Seat = memo(function Seat({
             : 'border-white/8',
         // 弃牌/淘汰暗化
         (isFolded || isOut) && 'opacity-50 grayscale-[50%]',
+        shouldDimForResult && 'opacity-45 saturate-50',
         className,
       )}
       animate={
         isWinner
-          ? { boxShadow: '0 0 0 1px rgba(255,215,0,0.18), 0 0 22px rgba(255,215,0,0.16)' }
+          ? {
+              y: handResultPhase === 'showing' ? [0, -4, 0] : 0,
+              scale: handResultPhase === 'showing' ? [1, 1.02, 1] : 1,
+              boxShadow: '0 0 0 1px rgba(255,215,0,0.18), 0 0 26px rgba(255,215,0,0.22)',
+            }
           : isCurrentActor
           ? { boxShadow: '0 0 0 2px rgba(255,215,0,0.22), 0 0 18px rgba(255,215,0,0.12)' }
           : isAllIn
             ? { boxShadow: '0 0 0 1px rgba(76,175,80,0.18), 0 0 18px rgba(76,175,80,0.10)' }
-            : { boxShadow: 'none' }
+            : shouldDimForResult
+              ? { scale: 0.985, boxShadow: 'none' }
+              : { boxShadow: 'none', scale: 1, y: 0 }
       }
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.45 }}
     >
       <div className="seat-surface overflow-hidden rounded-xl">
         {/* 内容区 */}
@@ -193,13 +209,20 @@ export const Seat = memo(function Seat({
           <div className="flex items-center gap-2">
             <div
               className={cn(
-                'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                'relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border text-[11px] font-semibold shadow-[0_8px_18px_rgba(0,0,0,0.24)]',
                 player.isBot
-                  ? 'border border-white/10 bg-[#1C2333] text-[var(--color-text-secondary)]'
-                  : 'bg-gradient-to-br from-[var(--color-gold-muted)] to-[var(--color-gold)] text-[#0D1117]',
+                  ? 'border-white/10 bg-[#101927] text-[var(--color-text-secondary)]'
+                  : isCurrentUser
+                    ? 'border-[var(--color-gold)]/35 bg-[radial-gradient(circle_at_top,rgba(255,215,0,0.18),rgba(13,17,23,0.98))] text-[var(--color-gold)]'
+                    : 'border-white/10 bg-[rgba(255,255,255,0.04)] text-[#D7E0EA]',
               )}
             >
-              {player.isBot ? '🤖' : player.name.charAt(0).toUpperCase()}
+              <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.1),transparent_62%)]" />
+              {avatarMeta.src ? (
+                <img src={avatarMeta.src} alt={avatarMeta.alt ?? ''} className="relative h-full w-full object-cover" />
+              ) : (
+                <span className="relative">{avatarMeta.fallbackLabel}</span>
+              )}
             </div>
 
             <div className="min-w-0 flex-1">
@@ -235,7 +258,7 @@ export const Seat = memo(function Seat({
           {/* Row 2: 筹码 */}
           <div className="mt-1.5 flex items-center justify-between">
             <span className="font-chips text-[12px] font-semibold text-[var(--color-gold)]">
-              {formatChips(player.stack)}
+              {formatChips(displayedStack)}
             </span>
             {player.streetCommitted > 0 && (
               <span className="font-chips text-[11px] text-[var(--color-text-muted)]">

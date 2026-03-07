@@ -4,13 +4,13 @@ import { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, formatChips } from '@/lib/utils';
 import { BetSlider } from './BetSlider';
-import type { ValidActions } from '@aipoker/shared';
+import type { ActionType, ValidActions } from '@aipoker/shared';
 
 interface ActionPanelProps {
   validActions: ValidActions;
   pot: number;
   isMyTurn: boolean;
-  onAction: (type: string, amount?: number) => void;
+  onAction: (type: ActionType, amount?: number) => void;
   className?: string;
 }
 
