@@ -3,7 +3,9 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "declaration": false
+    "declaration": false,
+    "rewriteRelativeImportExtensions": true,
+    "paths": {}
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]

@@ -15,7 +15,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:local": "node --experimental-strip-types --test packages/*/src/*.test.ts"
+    "test:local": "node --conditions=source --experimental-strip-types --test packages/*/src/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",

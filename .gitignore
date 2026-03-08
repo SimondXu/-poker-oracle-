@@ -19,6 +19,7 @@ tooling/
 node_modules/
 .turbo/
 **/.turbo/
+**/dist/
 *.tsbuildinfo
 node_modules
 

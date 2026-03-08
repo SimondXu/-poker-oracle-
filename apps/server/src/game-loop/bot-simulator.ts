@@ -137,7 +137,7 @@ export interface SimulateBotStatsOptions {
   includeTrainingTable?: boolean;
 }
 
-interface SimulationSeatConfig extends SimulationSeatDescriptor {}
+type SimulationSeatConfig = SimulationSeatDescriptor;
 
 interface TablePacingCounters {
   hands: number;
@@ -517,16 +517,6 @@ function mergeCounters(target: PlayerMetricCounters, source: PlayerMetricCounter
 function mergeMetric(target: MetricCounter, source: MetricCounter): void {
   target.count += source.count;
   target.opportunities += source.opportunities;
-}
-
-function mergeTablePacingCounters(target: TablePacingCounters, source: TablePacingCounters): void {
-  target.hands += source.hands;
-  target.handsSawFlop += source.handsSawFlop;
-  target.handsEndedPreflop += source.handsEndedPreflop;
-  target.totalVoluntaryEntrants += source.totalVoluntaryEntrants;
-  target.humanOpenOpportunities += source.humanOpenOpportunities;
-  target.humanOpenWalks += source.humanOpenWalks;
-  target.maxBotPreflopFoldStreak = Math.max(target.maxBotPreflopFoldStreak, source.maxBotPreflopFoldStreak);
 }
 
 export function summarizeBotStats(tracker: BotStatTracker, tableCounters: TablePacingCounters = createTablePacingCounters()): BotSimulationSummary {

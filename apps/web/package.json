@@ -25,8 +25,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo 'web tests not created yet'"
+    "test": "node --conditions=source --experimental-strip-types --test \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^15.5.12"
   }
 }
