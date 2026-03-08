@@ -20,3 +20,30 @@ Original prompt: 我现在遇到一个问题就是我刚实验了打开两个浏
 - Added regression coverage for phase-gated result presentation and temporary announcing-stack masking in `apps/web/src/lib/table-animation.test.ts`.
 - Updated the game page/table to keep `announcing` neutral: no winner modal, no winner badges/highlights, no pot-award animation, and no awarded chips added to seat stacks until `showing`.
 - Browser verification on the rebuilt frontend confirmed `announce-start` now shows only the neutral “正在播放结算动画” state with unrevealed winners and pre-award stacks, while `showing` is the first point where the modal and final winner stack appear.
+
+2026-03-08
+- Investigated the “整个过程太快、不丝滑” complaint by tracing current pacing code and reproducing on local dev servers (`3200/3201`) with a 1-human + 1-bot table.
+- Key timing findings in code: result phase currently advances `announcing -> showing` at `1200ms` and `done` at `3800ms`; client auto-starts the next hand `1500ms` after `done`; bot-only continuation remains `1500ms`; hole-card second pass is `380ms + 50ms/player`; community-card beats are `120/110/360ms` scale.
+- Product/docs mismatch: `Docs/game-design/ui-spec.md` still specifies `2500ms` to showing, `4000ms` to done, and `5500ms` to auto next hand; `Docs/game-design/bot-roadmap.md` says bot thinking delay should simulate `1000-3000ms`, while current bot profiles use `450-1600ms`.
+- Live reproduction confirmed the subjective speed issue: after a preflop call, the bot check, flop reveal, and flop bet all happened within roughly two seconds; street-to-street transitions feel nearly immediate in heads-up play.
+- UX gap: `animationSpeed` preference exists in `uiStore`, but no game component reads it, and the header settings button is currently inert, so users have no way to slow the table down without code changes.
+- One headless replay also appeared to advance from river call/result presentation into the next hand faster than the configured result timeline, which suggests there may be an additional phase-skipping or auto-next trigger worth instrumenting if we proceed to fixes.
+- Implemented a single improved default table pace instead of adding multiple speed modes.
+- Added a new result sub-phase model: `announcing -> revealing -> showing -> done`, so the hand-end flow now has a neutral settle beat, a card-reveal beat, then the winner/pot emphasis beat.
+- Updated pacing constants: community cards now reveal at `180/340/500ms` for flop and `780/1560ms` for turn/river growth; second-pass hole-card delay is now `620ms + 80ms/player-over-2`; the base seat deal stagger is `140ms` per seat.
+- Slowed the card motion itself by lengthening live deal and flip durations in `PlayingCard`.
+- Slowed bot thinking to a more natural live-play range: fish `900-1700ms`, tag `1100-2100ms`, lag `950-1800ms`.
+- Prevented premature next-hand advancement via keyboard by gating the `Space` next-hand shortcut on `handResult.phase === 'done'`; auto-next-hand now also reads the shared result timeline instead of a separate magic number.
+- Added regression coverage for the new pacing helpers and next-hand gating in:
+  - `apps/web/src/features/game/lib/table-animation.test.ts`
+  - `apps/web/src/features/game/lib/game-screen-state.test.ts`
+  - `packages/bot-engine/src/index.test.ts`
+- Verification:
+  - `node --experimental-strip-types --test apps/web/src/features/game/lib/table-animation.test.ts apps/web/src/features/game/lib/game-screen-state.test.ts packages/bot-engine/src/index.test.ts` passed.
+  - `pnpm --filter @aipoker/web typecheck` passed.
+  - `pnpm --filter @aipoker/bot-engine typecheck` passed.
+  - Browser replay on `3200/3201` showed the new layered result sequence. A precise in-page timing probe around a fold hand logged roughly:
+    - `469ms`: neutral result-presentation bar appears
+    - `2345ms`: winner modal appears
+    - `5543ms`: next-hand button becomes available
+  - This confirms the result is no longer being visually rushed straight from action to next-hand controls.
