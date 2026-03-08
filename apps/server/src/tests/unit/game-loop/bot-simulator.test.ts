@@ -8,6 +8,7 @@ import {
   createBotStatTracker,
   recordBotDecisionStats,
   recordBotHandResultStats,
+  simulateBotStats,
   startTrackedHand,
   summarizeBotStats,
 } from '../../../game-loop/bot-simulator.ts';
@@ -330,4 +331,97 @@ test('bot simulator tracks showdown participation and wins', () => {
   assert.equal(summary.players.p0?.wentToShowdown.count, 1);
   assert.equal(summary.players.p0?.wonAtShowdown.opportunities, 1);
   assert.equal(summary.players.p0?.wonAtShowdown.count, 1);
+});
+
+test('bot simulator excludes preflop folders from saw-flop and showdown opportunities', () => {
+  const tracker = createBotStatTracker([
+    { id: 'p0', personality: 'tag' },
+    { id: 'p1', personality: 'lag' },
+    { id: 'p2', personality: 'fish' },
+  ]);
+  const hand = makeHand({
+    phase: 'hand_end',
+    players: [
+      { ...makePlayer('p0', 0), status: 'active' },
+      { ...makePlayer('p1', 1), status: 'folded' },
+      { ...makePlayer('p2', 2), status: 'folded' },
+    ],
+    communityCards: ['7s', '2c', '9d', 'Th', 'Ac'],
+    actions: [
+      makeActionRecord({
+        playerId: 'p1',
+        type: 'fold',
+        amount: 0,
+        addedAmount: 0,
+        toAmount: 0,
+      }),
+      makeActionRecord({
+        playerId: 'p2',
+        amount: 60,
+        addedAmount: 40,
+        toAmount: 60,
+      }),
+      makeActionRecord({
+        playerId: 'p0',
+        type: 'call',
+        amount: 60,
+        addedAmount: 40,
+        toAmount: 60,
+      }),
+      makeActionRecord({
+        playerId: 'p2',
+        amount: 40,
+        addedAmount: 40,
+        toAmount: 40,
+        phase: 'betting_flop',
+      }),
+      makeActionRecord({
+        playerId: 'p0',
+        type: 'fold',
+        amount: 0,
+        addedAmount: 0,
+        toAmount: 0,
+        phase: 'betting_flop',
+      }),
+    ],
+    payouts: [{ potIndex: 0, playerId: 'p2', amount: 200 }],
+  });
+
+  startTrackedHand(tracker, hand);
+  recordBotHandResultStats(tracker, hand);
+
+  const summary = summarizeBotStats(tracker);
+  assert.equal(summary.players.p1?.sawFlopHands, 0);
+  assert.equal(summary.players.p1?.wentToShowdown.opportunities, 0);
+  assert.equal(summary.players.p0?.sawFlopHands, 1);
+  assert.equal(summary.players.p0?.wentToShowdown.opportunities, 1);
+  assert.equal(summary.players.p2?.sawFlopHands, 1);
+  assert.equal(summary.players.p2?.wentToShowdown.opportunities, 1);
+});
+
+test('simulateBotStats reports table pacing metrics alongside personality summary', () => {
+  const report = simulateBotStats({
+    hands: 24,
+    seed: 7,
+  });
+
+  assert.ok(report.overall.table.avgVoluntaryEntrants > 0);
+  assert.ok(report.overall.table.sawFlopRate >= 0);
+  assert.ok(report.overall.table.sawFlopRate <= 1);
+  assert.ok(report.overall.table.walkRate >= 0);
+  assert.ok(report.overall.table.walkRate <= 1);
+  assert.ok(report.overall.table.maxBotPreflopFoldStreak >= 0);
+});
+
+test('simulateBotStats includes a 1v5 training-table benchmark with human-open walk metrics', () => {
+  const report = simulateBotStats({
+    hands: 24,
+    seed: 11,
+  });
+
+  assert.ok(report.trainingTable);
+  assert.equal(report.trainingTable?.seats.filter((seat) => seat.actor === 'benchmark_human').length, 1);
+  assert.ok((report.trainingTable?.overall.table.humanOpenOpportunities ?? -1) >= 0);
+  assert.ok((report.trainingTable?.overall.table.humanOpenWalkRate ?? -1) >= 0);
+  assert.ok((report.trainingTable?.overall.table.humanOpenWalkRate ?? 2) <= 1);
 });

@@ -1,5 +1,6 @@
 import { getValidActions, type HandActionRecord, type HandPhase } from '@aipoker/game-engine';
 import type {
+  BotAction,
   BotBettingState,
   BotDecisionContext,
   BotDecisionPhase,
@@ -23,6 +24,54 @@ export const DEFAULT_BOT_RUNTIME_DEPS: BotRuntimeDeps = {
     }),
   nowMs: () => Date.now(),
 };
+
+const BOT_PREFLOP_FOLD_STREAKS = new WeakMap<RuntimeRoom, Map<string, number>>();
+
+function getOrCreateBotPreflopFoldStreaks(room: RuntimeRoom): Map<string, number> {
+  const existing = BOT_PREFLOP_FOLD_STREAKS.get(room);
+  if (existing) {
+    return existing;
+  }
+
+  const created = new Map<string, number>();
+  BOT_PREFLOP_FOLD_STREAKS.set(room, created);
+  return created;
+}
+
+export function getBotPreflopFoldStreak(room: RuntimeRoom, playerId: string): number {
+  return BOT_PREFLOP_FOLD_STREAKS.get(room)?.get(playerId) ?? 0;
+}
+
+export function resetBotPreflopFoldStreaks(room: RuntimeRoom): void {
+  BOT_PREFLOP_FOLD_STREAKS.delete(room);
+}
+
+export function isFirstPreflopDecisionForPlayer(hand: RuntimeRoom['hand'], playerId: string): boolean {
+  if (!hand) {
+    return false;
+  }
+
+  return !hand.actions.some((action) => action.phase === 'betting_preflop' && action.playerId === playerId);
+}
+
+export function trackBotPreflopEntryDecision(
+  room: RuntimeRoom,
+  hand: RuntimeRoom['hand'],
+  playerId: string,
+  actionType: BotAction['type'],
+): void {
+  if (!isFirstPreflopDecisionForPlayer(hand, playerId)) {
+    return;
+  }
+
+  const streaks = getOrCreateBotPreflopFoldStreaks(room);
+  if (actionType === 'fold') {
+    streaks.set(playerId, (streaks.get(playerId) ?? 0) + 1);
+    return;
+  }
+
+  streaks.set(playerId, 0);
+}
 
 type EligibleRoomPlayer = RuntimeRoom['players'] extends Map<string, infer Player> ? Player : never;
 

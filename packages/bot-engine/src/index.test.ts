@@ -127,10 +127,28 @@ test('tag steals weak offsuit aces on the button more often in the fourth tuning
   assert.ok(mix.call + mix.raise + mix.jam >= 0.68);
 });
 
+test('tag keeps more marginal button queens in the opening mix for live-play pacing', () => {
+  const mix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Qh', '8d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.58);
+});
+
 test('tag defends suited connectors from the big blind even more often in the fourth tuning pass', () => {
   const mix = getPreflopMix('tag', 60, 'facing_open', 'bb', ['Th', '8h']);
 
   assert.ok(mix.call + mix.raise + mix.jam >= 0.36);
+});
+
+test('tag defends suited connectors from the big blind often enough to avoid over-fold streaks', () => {
+  const mix = getPreflopMix('tag', 60, 'facing_open', 'bb', ['Th', '8h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.42);
+});
+
+test('fish defends suited kings from the big blind more often in live-play tuning', () => {
+  const mix = getPreflopMix('fish', 60, 'facing_open', 'bb', ['Kh', '7h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.46);
 });
 
 test('fish prefers calling over 3-betting when defending suited broadways versus an open', () => {
@@ -218,6 +236,90 @@ test('preflop sizing respects the legal raise clamp', () => {
   if (action.type === 'raise_to') {
     assert.equal(action.amount, 180);
   }
+});
+
+test('anti-streak nudges marginal late-position opens out of pure fold territory', () => {
+  const context = makeContext({
+    holeCards: ['Jh', '9h'],
+    position: 'co',
+    bettingState: 'facing_open',
+    activePlayerCount: 6,
+    opponentCount: 5,
+  });
+
+  const baseline = chooseBotAction(context, 'tag', () => 0.65);
+  const boosted = chooseBotAction(context, 'tag', () => 0.65, {
+    preflopConsecutiveFolds: 3,
+    isFirstPreflopDecision: true,
+  });
+
+  assert.equal(baseline.type, 'fold');
+  assert.notEqual(boosted.type, 'fold');
+});
+
+test('tag button opening pressure is clearly wider than hijack on marginal offsuit queens', () => {
+  const hijackMix = getPreflopMix('tag', 60, 'unopened', 'hj', ['Qh', '8d']);
+  const buttonMix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Qh', '8d']);
+
+  assert.ok(buttonMix.call + buttonMix.raise + buttonMix.jam >= 0.7);
+  assert.ok(buttonMix.raise + buttonMix.jam >= 0.36);
+  assert.ok(buttonMix.raise + buttonMix.jam >= hijackMix.raise + hijackMix.jam + 0.2);
+});
+
+test('fish defends suited kings from the big blind mostly by calling rather than blasting back', () => {
+  const mix = getPreflopMix('fish', 60, 'facing_open', 'bb', ['Kh', '7h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.5);
+  assert.ok(mix.call > mix.raise + mix.jam);
+});
+
+test('fish keeps more marginal offsuit broadways in the big blind defend mix', () => {
+  const mix = getPreflopMix('fish', 60, 'facing_open', 'bb', ['Qh', '8d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.5);
+  assert.ok(mix.call >= 0.45);
+  assert.ok(mix.call > mix.raise + mix.jam);
+});
+
+test('tag does not snap-fold too much from the button versus opens with marginal broadways', () => {
+  const mix = getPreflopMix('tag', 60, 'facing_open', 'btn', ['Qh', '8d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.45);
+  assert.ok(mix.raise + mix.jam <= 0.24);
+});
+
+test('lag deep-stack button weak aces open often enough without turning into pure raise spam', () => {
+  const mix = getPreflopMix('lag', 100, 'unopened', 'btn', ['Ah', '7d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.72);
+  assert.ok(mix.raise + mix.jam >= 0.4);
+  assert.ok(mix.raise + mix.jam <= 0.52);
+});
+
+test('lag trims low-EV deep-stack big blind trash defends back under the overcooked line', () => {
+  const mix = getPreflopMix('lag', 100, 'facing_open', 'bb', ['9c', '4d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam <= 0.28);
+  assert.ok(mix.raise + mix.jam <= 0.12);
+});
+
+test('anti-streak does not widen UTG trash just to break a fold streak', () => {
+  const context = makeContext({
+    holeCards: ['9c', '4d'],
+    position: 'utg',
+    bettingState: 'unopened',
+    activePlayerCount: 6,
+    opponentCount: 5,
+  });
+
+  const baseline = chooseBotAction(context, 'tag', () => 0.3);
+  const boosted = chooseBotAction(context, 'tag', () => 0.3, {
+    preflopConsecutiveFolds: 4,
+    isFirstPreflopDecision: true,
+  });
+
+  assert.equal(baseline.type, 'fold');
+  assert.equal(boosted.type, 'fold');
 });
 
 test('fish thinking delay stays in the slower live-play range', () => {

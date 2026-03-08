@@ -54,6 +54,11 @@ export interface Mix {
   jam: number;
 }
 
+export interface ChooseBotActionOptions {
+  preflopConsecutiveFolds?: number;
+  isFirstPreflopDecision?: boolean;
+}
+
 interface PostflopFeatures {
   flushDraw: boolean;
   backdoorFlushDraw: boolean;
@@ -830,6 +835,26 @@ function normalizeMix(value: Mix): Mix {
   };
 }
 
+function scaleMixDelta(
+  delta: Partial<Record<'fold' | 'call' | 'raise' | 'jam', number>>,
+  factor: number
+): Partial<Record<'fold' | 'call' | 'raise' | 'jam', number>> {
+  const scaled: Partial<Record<'fold' | 'call' | 'raise' | 'jam', number>> = {};
+  if (delta.fold !== undefined) {
+    scaled.fold = delta.fold * factor;
+  }
+  if (delta.call !== undefined) {
+    scaled.call = delta.call * factor;
+  }
+  if (delta.raise !== undefined) {
+    scaled.raise = delta.raise * factor;
+  }
+  if (delta.jam !== undefined) {
+    scaled.jam = delta.jam * factor;
+  }
+  return scaled;
+}
+
 function adjustPreflopMixForHandDetail(
   base: Mix,
   input: {
@@ -847,7 +872,7 @@ function adjustPreflopMixForHandDetail(
       adjusted = nudgeMix(
         adjusted,
         input.personality === 'lag'
-          ? { fold: -0.18, call: 0.05, raise: 0.13 }
+          ? { fold: -0.24, call: 0.03, raise: 0.21 }
           : input.personality === 'fish'
             ? { fold: -0.10, call: 0.06, raise: 0.04 }
             : { fold: -0.18, call: 0.05, raise: 0.13 },
@@ -876,7 +901,9 @@ function adjustPreflopMixForHandDetail(
       adjusted = nudgeMix(
         adjusted,
         input.personality === 'lag'
-          ? { fold: -0.10, call: -0.02, raise: 0.12 }
+          ? input.detail === 'weak_offsuit_ace'
+            ? { fold: -0.18, call: -0.02, raise: 0.20 }
+            : { fold: -0.10, call: -0.02, raise: 0.12 }
           : { fold: -0.06, call: 0.0, raise: 0.06 },
       );
     }
@@ -890,7 +917,7 @@ function adjustPreflopMixForHandDetail(
           ? { fold: -0.20, call: 0.17, raise: 0.03 }
           : input.personality === 'lag'
             ? { fold: -0.18, call: 0.10, raise: 0.08 }
-            : { fold: -0.14, call: 0.12, raise: 0.02 },
+            : { fold: -0.20, call: 0.18, raise: 0.02 },
       );
     }
 
@@ -942,16 +969,20 @@ function rebalancePreflopMixForPersonality(
     if (input.scenario === 'unopened') {
       if (latePosition) {
         if (input.handClass === 'playable' || input.handClass === 'speculative') {
-          adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.12, raise: -0.02 });
+          adjusted = nudgeMix(adjusted, { fold: -0.22, call: 0.08, raise: 0.14 });
         }
         if (input.handClass === 'marginal') {
-          adjusted = nudgeMix(adjusted, { fold: -0.16, call: 0.18, raise: -0.02 });
+          adjusted = nudgeMix(adjusted, { fold: -0.30, call: 0.16, raise: 0.14 });
         }
         if (input.handClass === 'trash') {
-          adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.12, raise: -0.02 });
+          adjusted = nudgeMix(adjusted, { fold: -0.20, call: 0.13, raise: 0.07 });
         }
       } else if (input.handClass === 'speculative' || input.handClass === 'marginal') {
         adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.09, raise: -0.01 });
+      }
+
+      if (input.position === 'sb' && (input.handClass === 'speculative' || input.handClass === 'marginal' || input.handClass === 'trash')) {
+        adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.02, raise: 0.06 });
       }
     }
 
@@ -960,10 +991,16 @@ function rebalancePreflopMixForPersonality(
         adjusted = nudgeMix(adjusted, { call: 0.24, raise: -0.18, jam: -0.06 });
       }
       if (input.handClass === 'playable' || input.handClass === 'speculative') {
-        adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.20, raise: -0.07, jam: -0.03 });
+        adjusted = nudgeMix(adjusted, { fold: -0.24, call: 0.30, raise: -0.02, jam: -0.04 });
       }
       if (input.handClass === 'marginal' && (latePosition || blindPosition)) {
-        adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.14, raise: -0.04 });
+        adjusted = nudgeMix(adjusted, { fold: -0.28, call: 0.30, raise: -0.02 });
+      }
+      if (input.position === 'bb' && input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.08 });
+      }
+      if (input.position === 'bb' && input.handClass === 'trash') {
+        adjusted = nudgeMix(adjusted, { fold: -0.12, call: 0.12 });
       }
     }
 
@@ -980,28 +1017,46 @@ function rebalancePreflopMixForPersonality(
   if (input.personality === 'tag') {
     if (input.scenario === 'unopened') {
       if (latePosition && input.handClass === 'playable') {
-        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.02, raise: 0.04 });
+        adjusted = nudgeMix(adjusted, { fold: -0.14, call: 0.01, raise: 0.13 });
       }
       if ((input.position === 'co' || input.position === 'btn') && input.handClass === 'speculative') {
-        adjusted = nudgeMix(adjusted, { fold: -0.17, call: 0.06, raise: 0.11 });
+        adjusted = nudgeMix(adjusted, { fold: -0.30, call: 0.04, raise: 0.26 });
       }
       if ((input.position === 'co' || input.position === 'btn') && input.handClass === 'marginal') {
-        adjusted = nudgeMix(adjusted, { fold: -0.21, call: 0.08, raise: 0.13 });
+        adjusted = nudgeMix(adjusted, { fold: -0.38, call: 0.08, raise: 0.30 });
       }
       if (input.position === 'btn' && input.handClass === 'marginal') {
-        adjusted = nudgeMix(adjusted, { fold: -0.04, call: 0.02, raise: 0.02 });
+        adjusted = nudgeMix(adjusted, { fold: -0.10, call: -0.02, raise: 0.12 });
+      }
+      if ((input.position === 'co' || input.position === 'btn') && input.handClass === 'trash') {
+        adjusted = nudgeMix(adjusted, { fold: -0.12, call: 0.01, raise: 0.11 });
+      }
+      if (input.position === 'sb' && (input.handClass === 'playable' || input.handClass === 'speculative')) {
+        adjusted = nudgeMix(adjusted, { fold: -0.12, call: -0.02, raise: 0.14 });
+      }
+      if (input.position === 'sb' && input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.20, call: -0.02, raise: 0.22 });
       }
       if (blindPosition && input.handClass === 'marginal') {
-        adjusted = nudgeMix(adjusted, { fold: -0.04, call: 0.04 });
+        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.02, raise: 0.04 });
       }
     }
 
     if (input.scenario === 'facing_open' && (input.position === 'bb' || input.position === 'btn' || input.position === 'co')) {
       if (input.handClass === 'playable' || input.handClass === 'strong') {
-        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.04, raise: 0.02 });
+        adjusted = nudgeMix(adjusted, { fold: -0.12, call: 0.06, raise: 0.06 });
       }
       if (input.handClass === 'speculative' && input.position === 'bb') {
-        adjusted = nudgeMix(adjusted, { fold: -0.18, call: 0.12, raise: 0.06 });
+        adjusted = nudgeMix(adjusted, { fold: -0.34, call: 0.18, raise: 0.16 });
+      }
+      if (input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.18, call: 0.10, raise: 0.08 });
+      }
+      if ((input.position === 'co' || input.position === 'btn') && input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.05, raise: 0.01 });
+      }
+      if (input.position === 'bb' && input.handClass === 'trash') {
+        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.06 });
       }
     }
   }
@@ -1012,25 +1067,43 @@ function rebalancePreflopMixForPersonality(
 
     if (input.scenario === 'unopened' && latePosition) {
       if (deepStack && input.handClass === 'trash') {
-        adjusted = nudgeMix(adjusted, { fold: 0.18, call: -0.08, raise: -0.10 });
+        adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.02, raise: 0.08 });
+      }
+      if (mediumDeepStack && input.handClass === 'trash') {
+        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.02, raise: 0.04 });
       }
       if ((deepStack || mediumDeepStack) && input.handClass === 'marginal') {
-        adjusted = nudgeMix(adjusted, { fold: 0.14, call: -0.06, raise: -0.08 });
+        adjusted = nudgeMix(adjusted, { fold: -0.18, call: 0.0, raise: 0.18 });
       }
       if (deepStack && input.handClass === 'speculative') {
-        adjusted = nudgeMix(adjusted, { fold: 0.02, call: 0.16, raise: -0.18 });
+        adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.20, raise: -0.10 });
       }
       if (mediumDeepStack && input.handClass === 'speculative') {
-        adjusted = nudgeMix(adjusted, { fold: 0.03, call: 0.08, raise: -0.11 });
+        adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.14, raise: -0.06 });
+      }
+      if (input.position === 'sb' && (deepStack || mediumDeepStack) && (input.handClass === 'marginal' || input.handClass === 'trash')) {
+        adjusted = nudgeMix(adjusted, { fold: -0.08, raise: 0.08 });
+      }
+      if (input.position === 'btn' && (input.handClass === 'marginal' || input.handClass === 'trash')) {
+        adjusted = nudgeMix(adjusted, { call: -0.04, raise: 0.04 });
       }
     }
 
     if (input.scenario === 'facing_open' && (input.position === 'co' || input.position === 'btn' || input.position === 'bb')) {
+      if (input.handClass === 'playable') {
+        adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.04, raise: 0.04 });
+      }
+      if (input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.05, raise: 0.05 });
+      }
       if (deepStack && input.handClass === 'trash') {
-        adjusted = nudgeMix(adjusted, { fold: 0.14, call: -0.06, raise: -0.08 });
+        adjusted = nudgeMix(adjusted, { fold: -0.02, call: 0.01, raise: 0.01 });
+      }
+      if (deepStack && input.position === 'bb' && input.handClass === 'trash') {
+        adjusted = nudgeMix(adjusted, { fold: 0.06, call: -0.02, raise: -0.04 });
       }
       if ((deepStack || mediumDeepStack) && input.handClass === 'speculative') {
-        adjusted = nudgeMix(adjusted, { fold: 0.12, call: -0.04, raise: -0.08 });
+        adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.05, raise: 0.03 });
       }
     }
   }
@@ -1442,12 +1515,58 @@ function shouldFloatSmallBet(
   return floatSignals >= 2;
 }
 
+function applyPreflopAntiStreakAdjustment(
+  base: Mix,
+  input: {
+    personality: BotPersonality;
+    scenario: PreflopScenario;
+    position: PreflopPosition;
+    handClass: HandClass;
+    preflopConsecutiveFolds: number;
+  }
+): Mix {
+  if (input.preflopConsecutiveFolds < 2) {
+    return base;
+  }
+
+  const eligibleHandClass = input.handClass === 'playable' || input.handClass === 'speculative' || input.handClass === 'marginal';
+  if (!eligibleHandClass) {
+    return base;
+  }
+
+  const factor = input.preflopConsecutiveFolds >= 4 ? 1.35 : input.preflopConsecutiveFolds >= 3 ? 1 : 0.7;
+
+  if (input.scenario === 'unopened' && (input.position === 'co' || input.position === 'btn' || input.position === 'sb')) {
+    const delta = input.personality === 'fish'
+      ? { fold: -0.12, call: 0.10, raise: 0.02 }
+      : input.personality === 'lag'
+        ? { fold: -0.10, call: 0.04, raise: 0.06 }
+        : { fold: -0.14, call: 0.06, raise: 0.08 };
+    return nudgeMix(base, scaleMixDelta(delta, factor));
+  }
+
+  if (input.scenario === 'facing_open' && (input.position === 'bb' || input.position === 'co' || input.position === 'btn')) {
+    const delta = input.personality === 'fish'
+      ? { fold: -0.14, call: 0.12, raise: 0.02 }
+      : input.personality === 'lag'
+        ? { fold: -0.12, call: 0.06, raise: 0.06 }
+        : { fold: -0.16, call: 0.10, raise: 0.06 };
+    return nudgeMix(base, scaleMixDelta(delta, factor));
+  }
+
+  return base;
+}
+
 function decidePreflop(
   context: BotDecisionContext,
   personality: BotPersonality,
-  rng: BotRng
+  rng: BotRng,
+  options: ChooseBotActionOptions,
 ): BotActionWithoutThinking {
-  const mixValue = getPreflopMix(
+  const scenario = normalizePreflopScenario(context.bettingState);
+  const position = getPreflopTablePosition(context.position, context.activePlayerCount);
+  const handClass = classifyHand(canonicalizeHoleCards(context.holeCards));
+  let mixValue = getPreflopMix(
     personality,
     context.effectiveStackBb,
     context.bettingState,
@@ -1455,6 +1574,15 @@ function decidePreflop(
     context.holeCards,
     context.activePlayerCount,
   );
+  if (options.isFirstPreflopDecision) {
+    mixValue = applyPreflopAntiStreakAdjustment(mixValue, {
+      personality,
+      scenario,
+      position,
+      handClass,
+      preflopConsecutiveFolds: options.preflopConsecutiveFolds ?? 0,
+    });
+  }
   const intent = sampleIntent(mixValue, rng);
   const targetTo = getPreflopRaiseTo(context);
   return finalizeIntent(context, intent, targetTo);
@@ -1523,10 +1651,11 @@ export function chooseBotAction(
   context: BotDecisionContext,
   personality: BotPersonality = 'fish',
   rng: BotRng = Math.random,
+  options: ChooseBotActionOptions = {},
 ): BotAction {
   const thinkingDelayMs = calcThinkingDelay(rng, personality);
   const decided = context.phase === 'preflop'
-    ? decidePreflop(context, personality, rng)
+    ? decidePreflop(context, personality, rng, options)
     : decidePostflop(context, personality, rng);
 
   switch (decided.type) {

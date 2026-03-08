@@ -2,7 +2,13 @@ import { chooseBotAction } from '@aipoker/bot-engine';
 import { applyAction, type PlayerActionInput } from '@aipoker/game-engine';
 import type { Server } from 'socket.io';
 
-import { buildBotDecisionContext, type BotRuntimeDeps } from './bot-support.ts';
+import {
+  buildBotDecisionContext,
+  getBotPreflopFoldStreak,
+  isFirstPreflopDecisionForPlayer,
+  trackBotPreflopEntryDecision,
+  type BotRuntimeDeps,
+} from './bot-support.ts';
 import { syncRoomPlayersFromHand } from '../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { emitGameState } from '../ws/emitters.ts';
@@ -53,11 +59,16 @@ export async function runBotTurns(
     if (!context) {
       return;
     }
+    const isFirstPreflopDecision = context.phase === 'preflop' && isFirstPreflopDecisionForPlayer(room.hand, actor.id);
 
     const botAction = chooseBotAction(
       context,
       actor.botStrategy ?? 'fish',
       runtime.rng,
+      {
+        preflopConsecutiveFolds: getBotPreflopFoldStreak(room, actor.id),
+        isFirstPreflopDecision,
+      },
     );
 
     await runtime.sleep(botAction.thinkingDelayMs);
@@ -72,10 +83,12 @@ export async function runBotTurns(
     }
 
     const actionInput = buildActionInput(actor.id, botAction);
-    const result = applyAction(room.hand, actionInput, { timestamp: runtime.nowMs() });
+    const handBeforeAction = room.hand;
+    const result = applyAction(handBeforeAction, actionInput, { timestamp: runtime.nowMs() });
     if (!result.ok) {
       return;
     }
+    trackBotPreflopEntryDecision(room, handBeforeAction, actor.id, botAction.type);
 
     room.hand = result.value;
     room.stateVersion += 1;

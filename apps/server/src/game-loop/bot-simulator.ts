@@ -3,7 +3,14 @@ import { applyAction, initializeHand, type HandActionRecord, type HandState, typ
 import type { BotAction, BotDecisionContext, BotPersonality, BotPosition } from '@aipoker/shared';
 import { fileURLToPath } from 'node:url';
 
-import { buildBotDecisionContext, resolveButtonMarkerSeatForNextHand } from './bot-support.ts';
+import {
+  buildBotDecisionContext,
+  getBotPreflopFoldStreak,
+  isFirstPreflopDecisionForPlayer,
+  resetBotPreflopFoldStreaks,
+  resolveButtonMarkerSeatForNextHand,
+  trackBotPreflopEntryDecision,
+} from './bot-support.ts';
 import { syncRoomPlayersFromHand } from '../rooms/room-store.ts';
 import type { RuntimePlayer, RuntimeRoom } from '../rooms/types.ts';
 
@@ -67,12 +74,43 @@ interface SummaryMetrics {
 export interface BotSimulationSummary {
   players: Record<string, SummaryMetrics>;
   personalities: Record<BotPersonality, SummaryMetrics>;
+  table: TablePacingSummary;
 }
 
 export interface BotSimulationSegment {
   label: string;
   hands: number;
   stackBb: number;
+}
+
+export interface TablePacingSummary {
+  hands: number;
+  avgVoluntaryEntrants: number;
+  sawFlopRate: number;
+  walkRate: number;
+  humanOpenOpportunities: number;
+  humanOpenWalkRate: number;
+  maxBotPreflopFoldStreak: number;
+}
+
+export interface SimulationSeatDescriptor {
+  id: string;
+  name: string;
+  seatIndex: number;
+  actor: 'bot' | 'benchmark_human';
+  personality?: BotPersonality;
+  benchmarkStyle?: 'training_tag';
+}
+
+export interface TrainingTableSimulationReport {
+  seats: SimulationSeatDescriptor[];
+  segments: Array<{
+    label: string;
+    hands: number;
+    stackBb: number;
+    summary: BotSimulationSummary;
+  }>;
+  overall: BotSimulationSummary;
 }
 
 export interface BotSimulationReport {
@@ -86,6 +124,7 @@ export interface BotSimulationReport {
     summary: BotSimulationSummary;
   }>;
   overall: BotSimulationSummary;
+  trainingTable?: TrainingTableSimulationReport;
 }
 
 export interface SimulateBotStatsOptions {
@@ -95,6 +134,19 @@ export interface SimulateBotStatsOptions {
   bigBlind?: number;
   seats?: BotSeatConfig[];
   segments?: BotSimulationSegment[];
+  includeTrainingTable?: boolean;
+}
+
+interface SimulationSeatConfig extends SimulationSeatDescriptor {}
+
+interface TablePacingCounters {
+  hands: number;
+  handsSawFlop: number;
+  handsEndedPreflop: number;
+  totalVoluntaryEntrants: number;
+  humanOpenOpportunities: number;
+  humanOpenWalks: number;
+  maxBotPreflopFoldStreak: number;
 }
 
 const POSITIONS: BotPosition[] = ['utg', 'hj', 'co', 'btn', 'sb', 'bb'];
@@ -106,6 +158,14 @@ const DEFAULT_SEATS: BotSeatConfig[] = [
   { id: 'fish-2', name: 'Fish 2', seatIndex: 3, personality: 'fish' },
   { id: 'tag-2', name: 'Tag 2', seatIndex: 4, personality: 'tag' },
   { id: 'lag-2', name: 'Lag 2', seatIndex: 5, personality: 'lag' },
+];
+const DEFAULT_TRAINING_TABLE_SEATS: SimulationSeatConfig[] = [
+  { id: 'hero-benchmark', name: 'Hero', seatIndex: 0, actor: 'benchmark_human', benchmarkStyle: 'training_tag' },
+  { id: 'fish-1', name: 'Fish 1', seatIndex: 1, actor: 'bot', personality: 'fish' },
+  { id: 'tag-1', name: 'Tag 1', seatIndex: 2, actor: 'bot', personality: 'tag' },
+  { id: 'lag-1', name: 'Lag 1', seatIndex: 3, actor: 'bot', personality: 'lag' },
+  { id: 'fish-2', name: 'Fish 2', seatIndex: 4, actor: 'bot', personality: 'fish' },
+  { id: 'lag-2', name: 'Lag 2', seatIndex: 5, actor: 'bot', personality: 'lag' },
 ];
 
 function zeroMetric(): MetricCounter {
@@ -132,6 +192,18 @@ function createPlayerMetricCounters(): PlayerMetricCounters {
       sb: zeroMetric(),
       bb: zeroMetric(),
     },
+  };
+}
+
+function createTablePacingCounters(): TablePacingCounters {
+  return {
+    hands: 0,
+    handsSawFlop: 0,
+    handsEndedPreflop: 0,
+    totalVoluntaryEntrants: 0,
+    humanOpenOpportunities: 0,
+    humanOpenWalks: 0,
+    maxBotPreflopFoldStreak: 0,
   };
 }
 
@@ -206,7 +278,7 @@ export function recordBotHandResultStats(tracker: BotStatTracker, hand: HandStat
       continue;
     }
 
-    if (sawFlop) {
+    if (sawFlop && !didPlayerFoldInPhase(hand, player.id, 'betting_preflop')) {
       metrics.sawFlopHands += 1;
       metrics.wentToShowdown.opportunities += 1;
     }
@@ -221,6 +293,10 @@ export function recordBotHandResultStats(tracker: BotStatTracker, hand: HandStat
   }
 
   tracker.currentHand = null;
+}
+
+function didPlayerFoldInPhase(hand: HandState, playerId: string, phase: HandActionRecord['phase']): boolean {
+  return hand.actions.some((action) => action.playerId === playerId && action.phase === phase && action.type === 'fold');
 }
 
 function recordPreflopDecisionStats(
@@ -313,6 +389,72 @@ function isFacingFlopCbet(hand: HandState, playerId: string): boolean {
   return flopAggressiveActions.length === 1 && flopAggressiveActions[0]?.playerId === preflopAggressor;
 }
 
+function isVoluntaryPreflopAction(action: HandActionRecord): boolean {
+  return action.type === 'call' || action.type === 'raise_to' || action.type === 'all_in';
+}
+
+function isAggressivePreflopAction(action: HandActionRecord, currentMax: number): boolean {
+  return (action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax;
+}
+
+function countVoluntaryPreflopEntrants(hand: HandState): number {
+  const firstPreflopActions = new Map<string, HandActionRecord>();
+
+  for (const action of hand.actions) {
+    if (action.phase !== 'betting_preflop' || firstPreflopActions.has(action.playerId)) {
+      continue;
+    }
+    firstPreflopActions.set(action.playerId, action);
+  }
+
+  return [...firstPreflopActions.values()].filter(isVoluntaryPreflopAction).length;
+}
+
+function didBenchmarkHumanOpenUnopened(hand: HandState, benchmarkHumanId: string): boolean {
+  let currentMax = hand.blinds.bigBlind;
+
+  for (const action of hand.actions) {
+    if (action.phase !== 'betting_preflop') {
+      continue;
+    }
+
+    const isAggressive = isAggressivePreflopAction(action, currentMax);
+    if (action.playerId === benchmarkHumanId) {
+      return isAggressive;
+    }
+    if (isAggressive) {
+      currentMax = action.toAmount;
+    }
+  }
+
+  return false;
+}
+
+function recordTablePacingStats(
+  counters: TablePacingCounters,
+  hand: HandState,
+  input: { benchmarkHumanId?: string | null },
+): void {
+  counters.hands += 1;
+  counters.totalVoluntaryEntrants += countVoluntaryPreflopEntrants(hand);
+
+  if (hand.communityCards.length >= 3) {
+    counters.handsSawFlop += 1;
+  } else {
+    counters.handsEndedPreflop += 1;
+  }
+
+  if (!input.benchmarkHumanId || !didBenchmarkHumanOpenUnopened(hand, input.benchmarkHumanId)) {
+    return;
+  }
+
+  counters.humanOpenOpportunities += 1;
+  const benchmarkHumanWonPreflop = hand.communityCards.length < 3 && hand.payouts.some((payout) => payout.playerId === input.benchmarkHumanId);
+  if (benchmarkHumanWonPreflop) {
+    counters.humanOpenWalks += 1;
+  }
+}
+
 function summarizeMetric(counter: MetricCounter): SummaryMetric {
   return {
     count: counter.count,
@@ -344,6 +486,18 @@ function summarizeCounters(counters: PlayerMetricCounters): SummaryMetrics {
   };
 }
 
+function summarizeTablePacing(counters: TablePacingCounters): TablePacingSummary {
+  return {
+    hands: counters.hands,
+    avgVoluntaryEntrants: counters.hands === 0 ? 0 : counters.totalVoluntaryEntrants / counters.hands,
+    sawFlopRate: counters.hands === 0 ? 0 : counters.handsSawFlop / counters.hands,
+    walkRate: counters.hands === 0 ? 0 : counters.handsEndedPreflop / counters.hands,
+    humanOpenOpportunities: counters.humanOpenOpportunities,
+    humanOpenWalkRate: counters.humanOpenOpportunities === 0 ? 0 : counters.humanOpenWalks / counters.humanOpenOpportunities,
+    maxBotPreflopFoldStreak: counters.maxBotPreflopFoldStreak,
+  };
+}
+
 function mergeCounters(target: PlayerMetricCounters, source: PlayerMetricCounters): void {
   target.handsDealt += source.handsDealt;
   target.sawFlopHands += source.sawFlopHands;
@@ -365,7 +519,17 @@ function mergeMetric(target: MetricCounter, source: MetricCounter): void {
   target.opportunities += source.opportunities;
 }
 
-export function summarizeBotStats(tracker: BotStatTracker): BotSimulationSummary {
+function mergeTablePacingCounters(target: TablePacingCounters, source: TablePacingCounters): void {
+  target.hands += source.hands;
+  target.handsSawFlop += source.handsSawFlop;
+  target.handsEndedPreflop += source.handsEndedPreflop;
+  target.totalVoluntaryEntrants += source.totalVoluntaryEntrants;
+  target.humanOpenOpportunities += source.humanOpenOpportunities;
+  target.humanOpenWalks += source.humanOpenWalks;
+  target.maxBotPreflopFoldStreak = Math.max(target.maxBotPreflopFoldStreak, source.maxBotPreflopFoldStreak);
+}
+
+export function summarizeBotStats(tracker: BotStatTracker, tableCounters: TablePacingCounters = createTablePacingCounters()): BotSimulationSummary {
   const players: Record<string, SummaryMetrics> = {};
   const aggregatedByPersonality: Record<BotPersonality, PlayerMetricCounters> = {
     fish: createPlayerMetricCounters(),
@@ -389,6 +553,7 @@ export function summarizeBotStats(tracker: BotStatTracker): BotSimulationSummary
       tag: summarizeCounters(aggregatedByPersonality.tag),
       lag: summarizeCounters(aggregatedByPersonality.lag),
     },
+    table: summarizeTablePacing(tableCounters),
   };
 }
 
@@ -398,39 +563,35 @@ export function simulateBotStats(options: SimulateBotStatsOptions = {}): BotSimu
   const seed = options.seed ?? DEFAULT_SEED;
   const seats = (options.seats ?? DEFAULT_SEATS).slice().sort((left, right) => left.seatIndex - right.seatIndex);
   const segments = resolveSegments(options);
-  const rng = sequenceRng(seed);
-  const overallTracker = createBotStatTracker(seats.map((seat) => ({ id: seat.id, personality: seat.personality })));
-  const room = createSimulationRoom({
-    seats,
+  const baseline = simulateScenario({
+    seats: seats.map((seat) => ({ ...seat, actor: 'bot' as const })),
+    segments,
     smallBlind,
     bigBlind,
+    seed,
   });
-
-  const segmentReports = segments.map((segment) => {
-    const tracker = createBotStatTracker(seats.map((seat) => ({ id: seat.id, personality: seat.personality })));
-    for (let handIndex = 0; handIndex < segment.hands; handIndex += 1) {
-      playSimulatedHand({
-        room,
-        tracker,
-        overallTracker,
-        stackBb: segment.stackBb,
-        rng,
-      });
-    }
-    return {
-      label: segment.label,
-      hands: segment.hands,
-      stackBb: segment.stackBb,
-      summary: summarizeBotStats(tracker),
-    };
-  });
-
-  return {
+  const includeTrainingTable = options.includeTrainingTable !== false;
+  const baseReport = {
     hands: segments.reduce((sum, segment) => sum + segment.hands, 0),
     seed,
     seats,
-    segments: segmentReports,
-    overall: summarizeBotStats(overallTracker),
+    segments: baseline.segments,
+    overall: baseline.overall,
+  };
+
+  if (!includeTrainingTable) {
+    return baseReport;
+  }
+
+  return {
+    ...baseReport,
+    trainingTable: simulateScenario({
+      seats: resolveTrainingTableSeats(seats),
+      segments,
+      smallBlind,
+      bigBlind,
+      seed: seed ^ 0x9e3779b9,
+    }),
   };
 }
 
@@ -455,11 +616,107 @@ function resolveSegments(options: SimulateBotStatsOptions): BotSimulationSegment
   });
 }
 
+function resolveTrainingTableSeats(seats: ReadonlyArray<BotSeatConfig>): SimulationSeatConfig[] {
+  if (seats.length < 5) {
+    return [...DEFAULT_TRAINING_TABLE_SEATS];
+  }
+
+  return [
+    DEFAULT_TRAINING_TABLE_SEATS[0]!,
+    ...seats.slice(0, 5).map((seat, index) => ({
+      id: seat.id,
+      name: seat.name,
+      seatIndex: index + 1,
+      actor: 'bot' as const,
+      personality: seat.personality,
+    })),
+  ];
+}
+
+function getTrackedBotPlayers(
+  seats: ReadonlyArray<SimulationSeatConfig>
+): Array<{ id: string; personality: BotPersonality }> {
+  return seats
+    .filter((seat): seat is SimulationSeatConfig & { actor: 'bot'; personality: BotPersonality } => seat.actor === 'bot' && seat.personality !== undefined)
+    .map((seat) => ({ id: seat.id, personality: seat.personality }));
+}
+
+function simulateScenario(input: {
+  seats: ReadonlyArray<SimulationSeatConfig>;
+  segments: ReadonlyArray<BotSimulationSegment>;
+  smallBlind: number;
+  bigBlind: number;
+  seed: number;
+}): TrainingTableSimulationReport {
+  const trackedBotPlayers = getTrackedBotPlayers(input.seats);
+  const rng = sequenceRng(input.seed);
+  const overallTracker = createBotStatTracker(trackedBotPlayers);
+  const overallTableCounters = createTablePacingCounters();
+  const room = createSimulationRoom({
+    seats: input.seats,
+    smallBlind: input.smallBlind,
+    bigBlind: input.bigBlind,
+  });
+  const benchmarkHumanId = input.seats.find((seat) => seat.actor === 'benchmark_human')?.id ?? null;
+
+  const segments = input.segments.map((segment) => {
+    const tracker = createBotStatTracker(trackedBotPlayers);
+    const tableCounters = createTablePacingCounters();
+    resetBotPreflopFoldStreaks(room);
+    for (let handIndex = 0; handIndex < segment.hands; handIndex += 1) {
+      playSimulatedHand({
+        room,
+        tracker,
+        overallTracker,
+        tableCounters,
+        overallTableCounters,
+        stackBb: segment.stackBb,
+        rng,
+        benchmarkHumanId,
+      });
+    }
+    return {
+      label: segment.label,
+      hands: segment.hands,
+      stackBb: segment.stackBb,
+      summary: summarizeBotStats(tracker, tableCounters),
+    };
+  });
+
+  return {
+    seats: [...input.seats],
+    segments,
+    overall: summarizeBotStats(overallTracker, overallTableCounters),
+  };
+}
+
 function createSimulationRoom(input: {
-  seats: BotSeatConfig[];
+  seats: ReadonlyArray<SimulationSeatConfig>;
   smallBlind: number;
   bigBlind: number;
 }): RuntimeRoom {
+  const players = new Map<string, RuntimePlayer>(
+    input.seats.map((seat) => {
+      const basePlayer = {
+        id: seat.id,
+        name: seat.name,
+        seatIndex: seat.seatIndex,
+        stack: input.bigBlind * 100,
+        isBot: seat.actor === 'bot',
+      };
+      if (seat.actor === 'bot') {
+        if (!seat.personality) {
+          throw new Error(`Missing bot personality for simulation seat ${seat.id}`);
+        }
+        const runtimePlayer: RuntimePlayer = { ...basePlayer, botStrategy: seat.personality };
+        return [seat.id, runtimePlayer];
+      }
+
+      const runtimePlayer: RuntimePlayer = basePlayer;
+      return [seat.id, runtimePlayer];
+    })
+  );
+
   return {
     id: 'bot-sim',
     stateVersion: 0,
@@ -467,19 +724,7 @@ function createSimulationRoom(input: {
     smallBlind: input.smallBlind,
     bigBlind: input.bigBlind,
     actionTimeoutMs: 0,
-    players: new Map(
-      input.seats.map((seat) => [
-        seat.id,
-        {
-          id: seat.id,
-          name: seat.name,
-          seatIndex: seat.seatIndex,
-          stack: input.bigBlind * 100,
-          isBot: true,
-          botStrategy: seat.personality,
-        } satisfies RuntimePlayer,
-      ])
-    ),
+    players,
     readyPlayerIds: new Set(input.seats.map((seat) => seat.id)),
     pendingDisconnectPlayerIds: new Set(),
     spectatingPlayerIds: new Set(),
@@ -494,10 +739,13 @@ function playSimulatedHand(input: {
   room: RuntimeRoom;
   tracker: BotStatTracker;
   overallTracker: BotStatTracker;
+  tableCounters: TablePacingCounters;
+  overallTableCounters: TablePacingCounters;
   stackBb: number;
   rng: () => number;
+  benchmarkHumanId: string | null;
 }): void {
-  const { room, tracker, overallTracker, stackBb, rng } = input;
+  const { room, tracker, overallTracker, tableCounters, overallTableCounters, stackBb, rng, benchmarkHumanId } = input;
   const stackSize = Math.max(room.bigBlind, Math.round(room.bigBlind * stackBb));
 
   for (const player of room.players.values()) {
@@ -528,7 +776,7 @@ function playSimulatedHand(input: {
 
   while (room.hand && room.hand.currentActorSeat !== null) {
     const actor = getRoomPlayerBySeat(room, room.hand.currentActorSeat);
-    if (!actor || !actor.isBot) {
+    if (!actor) {
       break;
     }
 
@@ -536,24 +784,40 @@ function playSimulatedHand(input: {
     if (!context) {
       break;
     }
+    const isFirstPreflopDecision = context.phase === 'preflop' && isFirstPreflopDecisionForPlayer(room.hand, actor.id);
+    const action = actor.isBot
+      ? chooseBotAction(context, actor.botStrategy ?? 'fish', rng, {
+          preflopConsecutiveFolds: getBotPreflopFoldStreak(room, actor.id),
+          isFirstPreflopDecision,
+        })
+      : chooseBenchmarkHumanAction(context, rng);
+    if (actor.isBot) {
+      recordBotDecisionStats(tracker, {
+        playerId: actor.id,
+        hand: room.hand,
+        context,
+        action,
+      });
+      recordBotDecisionStats(overallTracker, {
+        playerId: actor.id,
+        hand: room.hand,
+        context,
+        action,
+      });
+    }
 
-    const action = chooseBotAction(context, actor.botStrategy ?? 'fish', rng);
-    recordBotDecisionStats(tracker, {
-      playerId: actor.id,
-      hand: room.hand,
-      context,
-      action,
-    });
-    recordBotDecisionStats(overallTracker, {
-      playerId: actor.id,
-      hand: room.hand,
-      context,
-      action,
-    });
-
-    const result = applyAction(room.hand, toPlayerActionInput(actor.id, action), { timestamp: room.hand.actions.length + 1 });
+    const handBeforeAction = room.hand;
+    const result = applyAction(handBeforeAction, toPlayerActionInput(actor.id, action), { timestamp: handBeforeAction.actions.length + 1 });
     if (!result.ok) {
       throw new Error(`Failed to apply simulated action: ${result.error}`);
+    }
+    if (actor.isBot) {
+      trackBotPreflopEntryDecision(room, handBeforeAction, actor.id, action.type);
+      if (isFirstPreflopDecision) {
+        const streak = getBotPreflopFoldStreak(room, actor.id);
+        tableCounters.maxBotPreflopFoldStreak = Math.max(tableCounters.maxBotPreflopFoldStreak, streak);
+        overallTableCounters.maxBotPreflopFoldStreak = Math.max(overallTableCounters.maxBotPreflopFoldStreak, streak);
+      }
     }
 
     room.hand = result.value;
@@ -563,7 +827,13 @@ function playSimulatedHand(input: {
   if (room.hand) {
     recordBotHandResultStats(tracker, room.hand);
     recordBotHandResultStats(overallTracker, room.hand);
+    recordTablePacingStats(tableCounters, room.hand, { benchmarkHumanId });
+    recordTablePacingStats(overallTableCounters, room.hand, { benchmarkHumanId });
   }
+}
+
+function chooseBenchmarkHumanAction(context: BotDecisionContext, rng: () => number): BotAction {
+  return chooseBotAction(context, 'tag', rng);
 }
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number): RuntimePlayer | undefined {
@@ -597,6 +867,10 @@ function formatPercent(metric: SummaryMetric): string {
   return `${(metric.rate * 100).toFixed(1)}%`;
 }
 
+function formatRate(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 function formatSummaryTable(summary: BotSimulationSummary): string {
   const rows = (['fish', 'tag', 'lag'] as BotPersonality[]).map((personality) => {
     const metrics = summary.personalities[personality];
@@ -623,6 +897,38 @@ function formatSummaryTable(summary: BotSimulationSummary): string {
   const formatRow = (row: string[]) => row.map((cell, index) => cell.padEnd(widths[index] ?? cell.length)).join('  ');
 
   return [formatRow(headers), formatRow(widths.map((width) => ''.padEnd(width, '-'))), ...rows.map(formatRow)].join('\n');
+}
+
+function formatTablePacingTable(table: TablePacingSummary): string {
+  const rows = [
+    ['Hands', String(table.hands)],
+    ['Avg Entrants', table.avgVoluntaryEntrants.toFixed(2)],
+    ['Saw Flop', formatRate(table.sawFlopRate)],
+    ['Walk Rate', formatRate(table.walkRate)],
+    ['Human Open Ops', String(table.humanOpenOpportunities)],
+    ['Human Open Walk', table.humanOpenOpportunities === 0 ? 'n/a' : formatRate(table.humanOpenWalkRate)],
+    ['Max Bot Fold Streak', String(table.maxBotPreflopFoldStreak)],
+  ];
+
+  const headers = ['Metric', 'Value'];
+  const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => row[index]?.length ?? 0)));
+  const formatRow = (row: string[]) => row.map((cell, index) => cell.padEnd(widths[index] ?? cell.length)).join('  ');
+
+  return [formatRow(headers), formatRow(widths.map((width) => ''.padEnd(width, '-'))), ...rows.map(formatRow)].join('\n');
+}
+
+function printScenarioReport(label: string, report: TrainingTableSimulationReport): void {
+  console.log(`\n${label}`);
+  console.log(formatSummaryTable(report.overall));
+  console.log('\nTable Pacing');
+  console.log(formatTablePacingTable(report.overall.table));
+
+  for (const segment of report.segments) {
+    console.log(`\n${segment.label} (${segment.hands} hands)`);
+    console.log(formatSummaryTable(segment.summary));
+    console.log('\nTable Pacing');
+    console.log(formatTablePacingTable(segment.summary.table));
+  }
 }
 
 function parseCliArgs(argv: string[]): SimulateBotStatsOptions {
@@ -673,6 +979,11 @@ function parseCliArgs(argv: string[]): SimulateBotStatsOptions {
         });
         index += 1;
       }
+      continue;
+    }
+
+    if (arg === '--no-training-table') {
+      options.includeTrainingTable = false;
     }
   }
 
@@ -686,12 +997,18 @@ function runCli(): void {
   console.log(`Seed: ${report.seed}`);
   console.log(`Hands: ${report.hands}`);
   console.log(`Pool: ${report.seats.map((seat) => `${seat.personality}@${seat.seatIndex}`).join(', ')}`);
-  console.log('\nOverall');
-  console.log(formatSummaryTable(report.overall));
+  printScenarioReport('Bot-Only Pool', {
+    seats: report.seats.map((seat) => ({ ...seat, actor: 'bot' as const })),
+    segments: report.segments,
+    overall: report.overall,
+  });
 
-  for (const segment of report.segments) {
-    console.log(`\n${segment.label} (${segment.hands} hands)`);
-    console.log(formatSummaryTable(segment.summary));
+  if (report.trainingTable) {
+    const seatSummary = report.trainingTable.seats
+      .map((seat) => `${seat.actor === 'benchmark_human' ? 'hero' : seat.personality}@${seat.seatIndex}`)
+      .join(', ');
+    console.log(`\nTraining Table Seats: ${seatSummary}`);
+    printScenarioReport('Training Table (1 Hero + 5 Bots)', report.trainingTable);
   }
 }
 
