@@ -15,6 +15,18 @@ export type PreflopScenario = 'unopened' | 'facing_open' | 'facing_3bet_plus';
 
 type ActionIntent = 'fold' | 'call' | 'raise' | 'jam';
 type HandClass = 'premium' | 'strong' | 'playable' | 'speculative' | 'marginal' | 'trash';
+type HandDetail =
+  | 'premium_pair'
+  | 'small_pair'
+  | 'suited_ace'
+  | 'weak_offsuit_ace'
+  | 'suited_broadway'
+  | 'offsuit_broadway'
+  | 'suited_king'
+  | 'suited_connector'
+  | 'suited_gapper'
+  | 'suited_junk'
+  | 'other';
 type PreflopPosition = 'utg' | 'hj' | 'co' | 'btn' | 'sb' | 'bb';
 type RankVector = ReadonlyArray<number | undefined>;
 type BotActionWithoutThinking =
@@ -44,8 +56,11 @@ export interface Mix {
 
 interface PostflopFeatures {
   flushDraw: boolean;
+  backdoorFlushDraw: boolean;
   oesd: boolean;
   gutshot: boolean;
+  backdoorStraightDraw: boolean;
+  twoOvercards: boolean;
   pairPlusDraw: boolean;
   boardPaired: boolean;
   boardMonotone: boolean;
@@ -61,34 +76,34 @@ export interface PostflopAnalysis {
 
 const PERSONALITY_PROFILES: Record<BotPersonality, PersonalityProfile> = {
   fish: {
-    valueBetMinEquity: 0.66,
-    semiBluffMinEquity: 0.50,
-    callBuffer: -0.05,
-    cbetFreqDry: 0.35,
-    cbetFreqWet: 0.20,
-    barrelFreq: 0.15,
-    riverThinValueMinEquity: 0.72,
-    thinkingRange: [450, 1250],
+    valueBetMinEquity: 0.72,
+    semiBluffMinEquity: 0.58,
+    callBuffer: -0.08,
+    cbetFreqDry: 0.12,
+    cbetFreqWet: 0.06,
+    barrelFreq: 0.08,
+    riverThinValueMinEquity: 0.78,
+    thinkingRange: [900, 1700],
   },
   tag: {
-    valueBetMinEquity: 0.60,
-    semiBluffMinEquity: 0.42,
-    callBuffer: 0.03,
-    cbetFreqDry: 0.65,
-    cbetFreqWet: 0.45,
-    barrelFreq: 0.35,
-    riverThinValueMinEquity: 0.66,
-    thinkingRange: [650, 1600],
+    valueBetMinEquity: 0.62,
+    semiBluffMinEquity: 0.54,
+    callBuffer: 0.01,
+    cbetFreqDry: 0.30,
+    cbetFreqWet: 0.18,
+    barrelFreq: 0.20,
+    riverThinValueMinEquity: 0.68,
+    thinkingRange: [1100, 2100],
   },
   lag: {
-    valueBetMinEquity: 0.54,
-    semiBluffMinEquity: 0.35,
+    valueBetMinEquity: 0.56,
+    semiBluffMinEquity: 0.52,
     callBuffer: 0.0,
-    cbetFreqDry: 0.80,
-    cbetFreqWet: 0.60,
-    barrelFreq: 0.50,
+    cbetFreqDry: 0.56,
+    cbetFreqWet: 0.34,
+    barrelFreq: 0.31,
     riverThinValueMinEquity: 0.60,
-    thinkingRange: [500, 1500],
+    thinkingRange: [950, 1800],
   },
 };
 
@@ -601,6 +616,54 @@ function classifyHand(key: string): HandClass {
   return 'trash';
 }
 
+function getHandDetail(key: string): HandDetail {
+  if (key.length === 2) {
+    return rankValue(key[0] as Rank) >= 10 ? 'premium_pair' : 'small_pair';
+  }
+
+  const suited = key.endsWith('s');
+  const highRank = key[0] as Rank;
+  const lowRank = key[1] as Rank;
+  const highValue = rankValue(highRank);
+  const lowValue = rankValue(lowRank);
+  const gap = highValue - lowValue;
+  const bothBroadway = highValue >= 10 && lowValue >= 10;
+
+  if (highRank === 'A' && suited) {
+    return 'suited_ace';
+  }
+
+  if (highRank === 'A' && !suited && lowValue <= 9) {
+    return 'weak_offsuit_ace';
+  }
+
+  if (suited && bothBroadway) {
+    return 'suited_broadway';
+  }
+
+  if (!suited && bothBroadway) {
+    return 'offsuit_broadway';
+  }
+
+  if (suited && highRank === 'K' && lowValue >= 5) {
+    return 'suited_king';
+  }
+
+  if (suited && gap === 1 && highValue >= 5) {
+    return 'suited_connector';
+  }
+
+  if (suited && gap === 2 && highValue >= 6) {
+    return 'suited_gapper';
+  }
+
+  if (suited) {
+    return 'suited_junk';
+  }
+
+  return 'other';
+}
+
 export function getStackBucket(effectiveStackBb: number): StackBucket {
   if (effectiveStackBb <= 12) {
     return '<=12bb';
@@ -625,8 +688,22 @@ export function getPreflopMix(
   const stackBucket = getStackBucket(effectiveStackBb);
   const scenario = normalizePreflopScenario(bettingState);
   const preflopPosition = getPreflopTablePosition(position, activePlayerCount);
-  const handClass = classifyHand(canonicalizeHoleCards(holeCards));
-  return PRELOP_MIXES[scenario][personality][stackBucket][preflopPosition][handClass];
+  const canonicalKey = canonicalizeHoleCards(holeCards);
+  const handClass = classifyHand(canonicalKey);
+  const baseMix = PRELOP_MIXES[scenario][personality][stackBucket][preflopPosition][handClass];
+  const detailAdjusted = adjustPreflopMixForHandDetail(baseMix, {
+    detail: getHandDetail(canonicalKey),
+    personality,
+    scenario,
+    position: preflopPosition,
+  });
+  return rebalancePreflopMixForPersonality(detailAdjusted, {
+    personality,
+    scenario,
+    position: preflopPosition,
+    handClass,
+    stackBucket,
+  });
 }
 
 const PRELOP_MIXES = buildPreflopMixes();
@@ -751,6 +828,214 @@ function normalizeMix(value: Mix): Mix {
     raise: clamped.raise / total,
     jam: clamped.jam / total,
   };
+}
+
+function adjustPreflopMixForHandDetail(
+  base: Mix,
+  input: {
+    detail: HandDetail;
+    personality: BotPersonality;
+    scenario: PreflopScenario;
+    position: PreflopPosition;
+  }
+): Mix {
+  let adjusted = base;
+  const lateOpenPosition = input.position === 'co' || input.position === 'btn';
+
+  if (input.scenario === 'unopened' && lateOpenPosition) {
+    if (input.detail === 'weak_offsuit_ace') {
+      adjusted = nudgeMix(
+        adjusted,
+        input.personality === 'lag'
+          ? { fold: -0.18, call: 0.05, raise: 0.13 }
+          : input.personality === 'fish'
+            ? { fold: -0.10, call: 0.06, raise: 0.04 }
+            : { fold: -0.18, call: 0.05, raise: 0.13 },
+      );
+    }
+
+    if (
+      input.detail === 'suited_king'
+      || input.detail === 'suited_connector'
+      || input.detail === 'suited_gapper'
+      || input.detail === 'small_pair'
+    ) {
+      adjusted = nudgeMix(
+        adjusted,
+        input.personality === 'lag'
+          ? { fold: -0.10, call: 0.03, raise: 0.07 }
+          : input.personality === 'fish'
+            ? { fold: -0.08, call: 0.06, raise: 0.02 }
+            : { fold: -0.05, call: 0.02, raise: 0.03 },
+      );
+    }
+  }
+
+  if (input.scenario === 'unopened' && input.position === 'sb') {
+    if (input.detail === 'weak_offsuit_ace' || input.detail === 'suited_king' || input.detail === 'suited_junk') {
+      adjusted = nudgeMix(
+        adjusted,
+        input.personality === 'lag'
+          ? { fold: -0.10, call: -0.02, raise: 0.12 }
+          : { fold: -0.06, call: 0.0, raise: 0.06 },
+      );
+    }
+  }
+
+  if (input.scenario === 'facing_open' && input.position === 'bb') {
+    if (input.detail === 'suited_king') {
+      adjusted = nudgeMix(
+        adjusted,
+        input.personality === 'tag'
+          ? { fold: -0.20, call: 0.17, raise: 0.03 }
+          : input.personality === 'lag'
+            ? { fold: -0.18, call: 0.10, raise: 0.08 }
+            : { fold: -0.14, call: 0.12, raise: 0.02 },
+      );
+    }
+
+    if (
+      input.detail === 'suited_ace'
+      || input.detail === 'small_pair'
+      || input.detail === 'offsuit_broadway'
+    ) {
+      adjusted = nudgeMix(
+        adjusted,
+        input.personality === 'lag'
+          ? { fold: -0.10, call: 0.06, raise: 0.04 }
+          : { fold: -0.08, call: 0.07, raise: 0.01 },
+      );
+    }
+  }
+
+  if (
+    input.scenario === 'facing_open'
+    && (input.position === 'co' || input.position === 'btn')
+    && input.personality === 'lag'
+    && (
+      input.detail === 'suited_connector'
+      || input.detail === 'suited_gapper'
+      || input.detail === 'suited_broadway'
+    )
+  ) {
+    adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.03, raise: 0.05 });
+  }
+
+  return adjusted;
+}
+
+function rebalancePreflopMixForPersonality(
+  base: Mix,
+  input: {
+    personality: BotPersonality;
+    scenario: PreflopScenario;
+    position: PreflopPosition;
+    handClass: HandClass;
+    stackBucket: StackBucket;
+  }
+): Mix {
+  let adjusted = base;
+  const latePosition = input.position === 'co' || input.position === 'btn' || input.position === 'sb';
+  const blindPosition = input.position === 'sb' || input.position === 'bb';
+
+  if (input.personality === 'fish') {
+    if (input.scenario === 'unopened') {
+      if (latePosition) {
+        if (input.handClass === 'playable' || input.handClass === 'speculative') {
+          adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.12, raise: -0.02 });
+        }
+        if (input.handClass === 'marginal') {
+          adjusted = nudgeMix(adjusted, { fold: -0.16, call: 0.18, raise: -0.02 });
+        }
+        if (input.handClass === 'trash') {
+          adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.12, raise: -0.02 });
+        }
+      } else if (input.handClass === 'speculative' || input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.08, call: 0.09, raise: -0.01 });
+      }
+    }
+
+    if (input.scenario === 'facing_open') {
+      if (input.handClass === 'strong') {
+        adjusted = nudgeMix(adjusted, { call: 0.24, raise: -0.18, jam: -0.06 });
+      }
+      if (input.handClass === 'playable' || input.handClass === 'speculative') {
+        adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.20, raise: -0.07, jam: -0.03 });
+      }
+      if (input.handClass === 'marginal' && (latePosition || blindPosition)) {
+        adjusted = nudgeMix(adjusted, { fold: -0.10, call: 0.14, raise: -0.04 });
+      }
+    }
+
+    if (input.scenario === 'facing_3bet_plus') {
+      if (input.handClass === 'strong') {
+        adjusted = nudgeMix(adjusted, { call: 0.08, raise: -0.03, jam: -0.05 });
+      }
+      if (latePosition && input.handClass === 'playable') {
+        adjusted = nudgeMix(adjusted, { fold: -0.05, call: 0.07, raise: -0.02 });
+      }
+    }
+  }
+
+  if (input.personality === 'tag') {
+    if (input.scenario === 'unopened') {
+      if (latePosition && input.handClass === 'playable') {
+        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.02, raise: 0.04 });
+      }
+      if ((input.position === 'co' || input.position === 'btn') && input.handClass === 'speculative') {
+        adjusted = nudgeMix(adjusted, { fold: -0.17, call: 0.06, raise: 0.11 });
+      }
+      if ((input.position === 'co' || input.position === 'btn') && input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.21, call: 0.08, raise: 0.13 });
+      }
+      if (input.position === 'btn' && input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.04, call: 0.02, raise: 0.02 });
+      }
+      if (blindPosition && input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: -0.04, call: 0.04 });
+      }
+    }
+
+    if (input.scenario === 'facing_open' && (input.position === 'bb' || input.position === 'btn' || input.position === 'co')) {
+      if (input.handClass === 'playable' || input.handClass === 'strong') {
+        adjusted = nudgeMix(adjusted, { fold: -0.06, call: 0.04, raise: 0.02 });
+      }
+      if (input.handClass === 'speculative' && input.position === 'bb') {
+        adjusted = nudgeMix(adjusted, { fold: -0.18, call: 0.12, raise: 0.06 });
+      }
+    }
+  }
+
+  if (input.personality === 'lag') {
+    const deepStack = input.stackBucket === '>60bb';
+    const mediumDeepStack = input.stackBucket === '26-60bb';
+
+    if (input.scenario === 'unopened' && latePosition) {
+      if (deepStack && input.handClass === 'trash') {
+        adjusted = nudgeMix(adjusted, { fold: 0.18, call: -0.08, raise: -0.10 });
+      }
+      if ((deepStack || mediumDeepStack) && input.handClass === 'marginal') {
+        adjusted = nudgeMix(adjusted, { fold: 0.14, call: -0.06, raise: -0.08 });
+      }
+      if (deepStack && input.handClass === 'speculative') {
+        adjusted = nudgeMix(adjusted, { fold: 0.02, call: 0.16, raise: -0.18 });
+      }
+      if (mediumDeepStack && input.handClass === 'speculative') {
+        adjusted = nudgeMix(adjusted, { fold: 0.03, call: 0.08, raise: -0.11 });
+      }
+    }
+
+    if (input.scenario === 'facing_open' && (input.position === 'co' || input.position === 'btn' || input.position === 'bb')) {
+      if (deepStack && input.handClass === 'trash') {
+        adjusted = nudgeMix(adjusted, { fold: 0.14, call: -0.06, raise: -0.08 });
+      }
+      if ((deepStack || mediumDeepStack) && input.handClass === 'speculative') {
+        adjusted = nudgeMix(adjusted, { fold: 0.12, call: -0.04, raise: -0.08 });
+      }
+    }
+  }
+
+  return adjusted;
 }
 
 function calcThinkingDelay(rng: BotRng, personality: BotPersonality): number {
@@ -928,6 +1213,27 @@ function detectStraightState(cards: readonly Card[]): { hasStraight: boolean; oe
   return { hasStraight, oesd, gutshot };
 }
 
+function hasBackdoorStraightPotential(cards: readonly Card[]): boolean {
+  const rankSet = new Set<number>(cards.map((card) => rankValue(card)));
+  if (rankSet.has(14)) {
+    rankSet.add(1);
+  }
+
+  for (let start = 1; start <= 11; start += 1) {
+    let present = 0;
+    for (let offset = 0; offset < 4; offset += 1) {
+      if (rankSet.has(start + offset)) {
+        present += 1;
+      }
+    }
+    if (present >= 3) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function buildPostflopFeatures(context: BotDecisionContext, madeHandRank: number): PostflopFeatures {
   const allCards = [...context.holeCards, ...context.communityCards];
   const suitCounts = new Map<string, number>();
@@ -953,14 +1259,31 @@ function buildPostflopFeatures(context: BotDecisionContext, madeHandRank: number
 
   const straightState = detectStraightState(allCards);
   const flushDraw = madeHandRank < 5 && [...suitCounts.values()].some((count) => count === 4);
+  const backdoorFlushDraw =
+    madeHandRank < 5
+    && !flushDraw
+    && context.communityCards.length === 3
+    && [...suitCounts.values()].some((count) => count === 3);
   const boardValues = [...boardRankCounts.keys()].sort((left, right) => left - right);
   const boardSpan = boardValues.length > 0 ? (boardValues.at(-1)! - boardValues[0]!) : 0;
   const boardConnected = context.communityCards.length >= 3 && (boardSpan <= 4 || detectStraightState(context.communityCards).oesd);
+  const boardHigh = boardValues.at(-1) ?? 0;
+  const holeValues = context.holeCards.map((card) => rankValue(card));
+  const twoOvercards = madeHandRank === 0 && holeValues.filter((value) => value > boardHigh).length === 2;
+  const backdoorStraightDraw =
+    context.communityCards.length === 3
+    && !straightState.hasStraight
+    && !straightState.oesd
+    && !straightState.gutshot
+    && hasBackdoorStraightPotential(allCards);
 
   return {
     flushDraw,
+    backdoorFlushDraw,
     oesd: straightState.oesd,
     gutshot: straightState.gutshot,
+    backdoorStraightDraw,
+    twoOvercards,
     pairPlusDraw: madeHandRank >= 1 && (flushDraw || straightState.oesd || straightState.gutshot),
     boardPaired: [...boardRankCounts.values()].some((count) => count >= 2),
     boardMonotone: context.communityCards.length >= 3 && [...boardSuitCounts.values()].some((count) => count === context.communityCards.length),
@@ -1086,6 +1409,39 @@ function shouldJamPostflop(
   return analysis.equity >= 0.9;
 }
 
+function isSmallPostflopBet(context: BotDecisionContext): boolean {
+  if (!context.canCall || context.callAmount <= 0) {
+    return false;
+  }
+
+  return context.callAmount <= Math.max(1, Math.round(context.potTotal * 0.4));
+}
+
+function shouldFloatSmallBet(
+  context: BotDecisionContext,
+  analysis: PostflopAnalysis,
+  personality: BotPersonality
+): boolean {
+  if (
+    personality !== 'lag'
+    || context.phase !== 'flop'
+    || context.opponentCount !== 1
+    || !context.canCall
+    || !isLikelyInPosition(context.position)
+    || !isSmallPostflopBet(context)
+  ) {
+    return false;
+  }
+
+  const floatSignals = [
+    analysis.features.twoOvercards,
+    analysis.features.backdoorFlushDraw,
+    analysis.features.backdoorStraightDraw,
+  ].filter(Boolean).length;
+
+  return floatSignals >= 2;
+}
+
 function decidePreflop(
   context: BotDecisionContext,
   personality: BotPersonality,
@@ -1150,6 +1506,10 @@ function decidePostflop(
     )
   ) {
     return finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
+  }
+
+  if (shouldFloatSmallBet(context, analysis, personality)) {
+    return { type: 'call', amount: context.callAmount };
   }
 
   if (context.canCall && analysis.equity >= requiredCallEquity) {

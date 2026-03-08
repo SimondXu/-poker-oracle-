@@ -71,6 +71,83 @@ test('preflop range mixes differentiate fish, tag, and lag personalities', () =>
   assert.ok(fishMix.call > tagMix.call);
 });
 
+test('lag opens weak offsuit aces on the button instead of over-folding', () => {
+  const mix = getPreflopMix('lag', 60, 'unopened', 'btn', ['Ah', '7d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.45);
+});
+
+test('fish limps marginal button hands more often and raises them less often than tag', () => {
+  const fishMix = getPreflopMix('fish', 60, 'unopened', 'btn', ['Qh', '8d']);
+  const tagMix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Qh', '8d']);
+
+  assert.ok(fishMix.call > tagMix.call);
+  assert.ok(fishMix.raise + fishMix.jam < tagMix.raise + tagMix.jam);
+});
+
+test('tag defends suited kings from the big blind versus opens at a playable frequency', () => {
+  const mix = getPreflopMix('tag', 60, 'facing_open', 'bb', ['Kh', '7h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.2);
+});
+
+test('tag opens more marginal broadways on the button in the second data-tuning pass', () => {
+  const mix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Qh', '9d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.45);
+});
+
+test('tag opens suited broadway-gappers from the cutoff more often in the third tuning pass', () => {
+  const mix = getPreflopMix('tag', 60, 'unopened', 'co', ['Jh', '9h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.5);
+});
+
+test('tag steals more weak offsuit aces on the button in the third tuning pass', () => {
+  const mix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Ah', '8d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.62);
+});
+
+test('tag opens cutoff suited gappers a bit wider in the fourth tuning pass', () => {
+  const mix = getPreflopMix('tag', 60, 'unopened', 'co', ['Jh', '9h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.56);
+});
+
+test('tag defends suited connectors from the big blind more often against opens', () => {
+  const mix = getPreflopMix('tag', 60, 'facing_open', 'bb', ['Th', '8h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.32);
+});
+
+test('tag steals weak offsuit aces on the button more often in the fourth tuning pass', () => {
+  const mix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Ah', '8d']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.68);
+});
+
+test('tag defends suited connectors from the big blind even more often in the fourth tuning pass', () => {
+  const mix = getPreflopMix('tag', 60, 'facing_open', 'bb', ['Th', '8h']);
+
+  assert.ok(mix.call + mix.raise + mix.jam >= 0.36);
+});
+
+test('fish prefers calling over 3-betting when defending suited broadways versus an open', () => {
+  const fishMix = getPreflopMix('fish', 60, 'facing_open', 'bb', ['Ah', 'Jh']);
+  const lagMix = getPreflopMix('lag', 60, 'facing_open', 'bb', ['Ah', 'Jh']);
+
+  assert.ok(fishMix.call > fishMix.raise + fishMix.jam);
+  assert.ok(fishMix.raise + fishMix.jam < lagMix.raise + lagMix.jam);
+});
+
+test('lag mixes more calls and fewer pure raises with deep-stack suited connectors on the button', () => {
+  const mix = getPreflopMix('lag', 65, 'unopened', 'btn', ['7h', '5h']);
+
+  assert.ok(mix.call >= 0.4);
+  assert.ok(mix.raise + mix.jam <= 0.5);
+});
+
 test('preflop mixes distinguish exact positions instead of collapsing to early/late buckets', () => {
   const utgMix = getPreflopMix('tag', 60, 'unopened', 'utg', ['Qh', '9h']);
   const hjMix = getPreflopMix('tag', 60, 'unopened', 'hj', ['Qh', '9h']);
@@ -141,6 +218,22 @@ test('preflop sizing respects the legal raise clamp', () => {
   if (action.type === 'raise_to') {
     assert.equal(action.amount, 180);
   }
+});
+
+test('fish thinking delay stays in the slower live-play range', () => {
+  const minimum = chooseBotAction(makeContext(), 'fish', () => 0);
+  const nearMaximum = chooseBotAction(makeContext(), 'fish', () => 0.999999);
+
+  assert.equal(minimum.thinkingDelayMs, 900);
+  assert.equal(nearMaximum.thinkingDelayMs, 1699);
+});
+
+test('tag thinking delay keeps a longer tank than the old snap pace', () => {
+  const minimum = chooseBotAction(makeContext(), 'tag', () => 0);
+  const nearMaximum = chooseBotAction(makeContext(), 'tag', () => 0.999999);
+
+  assert.equal(minimum.thinkingDelayMs, 1100);
+  assert.equal(nearMaximum.thinkingDelayMs, 2099);
 });
 
 test('analyzePostflop uses game-engine evaluation for flush-vs-straight and wheel straight cases', () => {
@@ -241,6 +334,66 @@ test('lag semi-bluffs strong combo draws on the flop within the raise window', (
     assert.ok(action.amount >= 140);
     assert.ok(action.amount <= 220);
   }
+});
+
+test('lag floats small flop bets in position with two overcards and a backdoor flush draw', () => {
+  const action = chooseBotAction(
+    makeContext({
+      phase: 'flop',
+      holeCards: ['Ks', 'Qs'],
+      communityCards: ['7s', '2c', '9d'],
+      callAmount: 40,
+      potTotal: 120,
+      canRaise: false,
+      canAllIn: false,
+      bettingState: 'facing_open',
+      activePlayerCount: 2,
+      opponentCount: 1,
+      position: 'btn',
+      spr: 4,
+    }),
+    'lag',
+    () => 0.5,
+  );
+
+  assert.equal(action.type, 'call');
+});
+
+test('postflop c-bet frequencies separate fish, tag, and lag on dry ace-high flops', () => {
+  const context = makeContext({
+    phase: 'flop',
+    holeCards: ['Kc', 'Jh'],
+    communityCards: ['Ad', '7s', '2c'],
+    canCheck: true,
+    canCall: false,
+    callAmount: 0,
+    bettingState: 'unopened',
+    activePlayerCount: 2,
+    opponentCount: 1,
+    position: 'btn',
+    isPreflopAggressor: true,
+  });
+
+  function countAggressiveActions(personality: 'fish' | 'tag' | 'lag'): number {
+    let aggressive = 0;
+    for (let seed = 1; seed <= 200; seed += 1) {
+      const action = chooseBotAction(context, personality, sequenceRng(seed));
+      if (action.type === 'raise_to' || action.type === 'all_in') {
+        aggressive += 1;
+      }
+    }
+    return aggressive;
+  }
+
+  const fishAggression = countAggressiveActions('fish');
+  const tagAggression = countAggressiveActions('tag');
+  const lagAggression = countAggressiveActions('lag');
+
+  assert.ok(fishAggression < tagAggression);
+  assert.ok(tagAggression < lagAggression);
+  assert.ok(lagAggression - tagAggression >= 55);
+  assert.ok(tagAggression < 160);
+  assert.ok(lagAggression < 190);
 });
 
 test('all chosen actions include a positive thinkingDelayMs', () => {
