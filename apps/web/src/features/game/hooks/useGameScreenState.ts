@@ -11,10 +11,18 @@ import {
   selectWinnerIds,
   useGameStore,
 } from '@/stores/gameStore';
-import { getGameFooterMode, getGameScreenState, type EliminatedDecision } from '../lib/game-screen-state';
+import {
+  canAdvanceToNextHand,
+  getGameFooterMode,
+  getGameScreenState,
+  type EliminatedDecision,
+} from '../lib/game-screen-state';
+import { getHandResultPhaseTimeline } from '../lib/table-animation';
 
 type StartNextHand = (source?: 'manual' | 'auto' | 'hotkey') => boolean;
 type SpectateAfterElimination = () => Promise<boolean>;
+
+const HAND_RESULT_PHASE_TIMELINE = getHandResultPhaseTimeline();
 
 interface UseGameScreenStateOptions {
   currentUserId: string;
@@ -73,7 +81,13 @@ export function useGameScreenState({
   }, [hand?.handNumber, hand?.phase, isCurrentUserActiveStackPlayer, isTableFinished]);
 
   useEffect(() => {
-    if (hand?.phase !== 'hand_end' || !screenState.canCurrentUserStartNextHand) {
+    if (
+      !canAdvanceToNextHand({
+        handPhase: hand?.phase ?? null,
+        handResultPhase: handResult?.phase ?? null,
+        canCurrentUserStartNextHand: screenState.canCurrentUserStartNextHand,
+      })
+    ) {
       return;
     }
 
@@ -86,7 +100,6 @@ export function useGameScreenState({
       }
 
       event.preventDefault();
-      setHandResultPhase('done');
       startNextHand('hotkey');
     };
 
@@ -94,19 +107,22 @@ export function useGameScreenState({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [hand?.phase, screenState.canCurrentUserStartNextHand, setHandResultPhase, startNextHand]);
+  }, [hand?.phase, handResult?.phase, screenState.canCurrentUserStartNextHand, startNextHand]);
 
   useEffect(() => {
-    if (hand?.phase !== 'hand_end' || !screenState.canCurrentUserStartNextHand) {
-      return;
-    }
-    if (handResult?.phase !== 'done') {
+    if (
+      !canAdvanceToNextHand({
+        handPhase: hand?.phase ?? null,
+        handResultPhase: handResult?.phase ?? null,
+        canCurrentUserStartNextHand: screenState.canCurrentUserStartNextHand,
+      })
+    ) {
       return;
     }
 
     const timer = setTimeout(() => {
       startNextHand('auto');
-    }, 1500);
+    }, HAND_RESULT_PHASE_TIMELINE.nextHandAutoStartMs);
 
     return () => {
       clearTimeout(timer);

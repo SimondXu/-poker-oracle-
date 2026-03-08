@@ -97,10 +97,10 @@ export default function GamePage({ params }: GamePageProps) {
                   currentUserId={currentUserId}
                   {...(timerStartedAt !== null ? { timerStartedAt } : {})}
                   {...(timerDurationMs !== null ? { timerDurationMs } : {})}
-                  winnerCards={screenState.shouldRevealOutcome ? winnerCards : []}
-                  winnerIds={screenState.shouldRevealOutcome ? winnerIds : []}
+                  winnerCards={screenState.shouldHighlightWinners ? winnerCards : []}
+                  winnerIds={screenState.shouldHighlightWinners ? winnerIds : []}
                   winnerBestCardsByPlayer={
-                    screenState.shouldRevealOutcome ? screenState.winnerBestCardsByPlayer : {}
+                    screenState.shouldHighlightWinners ? screenState.winnerBestCardsByPlayer : {}
                   }
                   payoutAmountsByPlayer={screenState.payoutAmountsByPlayer}
                   handResultPhase={handResult?.phase}

@@ -1,7 +1,12 @@
 import type { ActionType, HandState, ValidActions } from '@aipoker/shared';
 import { getPositionName } from '../../../lib/utils.ts';
 import type { HandResult } from '../../../stores/gameStore.ts';
-import { shouldAnimatePotAward, shouldRevealShowdownCards, shouldShowWinnerAnnouncement } from './table-animation.ts';
+import {
+  shouldAnimatePotAward,
+  shouldRevealShowdownCards,
+  shouldShowWinnerAnnouncement,
+  shouldShowWinnerIdentity,
+} from './table-animation.ts';
 
 export type EliminatedDecision = 'pending' | 'spectating' | null;
 export type TrainingSuggestion = Extract<ActionType, 'check' | 'call'>;
@@ -24,6 +29,7 @@ export interface GameScreenState {
   isEliminatedSpectating: boolean;
   isResultPresentationActive: boolean;
   shouldRevealOutcome: boolean;
+  shouldHighlightWinners: boolean;
   shouldShowResultModal: boolean;
   shouldRunAwardAnimation: boolean;
   pot: number;
@@ -61,6 +67,7 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
   const isEliminatedSpectating = input.eliminatedDecision === 'spectating' && !isCurrentUserActiveStackPlayer && !isTableFinished;
   const isResultPresentationActive = Boolean(input.handResult && input.handResult.phase !== 'done');
   const shouldRevealOutcome = shouldRevealShowdownCards(input.handResult?.phase);
+  const shouldHighlightWinners = shouldShowWinnerIdentity(input.handResult?.phase);
   const shouldShowResultModal = shouldShowWinnerAnnouncement(input.handResult?.phase);
   const shouldRunAwardAnimation = shouldAnimatePotAward(input.handResult?.phase);
 
@@ -104,6 +111,7 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     isEliminatedSpectating,
     isResultPresentationActive,
     shouldRevealOutcome,
+    shouldHighlightWinners,
     shouldShowResultModal,
     shouldRunAwardAnimation,
     pot,
@@ -112,6 +120,16 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     payoutAmountsByPlayer,
     trainingData,
   };
+}
+
+export function canAdvanceToNextHand(input: {
+  handPhase: HandState['phase'] | null;
+  handResultPhase: HandResult['phase'] | null;
+  canCurrentUserStartNextHand: boolean;
+}): boolean {
+  return input.handPhase === 'hand_end'
+    && input.handResultPhase === 'done'
+    && input.canCurrentUserStartNextHand;
 }
 
 export function getGameFooterMode(input: {

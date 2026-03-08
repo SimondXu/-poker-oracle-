@@ -150,7 +150,7 @@ export const PlayingCard = memo(function PlayingCard({
   const showFaceDown = faceDown || !card;
   const seededRotate = Math.max(-24, Math.min(24, dealFromX * 0.07));
   const dealDistance = Math.hypot(dealFromX, dealFromY);
-  const dealDuration = 0.34 + Math.min(0.18, dealDistance / 900 * 0.22);
+  const dealDuration = 0.46 + Math.min(0.22, dealDistance / 900 * 0.28);
 
   const dealVariants = {
     initial: animateDeal
@@ -192,7 +192,7 @@ export const PlayingCard = memo(function PlayingCard({
             initial={{ opacity: 0.9, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ rotateY: 90 }}
-            transition={{ duration: 0.2, ease: LIVE_FLIP_EASE }}
+            transition={{ duration: 0.24, ease: LIVE_FLIP_EASE }}
           >
             <CardBack size={size} />
           </motion.div>
@@ -202,7 +202,7 @@ export const PlayingCard = memo(function PlayingCard({
             initial={{ rotateY: 90 }}
             animate={{ rotateY: 0 }}
             exit={{ rotateY: 90 }}
-            transition={{ duration: 0.38, ease: LIVE_FLIP_EASE }}
+            transition={{ duration: 0.46, ease: LIVE_FLIP_EASE }}
           >
             <CardFace
               rank={parsed!.rank}

@@ -24,7 +24,7 @@ interface PokerTableProps {
   winnerIds?: string[] | undefined;
   winnerBestCardsByPlayer?: Record<string, string[]> | undefined;
   payoutAmountsByPlayer?: Record<string, number> | undefined;
-  handResultPhase?: 'announcing' | 'showing' | 'done' | undefined;
+  handResultPhase?: 'announcing' | 'revealing' | 'showing' | 'done' | undefined;
   isWinning?: boolean | undefined;
   className?: string | undefined;
 }
@@ -306,13 +306,13 @@ export const PokerTable = memo(function PokerTable({
         const isBB = hand.bbSeat === seatIndex;
         const isWinner = Boolean(player && winnerIdSet.has(player.id));
 
-        // 发牌延迟：按座位索引错开，模拟第一轮逐位发牌
+        // 发牌延迟：给每一圈一个更明显的节拍，让桌速更像常规线上扑克客户端
         const dealOrderIndex = getSeatDealOrderIndex(
           occupiedSeatIndices,
           hand.buttonMarkerSeat ?? null,
           seatIndex,
         );
-        const dealDelayBase = dealOrderIndex * 0.09;
+        const dealDelayBase = dealOrderIndex * 0.14;
         // 以桌面中心作为发牌来源，让发牌路径更自然
         const dealFromX = -pos.x * 0.62;
         const dealFromY = -pos.y * 0.62;

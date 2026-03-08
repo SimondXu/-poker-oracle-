@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getGameFooterMode, getGameScreenState } from './game-screen-state.ts';
+import { canAdvanceToNextHand, getGameFooterMode, getGameScreenState } from './game-screen-state.ts';
 
 test('getGameScreenState derives turn state, pot size, and training suggestion', () => {
   const state = getGameScreenState({
@@ -105,5 +105,43 @@ test('getGameFooterMode distinguishes eliminated choice from next-hand controls'
       handPhase: 'hand_end',
     }),
     'next-hand',
+  );
+});
+
+test('canAdvanceToNextHand waits until result presentation is fully done', () => {
+  assert.equal(
+    canAdvanceToNextHand({
+      handPhase: 'hand_end',
+      handResultPhase: 'revealing',
+      canCurrentUserStartNextHand: true,
+    }),
+    false,
+  );
+
+  assert.equal(
+    canAdvanceToNextHand({
+      handPhase: 'hand_end',
+      handResultPhase: 'showing',
+      canCurrentUserStartNextHand: true,
+    }),
+    false,
+  );
+
+  assert.equal(
+    canAdvanceToNextHand({
+      handPhase: 'hand_end',
+      handResultPhase: 'done',
+      canCurrentUserStartNextHand: true,
+    }),
+    true,
+  );
+
+  assert.equal(
+    canAdvanceToNextHand({
+      handPhase: 'betting_river',
+      handResultPhase: 'done',
+      canCurrentUserStartNextHand: true,
+    }),
+    false,
   );
 });
