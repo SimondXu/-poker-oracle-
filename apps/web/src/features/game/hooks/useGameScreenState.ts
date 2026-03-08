@@ -14,15 +14,18 @@ import {
 import { getGameFooterMode, getGameScreenState, type EliminatedDecision } from '../lib/game-screen-state';
 
 type StartNextHand = (source?: 'manual' | 'auto' | 'hotkey') => boolean;
+type SpectateAfterElimination = () => Promise<boolean>;
 
 interface UseGameScreenStateOptions {
   currentUserId: string;
   startNextHand: StartNextHand;
+  spectateAfterElimination: SpectateAfterElimination;
 }
 
 export function useGameScreenState({
   currentUserId,
   startNextHand,
+  spectateAfterElimination,
 }: UseGameScreenStateOptions) {
   const hand = useGameStore(selectHand);
   const handResult = useGameStore(selectHandResult);
@@ -153,9 +156,14 @@ export function useGameScreenState({
     setHandResultPhase('done');
   }, [handResult?.phase, setHandResultPhase]);
 
-  const handleSpectate = useCallback(() => {
+  const handleSpectate = useCallback(async () => {
+    const ok = await spectateAfterElimination();
+    if (!ok) {
+      return;
+    }
+
     setEliminatedDecision('spectating');
-  }, []);
+  }, [spectateAfterElimination]);
 
   return {
     hand,

@@ -80,6 +80,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     room.players.delete(playerId);
     room.readyPlayerIds.delete(playerId);
     room.pendingDisconnectPlayerIds.delete(playerId);
+    room.spectatingPlayerIds.delete(playerId);
   }
 
   function deleteRoom(roomId: string): void {
@@ -235,6 +236,9 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     room.players.set(resolvedPlayerId, nextPlayer);
     room.pendingDisconnectPlayerIds.delete(resolvedPlayerId);
+    if (nextPlayer.stack > 0) {
+      room.spectatingPlayerIds.delete(resolvedPlayerId);
+    }
     if (existingPlayer) {
       if (room.readyPlayerIds.has(resolvedPlayerId)) {
         room.readyPlayerIds.add(resolvedPlayerId);

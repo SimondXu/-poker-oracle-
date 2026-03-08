@@ -11,6 +11,9 @@ export function err<E>(error: E): Result<never, E> {
 }
 
 export type BotPersonality = 'fish' | 'tag' | 'lag';
+export type BotDecisionPhase = 'preflop' | 'flop' | 'turn' | 'river';
+export type BotPosition = 'sb' | 'bb' | 'btn' | 'co' | 'hj' | 'utg';
+export type BotBettingState = 'unopened' | 'facing_open' | 'facing_raise' | 'facing_3bet_plus';
 
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -49,7 +52,7 @@ export function generateRoomCode(): string {
   return code;
 }
 
-export interface BotValidActions {
+export interface BotDecisionContext {
   canFold: boolean;
   canCheck: boolean;
   canCall: boolean;
@@ -58,12 +61,23 @@ export interface BotValidActions {
   minRaiseTo: number;
   maxRaiseTo: number;
   canAllIn: boolean;
-  // Decision context
+  phase: BotDecisionPhase;
   potTotal: number;
   myStack: number;
   holeCards: Card[];
   communityCards: Card[];
+  activePlayerCount: number;
+  opponentCount: number;
+  position: BotPosition;
+  effectiveStack: number;
+  effectiveStackBb: number;
+  spr: number;
+  bettingState: BotBettingState;
+  isPreflopAggressor: boolean;
+  isLastStreetAggressor: boolean;
 }
+
+export type BotValidActions = BotDecisionContext;
 
 export type BotAction =
   | { type: 'fold';     thinkingDelayMs: number }

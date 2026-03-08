@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useEffectEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Socket } from 'socket.io-client';
 import { ensureGuestSession } from '@/lib/auth-session';
 import { getSocket, connectSocket, disconnectSocket } from '@/lib/socket';
@@ -18,6 +18,18 @@ interface UseSocketSessionOptions {
 
 const noop = () => {};
 
+function useStableEventCallback<Args extends unknown[], Result>(
+  callback: (...args: Args) => Result,
+): (...args: Args) => Result {
+  const callbackRef = useRef(callback);
+
+  useLayoutEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  return useCallback((...args: Args) => callbackRef.current(...args), []);
+}
+
 export function useSocketSession({
   enabled = true,
   playerName,
@@ -29,17 +41,17 @@ export function useSocketSession({
   onAuthError,
 }: UseSocketSessionOptions) {
   const normalizedPlayerName = playerName.trim();
-  const handleConnectEvent = useEffectEvent((socket: Socket) => {
+  const handleConnectEvent = useStableEventCallback((socket: Socket) => {
     onConnect?.(socket);
   });
-  const handleDisconnectEvent = useEffectEvent(() => {
+  const handleDisconnectEvent = useStableEventCallback(() => {
     onDisconnect?.();
   });
-  const registerEventsEvent = useEffectEvent((socket: Socket) => registerEvents?.(socket) ?? noop);
-  const handleCleanupEvent = useEffectEvent((socket: Socket) => {
+  const registerEventsEvent = useStableEventCallback((socket: Socket) => registerEvents?.(socket) ?? noop);
+  const handleCleanupEvent = useStableEventCallback((socket: Socket) => {
     onCleanup?.(socket);
   });
-  const handleAuthErrorEvent = useEffectEvent(() => {
+  const handleAuthErrorEvent = useStableEventCallback(() => {
     onAuthError?.();
   });
 

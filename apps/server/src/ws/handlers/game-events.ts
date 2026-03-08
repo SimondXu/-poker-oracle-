@@ -8,6 +8,10 @@ import {
   type RoomActionTimeouts
 } from '../../game-loop/action-timeout.ts';
 import {
+  resolveButtonMarkerSeatForNextHand,
+  type BotRuntimeDeps,
+} from '../../game-loop/bot-support.ts';
+import {
   clearRoomNextHandTimeout,
   scheduleRoomNextHandTimeout,
   type RoomNextHandTimeouts
@@ -16,10 +20,21 @@ import { cleanupDisconnectedPlayersAfterHandEnd } from '../../game-loop/cleanup-
 import { runBotTurns } from '../../game-loop/run-bot-turns.ts';
 import { enqueueRoomTask, type RoomTaskQueues } from '../../rooms/room-queue.ts';
 import { syncRoomPlayersFromHand } from '../../rooms/room-store.ts';
-import { canPlayerStartNextHand, getTableLifecycleSnapshot } from '../../rooms/table-lifecycle.ts';
+import {
+  canAutoContinueBotsOnly,
+  canPlayerStartNextHand,
+  getTableLifecycleSnapshot,
+} from '../../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameState } from '../emitters.ts';
-import { gameActionPayloadSchema, gameStartPayloadSchema, type GameActionAck, type GameStartAck } from '../schemas.ts';
+import {
+  gameActionPayloadSchema,
+  gameSpectatePayloadSchema,
+  gameStartPayloadSchema,
+  type GameActionAck,
+  type GameSpectateAck,
+  type GameStartAck,
+} from '../schemas.ts';
 
 interface RegisterGameEventsInput {
   io: Server;
@@ -31,6 +46,7 @@ interface RegisterGameEventsInput {
   roomTaskQueues: RoomTaskQueues;
   actionTimeoutMs: number;
   nowMs: () => number;
+  botRuntime: BotRuntimeDeps;
 }
 
 const ACTION_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -38,7 +54,7 @@ const MAX_ACTIONS_PER_WINDOW = 20;
 const BOTS_ONLY_AUTO_NEXT_DELAY_MS = 1_500;
 
 export function registerGameEvents(input: RegisterGameEventsInput): void {
-  const { io, socket, rooms, memberships, roomActionTimeouts, roomNextHandTimeouts, roomTaskQueues, actionTimeoutMs, nowMs } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts, roomNextHandTimeouts, roomTaskQueues, actionTimeoutMs, nowMs, botRuntime } = input;
   const actionTimestamps: number[] = [];
 
   function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
@@ -110,8 +126,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       return;
     }
 
-    const tableLifecycle = getTableLifecycleSnapshot(room);
-    if (room.hand.phase !== 'hand_end' || !tableLifecycle.isBotsOnlyContinuation) {
+    if (room.hand.phase !== 'hand_end' || !canAutoContinueBotsOnly(room)) {
       clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
       return;
     }
@@ -123,8 +138,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
           return;
         }
 
-        const latestLifecycle = getTableLifecycleSnapshot(latestRoom);
-        if (latestRoom.hand.phase !== 'hand_end' || !latestLifecycle.isBotsOnlyContinuation) {
+        if (latestRoom.hand.phase !== 'hand_end' || !canAutoContinueBotsOnly(latestRoom)) {
           return;
         }
 
@@ -134,10 +148,10 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
             seatIndex: player.seatIndex,
             stack: player.stack
           })),
-          buttonMarkerSeat: latestRoom.hand.buttonMarkerSeat,
+          buttonMarkerSeat: resolveButtonMarkerSeatForNextHand(latestRoom, undefined, botRuntime.rng),
           smallBlind: latestRoom.smallBlind,
           bigBlind: latestRoom.bigBlind,
-          rng: Math.random
+          rng: botRuntime.rng
         });
         if (!initialized.ok) {
           return;
@@ -145,6 +159,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
 
         latestRoom.hand = initialized.value;
         latestRoom.handNumber += 1;
+        latestRoom.lastButtonMarkerSeat = initialized.value.buttonMarkerSeat;
         resetActionSeqTracker(latestRoom);
         syncRoomPlayersFromHand(latestRoom);
         await emitStateAndProgress(latestRoom);
@@ -157,7 +172,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
   async function emitStateAndProgress(room: RuntimeRoom): Promise<void> {
     room.stateVersion += 1;
     emitGameState(io, room, memberships);
-    await runBotTurns(io, room, memberships, nowMs);
+    await runBotTurns(io, room, memberships, botRuntime);
     cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts, roomNextHandTimeouts);
     syncActionTimeout(room.id);
     syncBotsOnlyAutoNext(room);
@@ -234,10 +249,10 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
           seatIndex: player.seatIndex,
           stack: player.stack
         })),
-        buttonMarkerSeat: parsed.data.buttonMarkerSeat ?? 0,
+        buttonMarkerSeat: resolveButtonMarkerSeatForNextHand(room, parsed.data.buttonMarkerSeat, botRuntime.rng),
         smallBlind: room.smallBlind,
         bigBlind: room.bigBlind,
-        rng: Math.random
+        rng: botRuntime.rng
       });
 
       if (!initialized.ok) {
@@ -248,12 +263,57 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
       room.hand = initialized.value;
       room.handNumber += 1;
+      room.lastButtonMarkerSeat = initialized.value.buttonMarkerSeat;
       resetActionSeqTracker(room);
       syncRoomPlayersFromHand(room);
       ack?.({ ok: true });
       await emitStateAndProgress(room);
     }).catch((error: unknown) => {
       console.error('game:start room task failed', error);
+    });
+  });
+
+  socket.on('game:spectate', (payload: unknown, ack?: (result: GameSpectateAck) => void) => {
+    const parsed = gameSpectatePayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      ack?.({ ok: false, error: 'invalid_payload' });
+      return;
+    }
+
+    void enqueueRoomTask(roomTaskQueues, parsed.data.roomId, async () => {
+      const room = rooms.get(parsed.data.roomId);
+      if (!room) {
+        ack?.({ ok: false, error: 'room_not_found' });
+        return;
+      }
+
+      const membership = memberships.get(socket.id);
+      if (!membership || membership.roomId !== parsed.data.roomId) {
+        ack?.({ ok: false, error: 'not_room_member' });
+        return;
+      }
+
+      if (!room.hand) {
+        ack?.({ ok: false, error: 'hand_not_started' });
+        return;
+      }
+
+      if (room.hand.phase !== 'hand_end') {
+        ack?.({ ok: false, error: 'hand_not_actionable' });
+        return;
+      }
+
+      const player = room.players.get(membership.playerId);
+      if (!player || player.isBot || player.stack > 0) {
+        ack?.({ ok: false, error: 'not_eliminated' });
+        return;
+      }
+
+      room.spectatingPlayerIds.add(player.id);
+      ack?.({ ok: true });
+      syncBotsOnlyAutoNext(room);
+    }).catch((error: unknown) => {
+      console.error('game:spectate room task failed', error);
     });
   });
 

@@ -44,9 +44,11 @@ export function getOrCreateRoom(
     players: new Map(),
     readyPlayerIds: new Set(),
     pendingDisconnectPlayerIds: new Set(),
+    spectatingPlayerIds: new Set(),
     hand: null,
     lastActionSeqByPlayer: new Map(),
-    lastBroadcastActionCount: 0
+    lastBroadcastActionCount: 0,
+    lastButtonMarkerSeat: null
   };
   rooms.set(roomId, room);
   return room;
@@ -63,5 +65,8 @@ export function syncRoomPlayersFromHand(room: RuntimeRoom): void {
       continue;
     }
     roomPlayer.stack = handPlayer.stack;
+    if (handPlayer.stack > 0) {
+      room.spectatingPlayerIds.delete(handPlayer.id);
+    }
   }
 }

@@ -142,6 +142,14 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+function sequenceRng(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (1664525 * state + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
 function waitForHandResult(
   socket: ReturnType<typeof createClient>,
   predicate: (payload: any) => boolean,
@@ -2060,6 +2068,291 @@ test('bots-only table auto-starts next hand after hand_end', async (t) => {
   assert.equal(nextHandState.hand.handNumber >= 2, true);
 });
 
+test('game:start rotates button to the next stack-positive seat on the next hand', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'AAAAAW',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'AAAAAW',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'AAAAAW',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const firstHandStatePromise = waitForState(alice, (payload) => payload.roomId === 'AAAAAW' && payload.hand.handNumber === 1);
+  const firstStartAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'AAAAAW',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(firstStartAck, { ok: true });
+  await firstHandStatePromise;
+
+  const handEndStatePromise = waitForState(
+    alice,
+    (payload) => payload.roomId === 'AAAAAW' && payload.hand.phase === 'hand_end',
+    1500
+  );
+  const foldAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
+    roomId: 'AAAAAW',
+    playerId: 'p0',
+    type: 'fold',
+    seq: 1
+  });
+  assert.deepEqual(foldAck, { ok: true });
+  await handEndStatePromise;
+
+  const secondHandStatePromise = waitForState(
+    alice,
+    (payload) =>
+      payload.roomId === 'AAAAAW'
+      && payload.hand.handNumber === 2
+      && payload.hand.buttonMarkerSeat === 1,
+    1500
+  );
+  const secondStartAck = await emitWithAck<{ ok: boolean; error?: string }>(bob, 'game:start', {
+    roomId: 'AAAAAW'
+  });
+  assert.deepEqual(secondStartAck, { ok: true });
+
+  const secondHandState = await secondHandStatePromise;
+  assert.equal(secondHandState.hand.buttonMarkerSeat, 1);
+  assert.equal(secondHandState.hand.sbSeat, 1);
+  assert.equal(secondHandState.hand.bbSeat, 0);
+  assert.equal(secondHandState.hand.currentActorSeat, 1);
+});
+
+test('bots-only auto-next rotates button with injected bot runtime deps', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, {
+    actionTimeoutMs: 40,
+    botRuntime: {
+      rng: () => 0.99,
+      sleep: async () => {},
+      nowMs: () => 42
+    }
+  } as any);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const observer = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    observer.close();
+  });
+
+  await once(alice, 'connect');
+  await once(observer, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'AAAAAX',
+    smallBlind: 10,
+    bigBlind: 20
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'AAAAAX',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(observer, 'room:join', {
+    roomId: 'AAAAAX',
+    playerId: 'bot-1',
+    playerName: 'Bot 1',
+    seatIndex: 1,
+    stack: 1000,
+    isBot: true,
+    botStrategy: 'fish'
+  });
+  await emitWithAck(observer, 'room:join', {
+    roomId: 'AAAAAX',
+    playerId: 'bot-2',
+    playerName: 'Bot 2',
+    seatIndex: 2,
+    stack: 1000,
+    isBot: true,
+    botStrategy: 'tag'
+  });
+  await emitWithAck(observer, 'room:join', {
+    roomId: 'AAAAAX',
+    playerId: 'bot-3',
+    playerName: 'Bot 3',
+    seatIndex: 3,
+    stack: 1000,
+    isBot: true,
+    botStrategy: 'lag'
+  });
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'AAAAAX',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  alice.close();
+
+  const nextHandState = await waitForState(
+    observer,
+    (payload) =>
+      payload.roomId === 'AAAAAX'
+      && payload.hand.handNumber >= 2
+      && payload.hand.phase !== 'hand_end'
+      && payload.hand.buttonMarkerSeat === 1,
+    2400
+  );
+  assert.equal(nextHandState.hand.buttonMarkerSeat, 1);
+});
+
+test('eliminated human must explicitly spectate before bots-only auto-next resumes', async (t) => {
+  const rng = sequenceRng(123);
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, {
+    actionTimeoutMs: 40,
+    botRuntime: {
+      rng,
+      sleep: async () => {},
+      nowMs: () => 42,
+    },
+  });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const human = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const observer = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    human.close();
+    observer.close();
+  });
+
+  await once(human, 'connect');
+  await once(observer, 'connect');
+
+  await emitWithAck(human, 'room:create', {
+    roomId: 'AAAABY',
+    smallBlind: 10,
+    bigBlind: 20,
+  });
+  await emitWithAck(human, 'room:join', {
+    roomId: 'AAAABY',
+    playerId: 'human',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 10,
+  });
+  await emitWithAck(observer, 'room:join', {
+    roomId: 'AAAABY',
+    playerId: 'bot-1',
+    playerName: 'Bot 1',
+    seatIndex: 1,
+    stack: 1000,
+    isBot: true,
+    botStrategy: 'fish',
+  });
+  await emitWithAck(observer, 'room:join', {
+    roomId: 'AAAABY',
+    playerId: 'bot-2',
+    playerName: 'Bot 2',
+    seatIndex: 2,
+    stack: 1000,
+    isBot: true,
+    botStrategy: 'tag',
+  });
+
+  const handEndPromise = waitForHandResult(
+    human,
+    (payload) => payload.roomId === 'AAAABY' && payload.phase === 'hand_end',
+    5_000,
+  );
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:start', {
+    roomId: 'AAAABY',
+    buttonMarkerSeat: 2,
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const handEnd = await handEndPromise;
+  assert.equal(handEnd.table.isBotsOnlyContinuation, true);
+  assert.equal(handEnd.table.activeHumanStackPlayerCount, 0);
+
+  let autoContinued = false;
+  const observeUnexpectedNextHand = (payload: any) => {
+    if (
+      payload.roomId === 'AAAABY'
+      && payload.hand.handNumber >= 2
+      && payload.hand.phase !== 'hand_end'
+    ) {
+      autoContinued = true;
+    }
+  };
+  observer.on('game:state', observeUnexpectedNextHand);
+  await sleep(1_900);
+  observer.off('game:state', observeUnexpectedNextHand);
+  assert.equal(autoContinued, false);
+
+  const spectateAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:spectate', {
+    roomId: 'AAAABY',
+  });
+  assert.deepEqual(spectateAck, { ok: true });
+
+  const nextHandState = await waitForState(
+    observer,
+    (payload) =>
+      payload.roomId === 'AAAABY'
+      && payload.hand.handNumber >= 2
+      && payload.hand.phase !== 'hand_end',
+    5_000,
+  );
+  assert.equal(nextHandState.hand.handNumber >= 2, true);
+});
+
 test('game:state hides opponent hole cards before hand_end', async (t) => {
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app);
@@ -2504,4 +2797,84 @@ test('game loop auto-runs bot turns and returns control to human or ends hand', 
   const returnedToHuman = advanced.hand.currentActorSeat === 0;
   const handEnded = advanced.hand.phase === 'hand_end';
   assert.equal(returnedToHuman || handEnded, true);
+});
+
+test('injected bot runtime makes bot turns deterministic and immediate', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, {
+    botRuntime: {
+      rng: () => 0.99,
+      sleep: async () => {},
+      nowMs: () => 42
+    }
+  } as any);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const human = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const botClient = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    human.close();
+    botClient.close();
+  });
+
+  await once(human, 'connect');
+  await once(botClient, 'connect');
+
+  await emitWithAck(human, 'room:create', {
+    roomId: 'AAAAAY',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(human, 'room:join', {
+    roomId: 'AAAAAY',
+    playerId: 'human-1',
+    playerName: 'Human',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(botClient, 'room:join', {
+    roomId: 'AAAAAY',
+    playerId: 'bot-1',
+    playerName: 'Bot',
+    seatIndex: 1,
+    stack: 1000,
+    isBot: true
+  });
+
+  const startState = waitForState(human, (payload) => payload.roomId === 'AAAAAY' && payload.hand.handNumber === 1);
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:start', {
+    roomId: 'AAAAAY',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+  await startState;
+
+  const handProgressAfterBotActions = waitForState(
+    human,
+    (payload) =>
+      payload.roomId === 'AAAAAY'
+      && payload.hand.actions.length >= 2
+      && (payload.hand.currentActorSeat === 0 || payload.hand.phase === 'hand_end'),
+    250
+  );
+  const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:action', {
+    roomId: 'AAAAAY',
+    playerId: 'human-1',
+    type: 'call',
+    seq: 1
+  });
+
+  assert.deepEqual(actionAck, { ok: true });
+  const advanced = await handProgressAfterBotActions;
+  assert.ok(advanced.hand.actions.length >= 2);
+  assert.equal(advanced.hand.actions[1]?.playerId, 'bot-1');
 });

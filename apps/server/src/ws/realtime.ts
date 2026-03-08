@@ -6,6 +6,7 @@ import { verifyGuestSessionToken } from '../auth/session-token.ts';
 import type { RoomActionTimeouts } from '../game-loop/action-timeout.ts';
 import type { RoomNextHandTimeouts } from '../game-loop/auto-next-hand.ts';
 import type { EmptyRoomTimeouts } from '../game-loop/empty-room-timeout.ts';
+import { DEFAULT_BOT_RUNTIME_DEPS, type BotRuntimeDeps } from '../game-loop/bot-support.ts';
 import type { RoomTaskQueues } from '../rooms/room-queue.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { registerGameEvents } from './handlers/game-events.ts';
@@ -18,6 +19,7 @@ interface AttachRealtimeOptions {
   authStrict?: boolean;
   emptyRoomTtlMs?: number;
   nowMs?: () => number;
+  botRuntime?: Partial<BotRuntimeDeps>;
 }
 
 export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOptions = {}): Server {
@@ -33,6 +35,10 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const authStrict = options.authStrict ?? false;
   const emptyRoomTtlMs = options.emptyRoomTtlMs ?? 60_000;
   const nowMs = options.nowMs ?? (() => Date.now());
+  const botRuntime: BotRuntimeDeps = {
+    ...DEFAULT_BOT_RUNTIME_DEPS,
+    ...(options.botRuntime ?? {}),
+  };
   const rooms = new Map<string, RuntimeRoom>();
   const memberships = new Map<string, RoomMembership>();
   const roomActionTimeouts: RoomActionTimeouts = new Map();
@@ -80,7 +86,8 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       roomNextHandTimeouts,
       roomTaskQueues,
       actionTimeoutMs,
-      nowMs
+      nowMs,
+      botRuntime,
     });
   });
 

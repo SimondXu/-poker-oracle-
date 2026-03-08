@@ -25,7 +25,7 @@ export default function GamePage({ params }: GamePageProps) {
   const currentUserId = user?.id ?? '';
   const currentUserName = user?.username ?? '';
 
-  const { sendAction, startNextHand } = useGameSocket(
+  const { sendAction, startNextHand, spectateAfterElimination } = useGameSocket(
     roomId,
     currentUserId,
     currentUserName,
@@ -51,6 +51,7 @@ export default function GamePage({ params }: GamePageProps) {
   } = useGameScreenState({
     currentUserId,
     startNextHand,
+    spectateAfterElimination,
   });
 
   const isTrainingHUDVisible = useUIStore((state) => state.isTrainingHUDVisible);

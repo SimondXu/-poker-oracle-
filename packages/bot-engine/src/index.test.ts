@@ -1,187 +1,249 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { chooseBotAction } from './index.ts';
-import type { BotValidActions } from '@aipoker/shared';
+import type { BotDecisionContext } from '@aipoker/shared';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+import {
+  analyzePostflop,
+  canonicalizeHoleCards,
+  chooseBotAction,
+  getPreflopMix,
+  getStackBucket,
+} from './index.ts';
 
-function makeActions(overrides: Partial<BotValidActions> = {}): BotValidActions {
+function sequenceRng(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (1664525 * state + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function makeContext(overrides: Partial<BotDecisionContext> = {}): BotDecisionContext {
   return {
     canFold: true,
     canCheck: false,
-    canCall: false,
-    callAmount: 0,
-    canRaise: false,
-    minRaiseTo: 0,
-    maxRaiseTo: 0,
-    canAllIn: false,
-    potTotal: 100,
-    myStack: 1000,
+    canCall: true,
+    callAmount: 100,
+    canRaise: true,
+    minRaiseTo: 200,
+    maxRaiseTo: 2_000,
+    canAllIn: true,
+    phase: 'preflop',
+    potTotal: 150,
+    myStack: 1_900,
     holeCards: ['Ah', 'Kh'],
     communityCards: [],
+    activePlayerCount: 6,
+    opponentCount: 5,
+    position: 'btn',
+    effectiveStack: 6_000,
+    effectiveStackBb: 60,
+    spr: 10,
+    bettingState: 'unopened',
+    isPreflopAggressor: false,
+    isLastStreetAggressor: false,
     ...overrides,
   };
 }
 
-const alwaysHigh: () => number = () => 0.99;
-const alwaysLow:  () => number = () => 0.01;
-
-// ── Check / Call / Fold basics ────────────────────────────────────────────────
-
-test('fish: checks when check is available and no raise desire', () => {
-  const action = chooseBotAction(
-    makeActions({ canCheck: true }),
-    'fish',
-    alwaysHigh, // high rng → no bluff, no raise desire
-  );
-  assert.equal(action.type, 'check');
+test('canonicalizeHoleCards returns canonical pair, suited, and offsuit keys', () => {
+  assert.equal(canonicalizeHoleCards(['Kh', 'Ah']), 'AKs');
+  assert.equal(canonicalizeHoleCards(['Jd', 'Qs']), 'QJo');
+  assert.equal(canonicalizeHoleCards(['8d', '8s']), '88');
 });
 
-test('fish: calls when canCall and hand is strong enough', () => {
-  // AhKh preflop → strength ≈ 0.76, fish callThreshold = 0.15 → should call
-  const action = chooseBotAction(
-    makeActions({ canCall: true, callAmount: 20 }),
-    'fish',
-    alwaysHigh,
-  );
-  assert.equal(action.type, 'call');
-  if (action.type === 'call') assert.equal(action.amount, 20);
+test('getStackBucket uses the documented depth buckets', () => {
+  assert.equal(getStackBucket(12), '<=12bb');
+  assert.equal(getStackBucket(12.01), '13-25bb');
+  assert.equal(getStackBucket(25), '13-25bb');
+  assert.equal(getStackBucket(25.01), '26-60bb');
+  assert.equal(getStackBucket(60), '26-60bb');
+  assert.equal(getStackBucket(60.01), '>60bb');
 });
 
-test('fish: folds weak hand vs large bet', () => {
-  // 72o preflop → low strength; high pot odds demand a lot
-  const action = chooseBotAction(
-    makeActions({ canCall: true, callAmount: 90, potTotal: 10, holeCards: ['7h', '2d'] }),
-    'fish',
-    alwaysHigh,
-  );
-  // pot odds = 90/(10+90) = 0.90 → far exceeds fish callThreshold (0.15) and hand strength
-  assert.equal(action.type, 'fold');
+test('preflop range mixes differentiate fish, tag, and lag personalities', () => {
+  const fishMix = getPreflopMix('fish', 60, 'unopened', 'btn', ['Kh', '9h']);
+  const tagMix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Kh', '9h']);
+  const lagMix = getPreflopMix('lag', 60, 'unopened', 'btn', ['Kh', '9h']);
+
+  assert.ok(lagMix.raise + lagMix.jam > tagMix.raise + tagMix.jam);
+  assert.ok(fishMix.call > tagMix.call);
 });
 
-test('fish: folds when neither check nor call available', () => {
-  const action = chooseBotAction(
-    makeActions({ canFold: true, canCheck: false, canCall: false }),
-    'fish',
-    alwaysHigh,
-  );
-  assert.equal(action.type, 'fold');
+test('preflop mixes distinguish exact positions instead of collapsing to early/late buckets', () => {
+  const utgMix = getPreflopMix('tag', 60, 'unopened', 'utg', ['Qh', '9h']);
+  const hjMix = getPreflopMix('tag', 60, 'unopened', 'hj', ['Qh', '9h']);
+  const coMix = getPreflopMix('tag', 60, 'unopened', 'co', ['Qh', '9h']);
+  const btnMix = getPreflopMix('tag', 60, 'unopened', 'btn', ['Qh', '9h']);
+
+  assert.notDeepEqual(utgMix, hjMix);
+  assert.notDeepEqual(coMix, btnMix);
 });
 
-// ── Raise logic ───────────────────────────────────────────────────────────────
-
-test('tag: raises with strong hand when rng favors it', () => {
-  // alwaysLow rng → bluffFrequency check fires (0.01 < 0.12 = bluffFrequency)
-  // so TAG may raise even with moderate hand
+test('preflop raise intent falls back to call when raising is not legal', () => {
   const action = chooseBotAction(
-    makeActions({
-      canRaise: true,
-      minRaiseTo: 60,
-      maxRaiseTo: 1000,
-      potTotal: 100,
-      myStack: 1000,
+    makeContext({
+      holeCards: ['Ah', 'Ad'],
+      position: 'utg',
+      canRaise: false,
+      callAmount: 100,
+      canCall: true,
     }),
     'tag',
-    alwaysLow,
+    () => 0.5,
   );
-  // With low rng, bluff fires → should raise
-  assert.equal(action.type, 'raise_to');
-  if (action.type === 'raise_to') {
-    assert.ok(action.amount >= 60, 'raise amount must be >= minRaiseTo');
-    assert.ok(action.amount <= 1000, 'raise amount must be <= maxRaiseTo');
+
+  assert.equal(action.type, 'call');
+  if (action.type === 'call') {
+    assert.equal(action.amount, 100);
   }
 });
 
-test('lag: raises more aggressively', () => {
-  // rng at 0.2 → for LAG: raiseFrequency=0.85 for strong hands, bluffFreq=0.28
-  // 0.2 < 0.28 → bluff fires
+test('heads-up button uses small-blind open sizing preflop', () => {
   const action = chooseBotAction(
-    makeActions({
-      canRaise: true,
-      minRaiseTo: 40,
-      maxRaiseTo: 500,
-      potTotal: 80,
-      myStack: 500,
+    makeContext({
+      holeCards: ['Ah', 'Ad'],
+      position: 'btn',
+      activePlayerCount: 2,
+      opponentCount: 1,
+      effectiveStack: 6_000,
+      effectiveStackBb: 60,
+      callAmount: 50,
+      potTotal: 150,
+      minRaiseTo: 200,
+      maxRaiseTo: 1_000,
     }),
-    'lag',
-    () => 0.2,
+    'tag',
+    () => 0.5,
   );
+
   assert.equal(action.type, 'raise_to');
+  if (action.type === 'raise_to') {
+    assert.equal(action.amount, 300);
+  }
 });
 
-// ── All-in ────────────────────────────────────────────────────────────────────
-
-test('goes all-in when raise amount equals maxRaiseTo', () => {
-  // Force raise_to amount to equal maxRaiseTo → triggers all_in
-  // potTotal=10, betSizingFactor=0.50 → target ≈ 5; minRaiseTo=900, maxRaiseTo=900 → clamps to 900
+test('preflop sizing respects the legal raise clamp', () => {
   const action = chooseBotAction(
-    makeActions({
-      canRaise: true,
-      canAllIn: true,
-      minRaiseTo: 900,
-      maxRaiseTo: 900,
-      potTotal: 100,
-      myStack: 900,
+    makeContext({
+      holeCards: ['Ah', 'Ad'],
+      position: 'sb',
+      minRaiseTo: 150,
+      maxRaiseTo: 180,
+      canAllIn: false,
     }),
-    'fish',
-    alwaysLow, // low rng → bluffFrequency check fires
+    'tag',
+    () => 0.5,
   );
-  assert.equal(action.type, 'all_in');
+
+  assert.equal(action.type, 'raise_to');
+  if (action.type === 'raise_to') {
+    assert.equal(action.amount, 180);
+  }
 });
 
-// ── Thinking delay ────────────────────────────────────────────────────────────
+test('analyzePostflop uses game-engine evaluation for flush-vs-straight and wheel straight cases', () => {
+  const falseStraightFlush = analyzePostflop(
+    makeContext({
+      phase: 'river',
+      holeCards: ['Ah', '2h'],
+      communityCards: ['Kh', 'Qh', 'Jh', 'Td', '9c'],
+      bettingState: 'facing_open',
+      activePlayerCount: 2,
+      opponentCount: 1,
+    }),
+    () => 0.99,
+  );
+  assert.equal(falseStraightFlush.madeHandRank, 5);
 
-test('all actions include a positive thinkingDelayMs', () => {
-  const cases: Array<() => void> = [
-    () => {
-      const a = chooseBotAction(makeActions({ canCheck: true }), 'fish', alwaysHigh);
-      assert.ok(a.thinkingDelayMs > 0);
-    },
-    () => {
-      const a = chooseBotAction(makeActions({ canCall: true, callAmount: 10 }), 'tag', alwaysHigh);
-      assert.ok(a.thinkingDelayMs > 0);
-    },
-    () => {
-      const a = chooseBotAction(makeActions({ canFold: true }), 'lag', alwaysHigh);
-      assert.ok(a.thinkingDelayMs > 0);
-    },
-  ];
-  for (const fn of cases) fn();
+  const wheel = analyzePostflop(
+    makeContext({
+      phase: 'flop',
+      holeCards: ['Ah', '2d'],
+      communityCards: ['3c', '4s', '5h'],
+      bettingState: 'facing_open',
+      activePlayerCount: 2,
+      opponentCount: 1,
+    }),
+    () => 0.99,
+  );
+  assert.equal(wheel.madeHandRank, 4);
 });
 
-// ── Postflop hand evaluation ──────────────────────────────────────────────────
-
-test('fish calls postflop with a flopped pair', () => {
-  // AhKh hole cards, Ah 7d 2c board → pair of aces → strength ≈ 0.42+noise
-  // fish callThreshold = 0.15 → should call
+test('tag recognizes a wheel straight and continues versus a small bet', () => {
   const action = chooseBotAction(
-    makeActions({
-      canCall: true,
+    makeContext({
+      phase: 'flop',
+      holeCards: ['Ah', '2d'],
+      communityCards: ['3c', '4s', '5h'],
       callAmount: 20,
       potTotal: 80,
-      holeCards: ['Ah', 'Kh'],
-      communityCards: ['Ad', '7d', '2c'],
+      canRaise: false,
+      bettingState: 'facing_open',
+      activePlayerCount: 2,
+      opponentCount: 1,
+      spr: 6,
     }),
-    'fish',
-    alwaysHigh,
+    'tag',
+    sequenceRng(7),
   );
+
   assert.equal(action.type, 'call');
 });
 
-test('tag folds postflop with nothing and expensive bet', () => {
-  // 72o vs AKQ board → high card, ~0.26 strength
-  // potOdds = 80/(80+80) = 0.50 > tag callThreshold(0.40) → fold
+test('fish calls spots that tag folds when only the call buffer differs', () => {
+  const context = makeContext({
+    phase: 'river',
+    holeCards: ['As', '9s'],
+    communityCards: ['Kd', '9d', '4c', '2h', '7c'],
+    callAmount: 40,
+    potTotal: 60,
+    canRaise: false,
+    canAllIn: false,
+    bettingState: 'facing_open',
+    activePlayerCount: 2,
+    opponentCount: 1,
+    spr: 4,
+  });
+
+  const fishAction = chooseBotAction(context, 'fish', () => 0.5);
+  const tagAction = chooseBotAction(context, 'tag', () => 0.5);
+
+  assert.equal(fishAction.type, 'call');
+  assert.equal(tagAction.type, 'fold');
+});
+
+test('lag semi-bluffs strong combo draws on the flop within the raise window', () => {
   const action = chooseBotAction(
-    makeActions({
-      canCall: true,
-      callAmount: 80,
-      potTotal: 80,
-      holeCards: ['7h', '2d'],
-      communityCards: ['Ah', 'Kd', 'Qc'],
+    makeContext({
+      phase: 'flop',
+      holeCards: ['Ah', 'Qh'],
+      communityCards: ['Jh', 'Th', '2c'],
+      callAmount: 40,
+      potTotal: 120,
+      minRaiseTo: 140,
+      maxRaiseTo: 220,
+      canAllIn: false,
+      bettingState: 'facing_open',
+      activePlayerCount: 2,
+      opponentCount: 1,
+      effectiveStack: 1_000,
+      effectiveStackBb: 10,
+      spr: 2,
     }),
-    'tag',
-    alwaysHigh,
+    'lag',
+    () => 0.1,
   );
-  assert.equal(action.type, 'fold');
+
+  assert.equal(action.type, 'raise_to');
+  if (action.type === 'raise_to') {
+    assert.ok(action.amount >= 140);
+    assert.ok(action.amount <= 220);
+  }
+});
+
+test('all chosen actions include a positive thinkingDelayMs', () => {
+  const action = chooseBotAction(makeContext(), 'fish', () => 0.99);
+  assert.ok(action.thinkingDelayMs > 0);
 });

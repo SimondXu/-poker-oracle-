@@ -24,7 +24,9 @@ export interface RuntimeRoom {
   players: Map<string, RuntimePlayer>;
   readyPlayerIds: Set<string>;
   pendingDisconnectPlayerIds: Set<string>;
+  spectatingPlayerIds: Set<string>;
   hand: HandState | null;
   lastActionSeqByPlayer: Map<string, number>;
   lastBroadcastActionCount: number;
+  lastButtonMarkerSeat: number | null;
 }

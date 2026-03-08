@@ -35,6 +35,10 @@ export const gameStartPayloadSchema = z.object({
   buttonMarkerSeat: z.coerce.number().int().min(0).optional()
 });
 
+export const gameSpectatePayloadSchema = z.object({
+  roomId: roomCodeSchema,
+});
+
 export const gameActionPayloadSchema = z.object({
   roomId: roomCodeSchema,
   playerId: z.string().trim().min(1).optional(),
@@ -83,6 +87,19 @@ export type GameStartAck =
         | 'starter_not_active'
         | 'not_enough_players'
         | 'invalid_blind_structure';
+    };
+
+export type GameSpectateAck =
+  | { ok: true }
+  | {
+      ok: false;
+      error:
+        | 'invalid_payload'
+        | 'room_not_found'
+        | 'not_room_member'
+        | 'hand_not_started'
+        | 'hand_not_actionable'
+        | 'not_eliminated';
     };
 
 export type GameActionAck =

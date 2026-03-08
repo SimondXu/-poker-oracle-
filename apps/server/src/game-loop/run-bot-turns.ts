@@ -1,18 +1,14 @@
 import { chooseBotAction } from '@aipoker/bot-engine';
-import { applyAction, getValidActions, type PlayerActionInput } from '@aipoker/game-engine';
-import type { BotPersonality, Card } from '@aipoker/shared';
+import { applyAction, type PlayerActionInput } from '@aipoker/game-engine';
 import type { Server } from 'socket.io';
 
+import { buildBotDecisionContext, type BotRuntimeDeps } from './bot-support.ts';
 import { syncRoomPlayersFromHand } from '../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { emitGameState } from '../ws/emitters.ts';
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildActionInput(
@@ -42,7 +38,7 @@ export async function runBotTurns(
   io: Server,
   room: RuntimeRoom,
   memberships: Map<string, RoomMembership>,
-  nowMs: () => number,
+  runtime: BotRuntimeDeps,
 ): Promise<void> {
   while (room.hand && room.hand.currentActorSeat !== null) {
     const seatIndex = room.hand.currentActorSeat;
@@ -53,31 +49,18 @@ export async function runBotTurns(
       return;
     }
 
-    const valid = getValidActions(room.hand, actor.id);
-    const currentPlayer = room.hand.players.find((p) => p.id === actor.id);
-    const potTotal = room.hand.pots.reduce((s, p) => s + p.amount, 0);
+    const context = buildBotDecisionContext(room, actor.id);
+    if (!context) {
+      return;
+    }
 
     const botAction = chooseBotAction(
-      {
-        canFold: valid.canFold,
-        canCheck: valid.canCheck,
-        canCall: valid.canCall,
-        callAmount: valid.callAmount,
-        canRaise: valid.canRaise,
-        minRaiseTo: valid.minRaiseTo,
-        maxRaiseTo: valid.maxRaiseTo,
-        canAllIn: valid.canAllIn,
-        potTotal,
-        myStack: currentPlayer?.stack ?? 0,
-        holeCards: (currentPlayer?.holeCards as Card[] | undefined) ?? [],
-        communityCards: room.hand.communityCards as Card[],
-      },
-      (actor.botStrategy ?? 'fish') as BotPersonality,
-      Math.random,
+      context,
+      actor.botStrategy ?? 'fish',
+      runtime.rng,
     );
 
-    // Simulate thinking delay
-    await sleep(botAction.thinkingDelayMs);
+    await runtime.sleep(botAction.thinkingDelayMs);
 
     // Re-validate state after the delay (disconnect or other events may have mutated it)
     if (!room.hand || room.hand.currentActorSeat !== seatIndex) {
@@ -89,7 +72,7 @@ export async function runBotTurns(
     }
 
     const actionInput = buildActionInput(actor.id, botAction);
-    const result = applyAction(room.hand, actionInput, { timestamp: nowMs() });
+    const result = applyAction(room.hand, actionInput, { timestamp: runtime.nowMs() });
     if (!result.ok) {
       return;
     }
