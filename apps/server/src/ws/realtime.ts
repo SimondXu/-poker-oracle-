@@ -16,6 +16,10 @@ interface AttachRealtimeOptions {
   authSecret?: string;
   authCookieName?: string;
   authStrict?: boolean;
+  debugState?: {
+    rooms?: Map<string, RuntimeRoom>;
+    memberships?: Map<string, RoomMembership>;
+  };
   emptyRoomTtlMs?: number;
   nowMs?: () => number;
 }
@@ -39,6 +43,11 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const roomNextHandTimeouts: RoomNextHandTimeouts = new Map();
   const emptyRoomTimeouts: EmptyRoomTimeouts = new Map();
   const roomTaskQueues: RoomTaskQueues = new Map();
+
+  if (options.debugState) {
+    options.debugState.rooms = rooms;
+    options.debugState.memberships = memberships;
+  }
 
   io.use((socket, next) => {
     const cookies = parseCookies(socket.handshake.headers.cookie);
@@ -64,6 +73,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       memberships,
       roomActionTimeouts,
       roomNextHandTimeouts,
+      roomTaskQueues,
       emptyRoomTimeouts,
       authStrict,
       actionTimeoutMs,

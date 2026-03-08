@@ -46,7 +46,10 @@ export const gameActionPayloadSchema = z.object({
 
 export type JoinRoomAck =
   | { ok: true; roomId: string; playerCount: number }
-  | { ok: false; error: 'invalid_payload' | 'unauthorized' | 'room_not_found' | 'player_name_taken' };
+  | {
+      ok: false;
+      error: 'invalid_payload' | 'unauthorized' | 'room_not_found' | 'player_name_taken' | 'not_room_owner';
+    };
 
 export type RoomCreateAck =
   | { ok: true; roomId: string }
@@ -77,10 +80,10 @@ export type GameStartAck =
         | 'invalid_payload'
         | 'room_not_found'
         | 'not_room_member'
+        | 'not_room_owner'
         | 'players_not_ready'
         | 'hand_already_started'
         | 'table_finished'
-        | 'starter_not_active'
         | 'not_enough_players'
         | 'invalid_blind_structure';
     };

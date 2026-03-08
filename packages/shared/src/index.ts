@@ -172,6 +172,7 @@ export interface TableLifecycleSnapshot {
 export interface RoomStateEvent {
   roomId: string;
   stateVersion: number;
+  ownerId: string | null;
   players: Array<{
     id: string;
     name: string;

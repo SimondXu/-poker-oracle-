@@ -17,6 +17,7 @@ export interface RuntimePlayer {
 export interface RuntimeRoom {
   id: string;
   stateVersion: number;
+  ownerId: string | null;
   handNumber: number;
   smallBlind: number;
   bigBlind: number;

@@ -20,3 +20,26 @@ Original prompt: 我现在遇到一个问题就是我刚实验了打开两个浏
 - Added regression coverage for phase-gated result presentation and temporary announcing-stack masking in `apps/web/src/lib/table-animation.test.ts`.
 - Updated the game page/table to keep `announcing` neutral: no winner modal, no winner badges/highlights, no pot-award animation, and no awarded chips added to seat stacks until `showing`.
 - Browser verification on the rebuilt frontend confirmed `announce-start` now shows only the neutral “正在播放结算动画” state with unrevealed winners and pre-award stacks, while `showing` is the first point where the modal and final winner stack appear.
+- New create-room regression pass:
+- Reproduced the current “输入名字后无法创建房间” report and found two separate blockers along the real flow.
+- First blocker: after `fix(web): align socket join flow with guest session state`, the frontend correctly resolved local dev API URLs to `127.0.0.1:3001` when opened from `127.0.0.1:3000`, but the server still hard-coded HTTP CORS to `http://localhost:3000`, so guest-session bootstrap failed before room creation.
+- Added a server regression test in `apps/server/src/tests/integration/http/auth-http.test.ts` that exercises the `OPTIONS /api/auth/guest` preflight for `Origin: http://127.0.0.1:3000`, then updated `apps/server/src/index.ts` to reflect allowed local-dev origins dynamically instead of always replying with `localhost`.
+- Second blocker surfaced only after the CORS fix let navigation continue: entering `/room/[id]` crashed because `apps/web/src/hooks/useSocketSession.ts` used `useEffectEvent`, which the current client runtime did not expose consistently on the room route.
+- Replaced the `useEffectEvent` usage with stable ref-backed callback holders so the socket/session hook keeps the same behavior without relying on that runtime export.
+- Verification:
+- `node --experimental-strip-types --test src/tests/integration/http/auth-http.test.ts` passed under `apps/server`.
+- `pnpm --filter @aipoker/server typecheck` passed.
+- `pnpm --filter @aipoker/web typecheck` passed.
+- Browser verification on an isolated pair (`web 3012` -> `server 3002`) confirmed the full flow: home page button enables after typing, create-room click succeeds, guest session initializes, and the app lands on `/room/<code>?intent=join` with the creator seated and connected.
+- New room-ownership / host-control pass:
+- Added a persistent `ownerId` to room state, transferred ownership when the current host fully leaves the waiting room, and restricted `game:start` to the current room owner only.
+- Aligned the room-page state model with server truth so “all humans ready” only counts stack-positive humans; this keeps the owner able to start the next hand from the rail after busting while still blocking guests from starting.
+- Found and closed a related permission hole: guests could still add or remove Bots, so bot configuration is now owner-only in both the websocket handlers and the waiting-room UI.
+- Full-suite regression surfaced one more room-lifecycle bug: if the last human left right after `hand_end`, the room could transition into bots-only continuation without rescheduling the auto-next-hand timer. Fixed that in the room event handler so bots-only tables keep advancing even when the host disconnects between hands.
+- Added regression coverage for host-only start, ownership transfer, and owner-only bot management in the realtime tests, plus updated room-page state tests for owner-aware start gating.
+- Verification:
+- `pnpm --filter @aipoker/server test` now passes with `79` passing tests after the new ownership/bot-control regressions.
+- `pnpm --filter @aipoker/server typecheck` passed.
+- `pnpm --filter @aipoker/web typecheck` passed.
+- `node --experimental-strip-types --test apps/web/src/features/room/lib/room-page-state.test.ts apps/web/src/features/room/lib/room-socket-state.test.ts apps/web/src/features/room/lib/room-navigation.test.ts` passed.
+- Live browser verification on `web 3010` -> `server 3011` confirmed: host create button enables normally, guests see “只有房主可以开始游戏” and “仅房主可配置”, guests can ready but cannot start, and once the host starts, both contexts auto-navigate from `/room/<code>` to `/game/<code>` with no browser console errors.

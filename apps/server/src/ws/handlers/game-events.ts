@@ -9,14 +9,14 @@ import {
 } from '../../game-loop/action-timeout.ts';
 import {
   clearRoomNextHandTimeout,
-  scheduleRoomNextHandTimeout,
   type RoomNextHandTimeouts
 } from '../../game-loop/auto-next-hand.ts';
+import { syncBotsOnlyAutoNextHand } from '../../game-loop/bots-only-auto-next.ts';
 import { cleanupDisconnectedPlayersAfterHandEnd } from '../../game-loop/cleanup-disconnected-players.ts';
 import { runBotTurns } from '../../game-loop/run-bot-turns.ts';
 import { enqueueRoomTask, type RoomTaskQueues } from '../../rooms/room-queue.ts';
 import { syncRoomPlayersFromHand } from '../../rooms/room-store.ts';
-import { canPlayerStartNextHand, getTableLifecycleSnapshot } from '../../rooms/table-lifecycle.ts';
+import { getTableLifecycleSnapshot } from '../../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameState } from '../emitters.ts';
 import { gameActionPayloadSchema, gameStartPayloadSchema, type GameActionAck, type GameStartAck } from '../schemas.ts';
@@ -34,7 +34,6 @@ interface RegisterGameEventsInput {
 
 const ACTION_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_ACTIONS_PER_WINDOW = 20;
-const BOTS_ONLY_AUTO_NEXT_DELAY_MS = 1_500;
 
 export function registerGameEvents(input: RegisterGameEventsInput): void {
   const { io, socket, rooms, memberships, roomActionTimeouts, roomNextHandTimeouts, roomTaskQueues, actionTimeoutMs } = input;
@@ -103,63 +102,21 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     });
   }
 
-  function syncBotsOnlyAutoNext(room: RuntimeRoom): void {
-    if (!rooms.has(room.id) || !room.hand) {
-      clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
-      return;
-    }
-
-    const tableLifecycle = getTableLifecycleSnapshot(room);
-    if (room.hand.phase !== 'hand_end' || !tableLifecycle.isBotsOnlyContinuation) {
-      clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
-      return;
-    }
-
-    scheduleRoomNextHandTimeout(roomNextHandTimeouts, room.id, BOTS_ONLY_AUTO_NEXT_DELAY_MS, () => {
-      void enqueueRoomTask(roomTaskQueues, room.id, async () => {
-        const latestRoom = rooms.get(room.id);
-        if (!latestRoom || !latestRoom.hand) {
-          return;
-        }
-
-        const latestLifecycle = getTableLifecycleSnapshot(latestRoom);
-        if (latestRoom.hand.phase !== 'hand_end' || !latestLifecycle.isBotsOnlyContinuation) {
-          return;
-        }
-
-        const initialized = initializeHand({
-          players: [...latestRoom.players.values()].map((player) => ({
-            id: player.id,
-            seatIndex: player.seatIndex,
-            stack: player.stack
-          })),
-          buttonMarkerSeat: latestRoom.hand.buttonMarkerSeat,
-          smallBlind: latestRoom.smallBlind,
-          bigBlind: latestRoom.bigBlind,
-          rng: Math.random
-        });
-        if (!initialized.ok) {
-          return;
-        }
-
-        latestRoom.hand = initialized.value;
-        latestRoom.handNumber += 1;
-        resetActionSeqTracker(latestRoom);
-        syncRoomPlayersFromHand(latestRoom);
-        await emitStateAndProgress(latestRoom);
-      }).catch((error: unknown) => {
-        console.error('bots-only auto next hand task failed', error);
-      });
-    });
-  }
-
   async function emitStateAndProgress(room: RuntimeRoom): Promise<void> {
     room.stateVersion += 1;
     emitGameState(io, room, memberships);
     await runBotTurns(io, room, memberships);
     cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts, roomNextHandTimeouts);
     syncActionTimeout(room.id);
-    syncBotsOnlyAutoNext(room);
+    syncBotsOnlyAutoNextHand({
+      io,
+      room,
+      rooms,
+      memberships,
+      roomActionTimeouts,
+      roomNextHandTimeouts,
+      roomTaskQueues
+    });
   }
 
   function isActionRateLimited(): boolean {
@@ -198,6 +155,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
         return;
       }
 
+      if (!room.ownerId || membership.playerId !== room.ownerId) {
+        ack?.({ ok: false, error: 'not_room_owner' });
+        return;
+      }
+
       if (room.hand && room.hand.phase !== 'hand_end') {
         ack?.({ ok: false, error: 'hand_already_started' });
         return;
@@ -211,11 +173,6 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
 
       if (tableLifecycle.activeStackPlayerCount < 2) {
         ack?.({ ok: false, error: 'not_enough_players' });
-        return;
-      }
-
-      if (!canPlayerStartNextHand(room, membership.playerId)) {
-        ack?.({ ok: false, error: 'starter_not_active' });
         return;
       }
 

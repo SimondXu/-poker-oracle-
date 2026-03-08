@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { canPlayerStartNextHand, getTableLifecycleSnapshot } from '../../../rooms/table-lifecycle.ts';
+import { getTableLifecycleSnapshot } from '../../../rooms/table-lifecycle.ts';
 import type { RuntimeRoom } from '../../../rooms/types.ts';
 
 interface RoomPlayerSeed {
@@ -102,18 +102,6 @@ test('table lifecycle: bots-only continuation when no active humans remain', () 
   assert.equal(lifecycle.isTableFinished, false);
 });
 
-test('canPlayerStartNextHand: only active human can start', () => {
-  const room = createRoom({
-    handNumber: 3,
-    players: [{ stack: 0 }, { stack: 1200 }, { stack: 500, isBot: true }],
-  });
-
-  assert.equal(canPlayerStartNextHand(room, 'p0'), false);
-  assert.equal(canPlayerStartNextHand(room, 'p1'), true);
-  assert.equal(canPlayerStartNextHand(room, 'p2'), false);
-  assert.equal(canPlayerStartNextHand(room, 'missing-player'), false);
-});
-
 test('table lifecycle: pending disconnect players do not count as active stacks', () => {
   const room = createRoom({
     handNumber: 9,
@@ -127,5 +115,4 @@ test('table lifecycle: pending disconnect players do not count as active stacks'
   assert.equal(lifecycle.activeHumanStackPlayerCount, 0);
   assert.equal(lifecycle.activeBotStackPlayerCount, 2);
   assert.equal(lifecycle.isBotsOnlyContinuation, true);
-  assert.equal(canPlayerStartNextHand(room, 'p0'), false);
 });

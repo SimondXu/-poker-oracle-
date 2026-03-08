@@ -23,6 +23,11 @@ interface UseRoomSocketOptions {
   onJoinFailed?: (error?: string) => void;
 }
 
+interface RoomActionAck {
+  ok: boolean;
+  error?: string;
+}
+
 export function useRoomSocket(
   roomId: string,
   playerId: string,
@@ -60,7 +65,7 @@ export function useRoomSocket(
           stack: 1000,
           isBot: false,
         },
-        (res: { ok: boolean; error?: string }) => {
+        (res: RoomActionAck) => {
           if (res.ok) {
             return;
           }
@@ -86,7 +91,7 @@ export function useRoomSocket(
       socket.emit(
         'room:create',
         { roomId, smallBlind: 10, bigBlind: 20 },
-        (res: { ok: boolean; error?: string }) => {
+        (res: RoomActionAck) => {
           if (!res.ok) {
             dispatch({ type: 'reset' });
             toast.error(getRoomErrorMessage(res.error, '创建房间失败'));
@@ -153,7 +158,7 @@ export function useRoomSocket(
           isBot: true,
           botStrategy: strategy,
         },
-        (res: { ok: boolean; error?: string }) => {
+        (res: RoomActionAck) => {
           if (!res.ok) {
             toast.error(getRoomErrorMessage(res.error, '添加 Bot 失败'));
           }
@@ -166,7 +171,15 @@ export function useRoomSocket(
   const removeBot = useCallback(
     (botPlayerId: string) => {
       const socket = getSocket();
-      socket.emit('room:remove_player', { roomId, playerId: botPlayerId }, () => {});
+      socket.emit(
+        'room:remove_player',
+        { roomId, playerId: botPlayerId },
+        (res: RoomActionAck) => {
+          if (!res.ok) {
+            toast.error(getRoomErrorMessage(res.error, '移除 Bot 失败'));
+          }
+        },
+      );
     },
     [roomId],
   );

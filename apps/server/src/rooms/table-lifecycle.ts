@@ -26,16 +26,3 @@ export function getTableLifecycleSnapshot(room: RuntimeRoom): TableLifecycleSnap
     championPlayerName: champion?.name ?? null,
   };
 }
-
-export function canPlayerStartNextHand(room: RuntimeRoom, playerId: string): boolean {
-  if (room.pendingDisconnectPlayerIds.has(playerId)) {
-    return false;
-  }
-
-  const starter = room.players.get(playerId);
-  if (!starter) {
-    return false;
-  }
-
-  return !starter.isBot && starter.stack > 0;
-}

@@ -148,6 +148,7 @@ export function emitRoomState(io: Server, room: RuntimeRoom): void {
   io.to(room.id).emit('room:state', {
     roomId: room.id,
     stateVersion: room.stateVersion,
+    ownerId: room.ownerId,
     players,
     playerCount: room.players.size,
     readyCount: room.readyPlayerIds.size,

@@ -3,12 +3,14 @@ import type { Server, Socket } from 'socket.io';
 import type { GuestSession } from '../../auth/session-token.ts';
 import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop/action-timeout.ts';
 import { clearRoomNextHandTimeout, type RoomNextHandTimeouts } from '../../game-loop/auto-next-hand.ts';
+import { syncBotsOnlyAutoNextHand } from '../../game-loop/bots-only-auto-next.ts';
 import {
   clearEmptyRoomTimeout,
   scheduleEmptyRoomTimeout,
   type EmptyRoomTimeouts,
 } from '../../game-loop/empty-room-timeout.ts';
-import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
+import type { RoomTaskQueues } from '../../rooms/room-queue.ts';
+import { getOrCreateRoom, pickSeatIndex, syncRoomOwner } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameStateToSocket, emitRoomState } from '../emitters.ts';
 import {
@@ -30,6 +32,7 @@ interface RegisterRoomEventsInput {
   memberships: Map<string, RoomMembership>;
   roomActionTimeouts: RoomActionTimeouts;
   roomNextHandTimeouts: RoomNextHandTimeouts;
+  roomTaskQueues: RoomTaskQueues;
   emptyRoomTimeouts: EmptyRoomTimeouts;
   authStrict: boolean;
   actionTimeoutMs: number;
@@ -47,6 +50,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     memberships,
     roomActionTimeouts,
     roomNextHandTimeouts,
+    roomTaskQueues,
     emptyRoomTimeouts,
     authStrict,
     actionTimeoutMs,
@@ -78,6 +82,16 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     room.players.delete(playerId);
     room.readyPlayerIds.delete(playerId);
     room.pendingDisconnectPlayerIds.delete(playerId);
+    syncRoomOwner(room);
+    syncBotsOnlyAutoNextHand({
+      io,
+      room,
+      rooms,
+      memberships,
+      roomActionTimeouts,
+      roomNextHandTimeouts,
+      roomTaskQueues
+    });
   }
 
   function deleteRoom(roomId: string): void {
@@ -131,7 +145,8 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     const room = getOrCreateRoom(rooms, parsed.data.roomId, {
       smallBlind: parsed.data.smallBlind,
       bigBlind: parsed.data.bigBlind,
-      actionTimeoutMs
+      actionTimeoutMs,
+      ownerId: authSession?.userId ?? null,
     });
     scheduleEmptyRoomTimeout(emptyRoomTimeouts, room.id, emptyRoomTtlMs, () => {
       const latestRoom = rooms.get(room.id);
@@ -179,6 +194,20 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
     clearEmptyRoomTimeout(emptyRoomTimeouts, room.id);
+
+    const currentMembership = memberships.get(socket.id);
+    if (
+      isBot
+      && (
+        !currentMembership
+        || currentMembership.roomId !== roomId
+        || !room.ownerId
+        || currentMembership.playerId !== room.ownerId
+      )
+    ) {
+      ack?.({ ok: false, error: 'not_room_owner' });
+      return;
+    }
 
     const normalizedName = resolvedPlayerName.trim().toLowerCase();
     const hasNameConflict = [...room.players.values()].some(
@@ -244,6 +273,16 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     } else {
       room.readyPlayerIds.delete(resolvedPlayerId);
     }
+    syncRoomOwner(room);
+    syncBotsOnlyAutoNextHand({
+      io,
+      room,
+      rooms,
+      memberships,
+      roomActionTimeouts,
+      roomNextHandTimeouts,
+      roomTaskQueues
+    });
 
     if (!isBot) {
       memberships.set(socket.id, { roomId, playerId: resolvedPlayerId });
@@ -301,6 +340,11 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     const room = rooms.get(parsed.data.roomId);
     if (!room) {
       ack?.({ ok: false, error: 'room_not_found' });
+      return;
+    }
+
+    if (!room.ownerId || membership.playerId !== room.ownerId) {
+      ack?.({ ok: false, error: 'not_room_owner' });
       return;
     }
 

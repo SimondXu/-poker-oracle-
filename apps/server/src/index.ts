@@ -32,6 +32,32 @@ export interface ServerDependencies {
   httpRateLimitPerMinute?: number;
 }
 
+const DEFAULT_CSP_CONNECT_SOURCES = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+function isLocalDevHostname(hostname: string): boolean {
+  return (
+    hostname === 'localhost'
+    || hostname === '0.0.0.0'
+    || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+    || /^10(?:\.\d{1,3}){3}$/.test(hostname)
+    || /^192\.168(?:\.\d{1,3}){2}$/.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}$/.test(hostname)
+  );
+}
+
+function isAllowedCorsOrigin(origin: string, configuredOrigin?: string): boolean {
+  if (configuredOrigin) {
+    return origin === configuredOrigin;
+  }
+
+  try {
+    const url = new URL(origin);
+    return url.protocol === 'http:' && url.port === '3000' && isLocalDevHostname(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function createServer(deps: ServerDependencies): FastifyInstance {
   const server = Fastify({
     logger: false
@@ -40,13 +66,20 @@ export function createServer(deps: ServerDependencies): FastifyInstance {
   const authSecret = deps.authSecret ?? 'dev-guest-secret-change-me';
   const authCookieName = deps.authCookieName ?? DEFAULT_AUTH_COOKIE_NAME;
   const authTtlSeconds = deps.authTtlSeconds ?? 60 * 60 * 24 * 30;
-  const corsOrigin = deps.corsOrigin ?? 'http://localhost:3000';
+  const corsOrigin = deps.corsOrigin;
   const secureCookies = deps.secureCookies ?? false;
   const httpRateLimitPerMinute = deps.httpRateLimitPerMinute ?? 100;
   const rateLimit = createFixedWindowRateLimiter(60_000);
 
   void server.register(cors, {
-    origin: corsOrigin,
+    origin: (origin, cb) => {
+      if (!origin) {
+        cb(null, true);
+        return;
+      }
+
+      cb(null, isAllowedCorsOrigin(origin, corsOrigin));
+    },
     credentials: true
   });
   void server.register(cookie);
@@ -57,7 +90,7 @@ export function createServer(deps: ServerDependencies): FastifyInstance {
         baseUri: ["'self'"],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
-        connectSrc: ["'self'", corsOrigin, 'ws:', 'wss:']
+        connectSrc: ["'self'", ...(corsOrigin ? [corsOrigin] : DEFAULT_CSP_CONNECT_SOURCES), 'ws:', 'wss:']
       }
     },
     crossOriginEmbedderPolicy: false

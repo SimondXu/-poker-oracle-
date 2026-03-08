@@ -84,3 +84,25 @@ test('POST /api/auth/logout clears auth cookie', async (t) => {
   assert.equal(typeof setCookie, 'string');
   assert.equal(setCookie.includes('Max-Age=0'), true);
 });
+
+test('OPTIONS /api/auth/guest echoes allowed local dev origin for 127.0.0.1', async (t) => {
+  const app = createServer({ nowMs: () => 4000 });
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const response = await app.inject({
+    method: 'OPTIONS',
+    url: '/api/auth/guest',
+    headers: {
+      origin: 'http://127.0.0.1:3000',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'content-type'
+    }
+  });
+
+  assert.equal(response.statusCode, 204);
+  assert.equal(response.headers['access-control-allow-origin'], 'http://127.0.0.1:3000');
+  assert.equal(response.headers['access-control-allow-credentials'], 'true');
+});
