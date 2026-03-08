@@ -30,6 +30,7 @@ interface RegisterGameEventsInput {
   roomNextHandTimeouts: RoomNextHandTimeouts;
   roomTaskQueues: RoomTaskQueues;
   actionTimeoutMs: number;
+  nowMs: () => number;
 }
 
 const ACTION_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -37,7 +38,7 @@ const MAX_ACTIONS_PER_WINDOW = 20;
 const BOTS_ONLY_AUTO_NEXT_DELAY_MS = 1_500;
 
 export function registerGameEvents(input: RegisterGameEventsInput): void {
-  const { io, socket, rooms, memberships, roomActionTimeouts, roomNextHandTimeouts, roomTaskQueues, actionTimeoutMs } = input;
+  const { io, socket, rooms, memberships, roomActionTimeouts, roomNextHandTimeouts, roomTaskQueues, actionTimeoutMs, nowMs } = input;
   const actionTimestamps: number[] = [];
 
   function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
@@ -88,7 +89,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
               type: 'fold'
             };
 
-        const timeoutResult = applyAction(latestRoom.hand, timeoutAction);
+        const timeoutResult = applyAction(latestRoom.hand, timeoutAction, { timestamp: nowMs() });
         if (!timeoutResult.ok) {
           clearRoomActionTimeout(roomActionTimeouts, room.id);
           return;
@@ -156,14 +157,14 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
   async function emitStateAndProgress(room: RuntimeRoom): Promise<void> {
     room.stateVersion += 1;
     emitGameState(io, room, memberships);
-    await runBotTurns(io, room, memberships);
+    await runBotTurns(io, room, memberships, nowMs);
     cleanupDisconnectedPlayersAfterHandEnd(io, room, rooms, roomActionTimeouts, roomNextHandTimeouts);
     syncActionTimeout(room.id);
     syncBotsOnlyAutoNext(room);
   }
 
   function isActionRateLimited(): boolean {
-    const now = Date.now();
+    const now = nowMs();
     while (actionTimestamps.length > 0) {
       const oldest = actionTimestamps[0];
       if (oldest === undefined || now - oldest < ACTION_RATE_LIMIT_WINDOW_MS) {
@@ -314,7 +315,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
               amount: parsed.data.amount
             };
 
-      const result = applyAction(room.hand, action);
+      const result = applyAction(room.hand, action, { timestamp: nowMs() });
       if (!result.ok) {
         ack?.({ ok: false, error: result.error });
         return;

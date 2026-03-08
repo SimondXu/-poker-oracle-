@@ -68,6 +68,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       authStrict,
       actionTimeoutMs,
       emptyRoomTtlMs,
+      nowMs,
     });
 
     registerGameEvents({
@@ -78,7 +79,8 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       roomActionTimeouts,
       roomNextHandTimeouts,
       roomTaskQueues,
-      actionTimeoutMs
+      actionTimeoutMs,
+      nowMs
     });
   });
 

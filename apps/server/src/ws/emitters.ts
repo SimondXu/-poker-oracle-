@@ -1,28 +1,11 @@
-import { getValidActions, type HandPhase, type HandState as EngineHandState, type ValidActions as EngineValidActions } from '@aipoker/game-engine';
+import { getValidActions, type HandState as EngineHandState, type ValidActions as EngineValidActions } from '@aipoker/game-engine';
 import type { GameEvent as ClientGameEvent, HandResultEvent, ValidActions as ClientValidActions } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
 import { getTableLifecycleSnapshot } from '../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildHandResultPayload } from './view-models/hand-result.ts';
-import { buildViewerHand } from './view-models/viewer-hand.ts';
-
-function mapEnginePhaseToClientPhase(phase: HandPhase): ClientGameEvent['action']['phase'] {
-  switch (phase) {
-    case 'betting_preflop':
-      return 'betting_preflop';
-    case 'betting_flop':
-      return 'betting_flop';
-    case 'betting_turn':
-      return 'betting_turn';
-    case 'betting_river':
-      return 'betting_river';
-    case 'street_complete':
-      return 'settle_pots';
-    case 'hand_end':
-      return 'hand_end';
-  }
-}
+import { buildClientAction, buildViewerHand } from './view-models/viewer-hand.ts';
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
@@ -117,17 +100,12 @@ function emitGameEvents(io: Server, room: RuntimeRoom): void {
   }
 
   const newActions = room.hand.actions.slice(room.lastBroadcastActionCount);
-  for (const action of newActions) {
+  for (const [offset, action] of newActions.entries()) {
     const event: ClientGameEvent = {
       roomId: room.id,
       stateVersion: room.stateVersion,
       type: 'action_applied',
-      action: {
-        playerId: action.playerId,
-        type: action.type,
-        amount: action.amount,
-        phase: mapEnginePhaseToClientPhase(action.phase),
-      },
+      action: buildClientAction(room.hand, room, action, room.lastBroadcastActionCount + offset),
     };
     io.to(room.id).emit('game:event', event);
   }

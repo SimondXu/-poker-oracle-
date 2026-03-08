@@ -1,7 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyAction, buildSidePots, createDeck, evaluateBestSevenCards, getValidActions, initializeHand, settleShowdownPots } from './index.ts';
+import {
+  applyAction as applyActionBase,
+  buildSidePots,
+  createDeck,
+  evaluateBestSevenCards,
+  getValidActions,
+  initializeHand,
+  settleShowdownPots,
+} from './index.ts';
+
+type ApplyActionAllowsUndefinedContext =
+  undefined extends Parameters<typeof applyActionBase>[2] ? true : false;
+
+const APPLY_ACTION_REQUIRES_CONTEXT: ApplyActionAllowsUndefinedContext = false;
+void APPLY_ACTION_REQUIRES_CONTEXT;
+
+function applyAction(
+  state: Parameters<typeof applyActionBase>[0],
+  action: Parameters<typeof applyActionBase>[1],
+  timestamp = 0,
+): ReturnType<typeof applyActionBase> {
+  return applyActionBase(state, action, { timestamp });
+}
 
 function sequenceRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -199,7 +221,12 @@ test('applyAction raise_to resets pending actors to everyone except raiser', () 
       playerId: 'p3',
       type: 'raise_to',
       amount: 60,
-      phase: 'betting_preflop'
+      addedAmount: 60,
+      toAmount: 60,
+      phase: 'betting_preflop',
+      stackBefore: 1000,
+      potTotalBefore: 30,
+      timestamp: 0
     }
   ]);
 });
@@ -461,6 +488,94 @@ test('preflop all-in runout deals remaining board and reaches hand_end', () => {
   assert.equal(totalPayout, 300);
   const totalStacks = p2AllIn.value.players.reduce((sum, player) => sum + player.stack, 0);
   assert.equal(totalStacks, 300);
+});
+
+test('all_in action log records both added and total committed amounts consistently', () => {
+  const shortAllInState = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 150 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 50,
+    bigBlind: 100,
+    rng: sequenceRng(107)
+  });
+
+  assert.equal(shortAllInState.ok, true);
+  if (!shortAllInState.ok) return;
+
+  const opened = applyAction(
+    shortAllInState.value,
+    { playerId: 'p0', type: 'raise_to', amount: 200 },
+    1_000
+  );
+  assert.equal(opened.ok, true);
+  if (!opened.ok) return;
+
+  const shortAllIn = applyAction(
+    opened.value,
+    { playerId: 'p1', type: 'all_in' },
+    1_001
+  );
+  assert.equal(shortAllIn.ok, true);
+  if (!shortAllIn.ok) return;
+
+  assert.deepEqual(shortAllIn.value.actions.at(-1), {
+    playerId: 'p1',
+    type: 'all_in',
+    amount: 150,
+    addedAmount: 100,
+    toAmount: 150,
+    phase: 'betting_preflop',
+    stackBefore: 100,
+    potTotalBefore: 350,
+    timestamp: 1_001
+  });
+
+  const raiseAllInState = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 250 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 50,
+    bigBlind: 100,
+    rng: sequenceRng(108)
+  });
+
+  assert.equal(raiseAllInState.ok, true);
+  if (!raiseAllInState.ok) return;
+
+  const reopened = applyAction(
+    raiseAllInState.value,
+    { playerId: 'p0', type: 'raise_to', amount: 200 },
+    2_000
+  );
+  assert.equal(reopened.ok, true);
+  if (!reopened.ok) return;
+
+  const raiseAllIn = applyAction(
+    reopened.value,
+    { playerId: 'p1', type: 'all_in' },
+    2_001
+  );
+  assert.equal(raiseAllIn.ok, true);
+  if (!raiseAllIn.ok) return;
+
+  assert.deepEqual(raiseAllIn.value.actions.at(-1), {
+    playerId: 'p1',
+    type: 'all_in',
+    amount: 250,
+    addedAmount: 200,
+    toAmount: 250,
+    phase: 'betting_preflop',
+    stackBefore: 200,
+    potTotalBefore: 350,
+    timestamp: 2_001
+  });
 });
 
 function committedPlayer(

@@ -42,6 +42,7 @@ export async function runBotTurns(
   io: Server,
   room: RuntimeRoom,
   memberships: Map<string, RoomMembership>,
+  nowMs: () => number,
 ): Promise<void> {
   while (room.hand && room.hand.currentActorSeat !== null) {
     const seatIndex = room.hand.currentActorSeat;
@@ -88,7 +89,7 @@ export async function runBotTurns(
     }
 
     const actionInput = buildActionInput(actor.id, botAction);
-    const result = applyAction(room.hand, actionInput);
+    const result = applyAction(room.hand, actionInput, { timestamp: nowMs() });
     if (!result.ok) {
       return;
     }

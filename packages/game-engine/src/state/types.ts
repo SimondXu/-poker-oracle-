@@ -58,7 +58,12 @@ export interface HandActionRecord {
   playerId: string;
   type: ActionType;
   amount: number;
+  addedAmount: number;
+  toAmount: number;
   phase: HandPhase;
+  stackBefore: number;
+  potTotalBefore: number;
+  timestamp: number;
 }
 
 export interface Pot {

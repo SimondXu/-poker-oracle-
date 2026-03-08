@@ -1432,8 +1432,9 @@ test('game:hand_result is broadcast when hand reaches hand_end', async (t) => {
 });
 
 test('game:event broadcasts applied player actions to room members', async (t) => {
-  const app = createServer({ nowMs: () => 42 });
-  const io = attachRealtime(app);
+  const nowMs = () => 42;
+  const app = createServer({ nowMs });
+  const io = attachRealtime(app, { nowMs });
 
   t.after(async () => {
     await new Promise<void>((resolve) => io.close(() => resolve()));
@@ -1507,8 +1508,103 @@ test('game:event broadcasts applied player actions to room members', async (t) =
   assert.deepEqual(actionAck, { ok: true });
 
   const [aliceEvent, bobEvent] = await Promise.all([aliceGameEventPromise, bobGameEventPromise]);
-  assert.equal(aliceEvent.action.phase, 'betting_preflop');
+  assert.deepEqual(aliceEvent.action, {
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    phase: 'betting_preflop',
+    type: 'call',
+    amount: 50,
+    addedAmount: 50,
+    toAmount: 100,
+    stackBefore: 950,
+    potTotalBefore: 150,
+    sequenceNum: 1,
+    timestamp: 42,
+  });
   assert.deepEqual(bobEvent, aliceEvent);
+});
+
+test('game:state exposes real action history metadata to clients', async (t) => {
+  const nowMs = () => 42;
+  const app = createServer({ nowMs });
+  const io = attachRealtime(app, { nowMs });
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+
+  await emitWithAck(alice, 'room:create', {
+    roomId: 'AAAAAG',
+    smallBlind: 50,
+    bigBlind: 100
+  });
+  await emitWithAck(alice, 'room:join', {
+    roomId: 'AAAAAG',
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    stack: 1000
+  });
+  await emitWithAck(bob, 'room:join', {
+    roomId: 'AAAAAG',
+    playerId: 'p1',
+    playerName: 'Bob',
+    seatIndex: 1,
+    stack: 1000
+  });
+
+  const actionStatePromise = waitForState(
+    alice,
+    (payload) => payload.hand.actions.length === 1 && payload.hand.actions[0]?.timestamp === 42,
+  );
+
+  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
+    roomId: 'AAAAAG',
+    buttonMarkerSeat: 0
+  });
+  assert.deepEqual(startAck, { ok: true });
+
+  const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:action', {
+    roomId: 'AAAAAG',
+    playerId: 'p0',
+    type: 'call',
+    seq: 1
+  });
+  assert.deepEqual(actionAck, { ok: true });
+
+  const actionState = await actionStatePromise;
+  assert.equal(actionState.hand.actions.length, 1);
+  assert.deepEqual(actionState.hand.actions[0], {
+    playerId: 'p0',
+    playerName: 'Alice',
+    seatIndex: 0,
+    phase: 'betting_preflop',
+    type: 'call',
+    amount: 50,
+    addedAmount: 50,
+    toAmount: 100,
+    stackBefore: 950,
+    potTotalBefore: 150,
+    sequenceNum: 1,
+    timestamp: 42
+  });
 });
 
 test('action timer auto-folds actor when toCall is greater than zero', async (t) => {

@@ -34,6 +34,7 @@ interface RegisterRoomEventsInput {
   authStrict: boolean;
   actionTimeoutMs: number;
   emptyRoomTtlMs: number;
+  nowMs: () => number;
 }
 
 const CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -51,6 +52,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     authStrict,
     actionTimeoutMs,
     emptyRoomTtlMs,
+    nowMs,
   } = input;
   const createTimestamps: number[] = [];
 
@@ -88,7 +90,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
   }
 
   function isCreateRateLimited(): boolean {
-    const now = Date.now();
+    const now = nowMs();
     while (createTimestamps.length > 0) {
       const oldest = createTimestamps[0];
       if (oldest === undefined || now - oldest < CREATE_RATE_LIMIT_WINDOW_MS) {

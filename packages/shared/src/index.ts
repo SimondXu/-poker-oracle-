@@ -140,6 +140,8 @@ export interface GameAction {
   phase: Phase;
   type: ActionType;
   amount: number;
+  addedAmount: number;
+  toAmount: number;
   stackBefore: number;
   potTotalBefore: number;
   sequenceNum: number;
@@ -232,12 +234,7 @@ export interface GameActionAppliedEvent {
   roomId: string;
   stateVersion: number;
   type: 'action_applied';
-  action: {
-    playerId: string;
-    type: ActionType;
-    amount: number;
-    phase: Phase;
-  };
+  action: GameAction;
 }
 
 export type GameEvent = GameActionAppliedEvent;
