@@ -1,11 +1,14 @@
 import { getValidActions, type HandActionRecord, type HandPhase } from '@aipoker/game-engine';
-import type {
-  BotAction,
-  BotBettingState,
-  BotDecisionContext,
-  BotDecisionPhase,
-  BotPosition,
-  Card,
+import {
+  buildBotPositionMap,
+  deriveBotBettingState,
+  hasPreflopLimpers,
+  type BotAction,
+  type BotBettingState,
+  type BotDecisionContext,
+  type BotDecisionPhase,
+  type BotPosition,
+  type Card,
 } from '@aipoker/shared';
 
 import type { RuntimeRoom } from '../rooms/types.ts';
@@ -75,47 +78,10 @@ export function trackBotPreflopEntryDecision(
 
 type EligibleRoomPlayer = RuntimeRoom['players'] extends Map<string, infer Player> ? Player : never;
 
-const POSITION_LAYOUTS: Record<number, BotPosition[]> = {
-  2: ['btn', 'bb'],
-  3: ['btn', 'sb', 'bb'],
-  4: ['btn', 'sb', 'bb', 'utg'],
-  5: ['btn', 'sb', 'bb', 'utg', 'co'],
-  6: ['btn', 'sb', 'bb', 'utg', 'hj', 'co'],
-};
-
 function getStackPositivePlayers(room: RuntimeRoom): EligibleRoomPlayer[] {
   return [...room.players.values()]
     .filter((player) => player.stack > 0)
     .sort((left, right) => left.seatIndex - right.seatIndex);
-}
-
-function sortSeatsClockwise(seats: number[], startSeat: number): number[] {
-  const sorted = [...seats].sort((left, right) => left - right);
-  if (sorted.length === 0) {
-    return sorted;
-  }
-
-  const exactStartIndex = sorted.indexOf(startSeat);
-  if (exactStartIndex >= 0) {
-    return [...sorted.slice(exactStartIndex), ...sorted.slice(0, exactStartIndex)];
-  }
-
-  const firstHigherIndex = sorted.findIndex((seat) => seat > startSeat);
-  if (firstHigherIndex >= 0) {
-    return [...sorted.slice(firstHigherIndex), ...sorted.slice(0, firstHigherIndex)];
-  }
-
-  return sorted;
-}
-
-function getPositionLayout(playerCount: number): BotPosition[] {
-  if (playerCount <= 2) {
-    return POSITION_LAYOUTS[2]!;
-  }
-  if (playerCount >= 6) {
-    return POSITION_LAYOUTS[6]!;
-  }
-  return POSITION_LAYOUTS[playerCount] ?? POSITION_LAYOUTS[6]!;
 }
 
 function mapHandPhase(phase: HandPhase): BotDecisionPhase | null {
@@ -177,17 +143,19 @@ function getPreviousBettingPhase(phase: HandPhase): HandPhase | null {
   }
 }
 
-function deriveBettingState(aggressiveActions: Array<HandActionRecord & { seatIndex: number }>): BotBettingState {
-  if (aggressiveActions.length === 0) {
+function deriveBettingState(
+  room: RuntimeRoom,
+  aggressiveActions: Array<HandActionRecord & { seatIndex: number }>,
+): BotBettingState {
+  const hand = room.hand;
+  if (!hand) {
     return 'unopened';
   }
-  if (aggressiveActions.length === 1) {
-    return 'facing_open';
-  }
-  if (aggressiveActions.length === 2) {
-    return 'facing_raise';
-  }
-  return 'facing_3bet_plus';
+
+  return deriveBotBettingState(
+    aggressiveActions.length,
+    hasPreflopLimpers(hand.actions, hand.phase, hand.blinds.bigBlind),
+  );
 }
 
 function buildPositionMap(room: RuntimeRoom): Map<number, BotPosition> {
@@ -196,22 +164,7 @@ function buildPositionMap(room: RuntimeRoom): Map<number, BotPosition> {
     return new Map();
   }
 
-  const orderedSeats = sortSeatsClockwise(
-    hand.players.map((player) => player.seatIndex),
-    hand.buttonMarkerSeat
-  );
-  const layout = getPositionLayout(orderedSeats.length);
-  const positionMap = new Map<number, BotPosition>();
-
-  orderedSeats.forEach((seat, index) => {
-    const layoutIndex = Math.min(index, layout.length - 1);
-    const position = layout[layoutIndex];
-    if (position) {
-      positionMap.set(seat, position);
-    }
-  });
-
-  return positionMap;
+  return buildBotPositionMap(hand.players.map((player) => player.seatIndex), hand.buttonMarkerSeat);
 }
 
 function getEffectiveStack(room: RuntimeRoom, actorId: string): number {
@@ -323,13 +276,13 @@ export function buildBotDecisionContext(room: RuntimeRoom, actorId: string): Bot
     myStack: actor.stack,
     holeCards: [...(actor.holeCards as Card[])],
     communityCards: [...(hand.communityCards as Card[])],
-    activePlayerCount: activePlayers.length,
+    activePlayerCount: hand.players.length,
     opponentCount: Math.max(0, activePlayers.length - 1),
     position: positionMap.get(actor.seatIndex) ?? 'utg',
     effectiveStack,
     effectiveStackBb,
     spr: potBaseForSpr > 0 ? effectiveStack / potBaseForSpr : 0,
-    bettingState: deriveBettingState(aggressiveActions),
+    bettingState: deriveBettingState(room, aggressiveActions),
     isPreflopAggressor: preflopAggressiveActions.at(-1)?.playerId === actor.id,
     isLastStreetAggressor: previousStreetAggressiveActions.at(-1)?.playerId === actor.id,
   };

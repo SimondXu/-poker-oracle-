@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@aipoker/game-engine": "workspace:*",
+    "@aipoker/strategy-engine": "workspace:*",
     "@aipoker/shared": "workspace:*"
   },
   "scripts": {

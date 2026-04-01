@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { BotDecisionContext } from '@aipoker/shared';
+import * as botEngine from './index.ts';
 
 import {
   analyzePostflop,
@@ -217,6 +218,12 @@ test('heads-up button uses small-blind open sizing preflop', () => {
   if (action.type === 'raise_to') {
     assert.equal(action.amount, 300);
   }
+});
+
+test('bot-engine keeps training-only helpers out of the bot package surface', () => {
+  assert.equal('createStableAnalysisRng' in botEngine, false);
+  assert.equal('evaluatePreflopPercentile' in botEngine, false);
+  assert.equal('analyzeTrainingSpot' in botEngine, false);
 });
 
 test('preflop sizing respects the legal raise clamp', () => {

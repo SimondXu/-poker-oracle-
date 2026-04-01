@@ -126,3 +126,78 @@ test('buildBotDecisionContext maps position and betting state from the live hand
   assert.equal(facingOpenContext?.bettingState, 'facing_open');
   assert.equal(facingOpenContext?.isPreflopAggressor, false);
 });
+
+test('buildBotDecisionContext keeps 3-handed preflop seat count after one player folds', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'btn', seatIndex: 0, stack: 1000 },
+      { id: 'sb', seatIndex: 1, stack: 1000 },
+      { id: 'bb', seatIndex: 2, stack: 1000 },
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 50,
+    bigBlind: 100,
+    rng: () => 0.5,
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const limped = applyAction(initialized.value, { playerId: 'btn', type: 'call' }, { timestamp: 1 });
+  assert.equal(limped.ok, true);
+  if (!limped.ok) return;
+
+  const folded = applyAction(limped.value, { playerId: 'sb', type: 'fold' }, { timestamp: 2 });
+  assert.equal(folded.ok, true);
+  if (!folded.ok) return;
+
+  const raised = applyAction(folded.value, { playerId: 'bb', type: 'raise_to', amount: 300 }, { timestamp: 3 });
+  assert.equal(raised.ok, true);
+  if (!raised.ok) return;
+
+  const room = createRoom(raised.value);
+  room.players = new Map([
+    ['btn', { id: 'btn', name: 'Button', seatIndex: 0, stack: 900, isBot: true, botStrategy: 'tag' }],
+    ['sb', { id: 'sb', name: 'Small Blind', seatIndex: 1, stack: 950, isBot: false }],
+    ['bb', { id: 'bb', name: 'Big Blind', seatIndex: 2, stack: 700, isBot: false }],
+  ]);
+
+  const context = buildBotDecisionContext(room, 'btn');
+
+  assert.ok(context);
+  assert.equal(context?.activePlayerCount, 3);
+  assert.equal(context?.opponentCount, 1);
+});
+
+test('buildBotDecisionContext classifies limped preflop pots separately from unopened pots', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'btn', seatIndex: 0, stack: 1000 },
+      { id: 'sb', seatIndex: 1, stack: 1000 },
+      { id: 'bb', seatIndex: 2, stack: 1000 },
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 50,
+    bigBlind: 100,
+    rng: () => 0.5,
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const limped = applyAction(initialized.value, { playerId: 'btn', type: 'call' }, { timestamp: 1 });
+  assert.equal(limped.ok, true);
+  if (!limped.ok) return;
+
+  const room = createRoom(limped.value);
+  room.players = new Map([
+    ['btn', { id: 'btn', name: 'Button', seatIndex: 0, stack: 900, isBot: false }],
+    ['sb', { id: 'sb', name: 'Small Blind', seatIndex: 1, stack: 950, isBot: true, botStrategy: 'tag' }],
+    ['bb', { id: 'bb', name: 'Big Blind', seatIndex: 2, stack: 900, isBot: false }],
+  ]);
+
+  const context = buildBotDecisionContext(room, 'sb');
+
+  assert.ok(context);
+  assert.equal(context?.bettingState, 'facing_limpers');
+});

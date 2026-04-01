@@ -80,7 +80,8 @@ AiPoker/
 ├── packages/
 │   ├── game-engine/        # 纯 TS，零依赖，前后端共享
 │   ├── shared/             # 类型、事件契约、Zod schema、错误码
-│   ├── bot-engine/         # Bot 决策（依赖 game-engine）
+│   ├── strategy-engine/    # 共享策略分析（Bot + Training HUD）
+│   ├── bot-engine/         # Bot facade（依赖 strategy-engine）
 │   └── ui/                 # 可选：跨应用复用 UI 组件
 ├── apps/
 │   ├── web/                # Next.js 15
@@ -151,15 +152,17 @@ CI/CD (GitHub Actions):
 // packages/game-engine — 零依赖
 { "dependencies": {} }
 
+// packages/strategy-engine
+{ "dependencies": { "@aipoker/game-engine": "workspace:*", "@aipoker/shared": "workspace:*" } }
+
 // packages/bot-engine
-{ "dependencies": { "@aipoker/game-engine": "workspace:*" } }
+{ "dependencies": { "@aipoker/strategy-engine": "workspace:*" } }
 
 // apps/server
 {
   "dependencies": {
     "fastify": "^5.0", "socket.io": "^4.7", "drizzle-orm": "^0.36",
     "zod": "^3.23",
-    "@aipoker/game-engine": "workspace:*",
     "@aipoker/bot-engine": "workspace:*"
   }
 }
@@ -168,10 +171,11 @@ CI/CD (GitHub Actions):
 {
   "dependencies": {
     "next": "^15.0", "react": "^19.0", "zustand": "^5.0",
-    "framer-motion": "^11.0", "socket.io-client": "^4.7",
-    "tailwindcss": "^4.0",
     "@aipoker/game-engine": "workspace:*",
-    "@aipoker/shared": "workspace:*"
+    "@aipoker/shared": "workspace:*",
+    "@aipoker/strategy-engine": "workspace:*",
+    "framer-motion": "^11.0", "socket.io-client": "^4.7",
+    "tailwindcss": "^4.0"
   }
 }
 ```

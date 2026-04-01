@@ -1,6 +1,10 @@
-import type { ActionType, HandState, ValidActions } from '@aipoker/shared';
-import { getPositionName } from '../../../lib/utils.ts';
+import type { HandState, ValidActions } from '@aipoker/shared';
 import type { HandResult } from '../../../stores/gameStore.ts';
+import {
+  getPositionLabelForSeat,
+  getTrainingData,
+  type GameTrainingData,
+} from './training-analysis.ts';
 import {
   shouldAnimatePotAward,
   shouldRevealShowdownCards,
@@ -9,7 +13,6 @@ import {
 } from './table-animation.ts';
 
 export type EliminatedDecision = 'pending' | 'spectating' | null;
-export type TrainingSuggestion = Extract<ActionType, 'check' | 'call'>;
 export type GameFooterMode =
   | 'actions'
   | 'eliminated-choice'
@@ -36,7 +39,7 @@ export interface GameScreenState {
   championStack: number | null;
   winnerBestCardsByPlayer: Record<string, string[]>;
   payoutAmountsByPlayer: Record<string, number>;
-  trainingData: { position?: string; suggestion?: TrainingSuggestion } | undefined;
+  trainingData: GameTrainingData | undefined;
 }
 
 interface GetGameScreenStateInput {
@@ -55,11 +58,7 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
   );
   const canCurrentUserStartNextHand = Boolean(input.handResult?.table.canStartNextHand) && isCurrentUserActiveStackPlayer;
   const currentSeat = currentPlayer?.seatIndex;
-  const tableSeats = input.hand?.maxSeats ?? 6;
-  const positionLabel =
-    input.hand && currentSeat !== undefined
-      ? getPositionName(currentSeat, input.hand.buttonMarkerSeat, tableSeats)
-      : undefined;
+  const positionLabel = getPositionLabelForSeat(input.hand, currentSeat);
 
   const isMyTurn = input.validActions !== null && currentSeat === input.hand?.currentActorSeat;
   const isTableFinished = Boolean(input.handResult?.table.isTableFinished);
@@ -90,17 +89,12 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     payoutAmountsByPlayer[payout.playerId] = payout.amount;
   }
 
-  const trainingData =
-    isMyTurn && input.validActions
-      ? {
-          ...(positionLabel ? { position: positionLabel } : {}),
-          ...(input.validActions.canCheck
-            ? { suggestion: 'check' as const }
-            : input.validActions.canCall
-              ? { suggestion: 'call' as const }
-              : {}),
-        }
-      : undefined;
+  const trainingData = getTrainingData({
+    currentUserId: input.currentUserId,
+    hand: input.hand,
+    validActions: input.validActions,
+    isMyTurn,
+  });
 
   return {
     currentPlayer,

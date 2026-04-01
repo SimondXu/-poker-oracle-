@@ -13,7 +13,104 @@ export function err<E>(error: E): Result<never, E> {
 export type BotPersonality = 'fish' | 'tag' | 'lag';
 export type BotDecisionPhase = 'preflop' | 'flop' | 'turn' | 'river';
 export type BotPosition = 'sb' | 'bb' | 'btn' | 'co' | 'hj' | 'utg';
-export type BotBettingState = 'unopened' | 'facing_open' | 'facing_raise' | 'facing_3bet_plus';
+export type BotBettingState = 'unopened' | 'facing_limpers' | 'facing_open' | 'facing_raise' | 'facing_3bet_plus';
+
+const BOT_POSITION_LAYOUTS: Record<number, BotPosition[]> = {
+  2: ['btn', 'bb'],
+  3: ['btn', 'sb', 'bb'],
+  4: ['btn', 'sb', 'bb', 'utg'],
+  5: ['btn', 'sb', 'bb', 'utg', 'co'],
+  6: ['btn', 'sb', 'bb', 'utg', 'hj', 'co'],
+};
+
+const BOT_POSITION_LABELS: Record<BotPosition, string> = {
+  utg: 'UTG',
+  hj: 'HJ',
+  co: 'CO',
+  btn: 'BTN',
+  sb: 'SB',
+  bb: 'BB',
+};
+
+export function sortSeatsClockwise(seats: readonly number[], startSeat: number): number[] {
+  const sorted = [...seats].sort((left, right) => left - right);
+  if (sorted.length === 0) {
+    return sorted;
+  }
+
+  const exactStartIndex = sorted.indexOf(startSeat);
+  if (exactStartIndex >= 0) {
+    return [...sorted.slice(exactStartIndex), ...sorted.slice(0, exactStartIndex)];
+  }
+
+  const firstHigherIndex = sorted.findIndex((seat) => seat > startSeat);
+  if (firstHigherIndex >= 0) {
+    return [...sorted.slice(firstHigherIndex), ...sorted.slice(0, firstHigherIndex)];
+  }
+
+  return sorted;
+}
+
+export function buildBotPositionMap(seats: readonly number[], buttonSeat: number): Map<number, BotPosition> {
+  const orderedSeats = sortSeatsClockwise(seats, buttonSeat);
+  const playerCount = Math.max(2, Math.min(6, orderedSeats.length));
+  const layout = BOT_POSITION_LAYOUTS[playerCount] ?? BOT_POSITION_LAYOUTS[6]!;
+  const positionMap = new Map<number, BotPosition>();
+
+  orderedSeats.forEach((seat, index) => {
+    const position = layout[Math.min(index, layout.length - 1)];
+    if (position) {
+      positionMap.set(seat, position);
+    }
+  });
+
+  return positionMap;
+}
+
+export function formatBotPositionLabel(position: BotPosition): string {
+  return BOT_POSITION_LABELS[position];
+}
+
+export function hasPreflopLimpers(
+  actions: ReadonlyArray<{ phase: string; type: string; toAmount: number }>,
+  phase: string,
+  bigBlind: number,
+): boolean {
+  if (phase !== 'betting_preflop') {
+    return false;
+  }
+
+  let currentMax = bigBlind;
+  for (const action of actions) {
+    if (action.phase !== phase) {
+      continue;
+    }
+
+    if ((action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax) {
+      currentMax = action.toAmount;
+      continue;
+    }
+
+    if (currentMax === bigBlind && action.type === 'call') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function deriveBotBettingState(aggressiveActionCount: number, hasPassiveEntry = false): BotBettingState {
+  if (aggressiveActionCount === 0) {
+    return hasPassiveEntry ? 'facing_limpers' : 'unopened';
+  }
+  if (aggressiveActionCount === 1) {
+    return 'facing_open';
+  }
+  if (aggressiveActionCount === 2) {
+    return 'facing_raise';
+  }
+  return 'facing_3bet_plus';
+}
 
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -66,7 +163,9 @@ export interface BotDecisionContext {
   myStack: number;
   holeCards: Card[];
   communityCards: Card[];
+  // Players originally dealt into the current hand, including folded/all-in seats.
   activePlayerCount: number;
+  // Opponents still contesting the pot at this decision point.
   opponentCount: number;
   position: BotPosition;
   effectiveStack: number;

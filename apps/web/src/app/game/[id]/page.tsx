@@ -121,8 +121,6 @@ export default function GamePage({ params }: GamePageProps) {
             isTrainingHUDVisible={isTrainingHUDVisible}
             isActionHistoryVisible={isActionHistoryVisible}
             onToggleTrainingHUD={toggleTrainingHUD}
-            validActions={validActions}
-            pot={screenState.pot}
             trainingData={screenState.trainingData}
           />
         </div>

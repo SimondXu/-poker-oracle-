@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@aipoker/game-engine": "workspace:*",
+    "@aipoker/strategy-engine": "workspace:*",
     "@aipoker/shared": "workspace:*",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-slider": "^1.3.6",
