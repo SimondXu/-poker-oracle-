@@ -1,3 +1,4 @@
+import type { BotPersonality } from '@aipoker/shared';
 import type { Server, Socket } from 'socket.io';
 
 import type { GuestSession } from '../../auth/session-token.ts';
@@ -39,6 +40,13 @@ interface RegisterRoomEventsInput {
 
 const CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_CREATES_PER_WINDOW = 10;
+
+function toRuleBotConfig(personality: BotPersonality | undefined) {
+  return {
+    kind: 'rule' as const,
+    personality: personality ?? 'fish',
+  };
+}
 
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
   const {
@@ -225,14 +233,31 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
 
-    const nextPlayer = existingPlayer ?? {
-      id: resolvedPlayerId,
-      name: resolvedPlayerName,
-      seatIndex: requestedSeat ?? pickSeatIndex(room),
-      stack: parsed.data.stack ?? 1000,
-      isBot,
-      ...(parsed.data.botStrategy ? { botStrategy: parsed.data.botStrategy } : {}),
-    };
+    const nextPlayer =
+      existingPlayer
+      ?? (
+        isBot && parsed.data.botStrategy
+          ? {
+              id: resolvedPlayerId,
+              name: resolvedPlayerName,
+              seatIndex: requestedSeat ?? pickSeatIndex(room),
+              stack: parsed.data.stack ?? 1000,
+              isBot: true,
+              botConfig: { kind: 'rule' as const, personality: parsed.data.botStrategy },
+            }
+          : {
+              id: resolvedPlayerId,
+              name: resolvedPlayerName,
+              seatIndex: requestedSeat ?? pickSeatIndex(room),
+              stack: parsed.data.stack ?? 1000,
+              isBot,
+            }
+      );
+
+    const ruleBotConfig = toRuleBotConfig(parsed.data.botStrategy);
+    if (existingPlayer && isBot && ruleBotConfig) {
+      existingPlayer.botConfig = ruleBotConfig;
+    }
 
     room.players.set(resolvedPlayerId, nextPlayer);
     room.pendingDisconnectPlayerIds.delete(resolvedPlayerId);

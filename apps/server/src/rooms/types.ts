@@ -1,3 +1,4 @@
+import type { BotConfig } from '@aipoker/shared';
 import type { HandState } from '@aipoker/game-engine';
 
 export interface RoomMembership {
@@ -11,7 +12,7 @@ export interface RuntimePlayer {
   seatIndex: number;
   stack: number;
   isBot: boolean;
-  botStrategy?: 'fish' | 'tag' | 'lag';
+  botConfig?: BotConfig;
 }
 
 export interface RuntimeRoom {

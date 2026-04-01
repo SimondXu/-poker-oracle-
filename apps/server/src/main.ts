@@ -33,15 +33,9 @@ function resolveServerConfig(options: StartServerOptions): ServerConfig {
   }
 
   return {
+    ...parsed.value,
     host: options.host ?? parsed.value.host,
     port: options.port ?? parsed.value.port,
-    corsOrigin: parsed.value.corsOrigin,
-    authSecret: parsed.value.authSecret,
-    authCookieName: parsed.value.authCookieName,
-    authTtlSeconds: parsed.value.authTtlSeconds,
-    httpRateLimitPerMinute: parsed.value.httpRateLimitPerMinute,
-    secureCookies: parsed.value.secureCookies,
-    authStrict: parsed.value.authStrict
   };
 }
 

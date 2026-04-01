@@ -1,0 +1,26 @@
+{
+  "name": "@aipoker/agent-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "source": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@aipoker/game-engine": "workspace:*",
+    "@aipoker/shared": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "echo 'lint not configured yet'",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "node --conditions=source --experimental-strip-types --test src/index.test.ts"
+  }
+}

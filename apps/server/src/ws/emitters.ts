@@ -1,5 +1,5 @@
 import { getValidActions, type HandState as EngineHandState, type ValidActions as EngineValidActions } from '@aipoker/game-engine';
-import type { GameEvent as ClientGameEvent, HandResultEvent, ValidActions as ClientValidActions } from '@aipoker/shared';
+import { getRuleBotPersonality, type GameEvent as ClientGameEvent, type HandResultEvent, type ValidActions as ClientValidActions } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
 import { getTableLifecycleSnapshot } from '../rooms/table-lifecycle.ts';
@@ -120,7 +120,7 @@ export function emitRoomState(io: Server, room: RuntimeRoom): void {
     seatIndex: p.seatIndex,
     stack: p.stack,
     isBot: p.isBot,
-    botStrategy: p.botStrategy ?? null,
+    botStrategy: getRuleBotPersonality(p.botConfig),
     isReady: room.readyPlayerIds.has(p.id),
   }));
   io.to(room.id).emit('room:state', {

@@ -11,9 +11,14 @@ export function err<E>(error: E): Result<never, E> {
 }
 
 export type BotPersonality = 'fish' | 'tag' | 'lag';
+export type AgentModel = 'claude' | 'gpt' | 'gemini' | 'grok' | 'minimax';
+export type AgentPersonaId = 'analyst' | 'bully' | 'chaos' | 'nit' | 'showman';
 export type BotDecisionPhase = 'preflop' | 'flop' | 'turn' | 'river';
 export type BotPosition = 'sb' | 'bb' | 'btn' | 'co' | 'hj' | 'utg';
 export type BotBettingState = 'unopened' | 'facing_limpers' | 'facing_open' | 'facing_raise' | 'facing_3bet_plus';
+export type BotConfig =
+  | { kind: 'rule'; personality: BotPersonality }
+  | { kind: 'llm'; model: AgentModel; personaId: AgentPersonaId };
 
 const BOT_POSITION_LAYOUTS: Record<number, BotPosition[]> = {
   2: ['btn', 'bb'],
@@ -112,6 +117,14 @@ export function deriveBotBettingState(aggressiveActionCount: number, hasPassiveE
   return 'facing_3bet_plus';
 }
 
+export function getRuleBotPersonality(botConfig: BotConfig | undefined): BotPersonality | null {
+  if (!botConfig || botConfig.kind !== 'rule') {
+    return null;
+  }
+
+  return botConfig.personality;
+}
+
 export const ROOM_CODE_LENGTH = 6;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -161,6 +174,13 @@ export interface BotDecisionContext {
   phase: BotDecisionPhase;
   potTotal: number;
   myStack: number;
+  myStreetCommitted: number;
+  currentBetToMatch: number;
+  lastFullRaiseSize: number;
+  bigBlind: number;
+  smallBlind: number;
+  preflopLimpersCount: number;
+  streetActionCount: number;
   holeCards: Card[];
   communityCards: Card[];
   // Players originally dealt into the current hand, including folded/all-in seats.
@@ -259,6 +279,34 @@ export interface GameAction {
   potTotalBefore: number;
   sequenceNum: number;
   timestamp: number;
+}
+
+export type BotStatusKind = 'thinking' | 'acted' | 'error';
+export type BotReasoningVisibility = 'private' | 'table_after_hand' | 'table_live';
+
+export interface BotStatusEvent {
+  roomId: string;
+  playerId: string;
+  stateVersion: number;
+  status: BotStatusKind;
+  turnToken?: string;
+  message?: string;
+}
+
+export interface BotReasoningEvent {
+  roomId: string;
+  playerId: string;
+  stateVersion: number;
+  visibility: BotReasoningVisibility;
+  summary: string;
+  detail?: string;
+}
+
+export interface TableChatEvent {
+  roomId: string;
+  playerId: string;
+  stateVersion: number;
+  message: string;
 }
 
 export interface ValidActions {

@@ -3,12 +3,12 @@ import {
   buildBotPositionMap,
   deriveBotBettingState,
   hasPreflopLimpers,
-  type BotAction,
   type BotBettingState,
   type BotDecisionContext,
   type BotDecisionPhase,
   type BotPosition,
   type Card,
+  type BotAction,
 } from '@aipoker/shared';
 
 import type { RuntimeRoom } from '../rooms/types.ts';
@@ -158,6 +158,33 @@ function deriveBettingState(
   );
 }
 
+function countPreflopLimpers(room: RuntimeRoom): number {
+  const hand = room.hand;
+  if (!hand || hand.phase !== 'betting_preflop') {
+    return 0;
+  }
+
+  let currentMax = hand.blinds.bigBlind;
+  let limperCount = 0;
+
+  for (const action of hand.actions) {
+    if (action.phase !== hand.phase) {
+      continue;
+    }
+
+    if ((action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax) {
+      currentMax = action.toAmount;
+      continue;
+    }
+
+    if (currentMax === hand.blinds.bigBlind && action.type === 'call') {
+      limperCount += 1;
+    }
+  }
+
+  return limperCount;
+}
+
 function buildPositionMap(room: RuntimeRoom): Map<number, BotPosition> {
   const hand = room.hand;
   if (!hand) {
@@ -274,6 +301,13 @@ export function buildBotDecisionContext(room: RuntimeRoom, actorId: string): Bot
     phase,
     potTotal: hand.potTotal,
     myStack: actor.stack,
+    myStreetCommitted: actor.streetCommitted,
+    currentBetToMatch: hand.betting.currentBetToMatch,
+    lastFullRaiseSize: hand.betting.lastFullRaiseSize,
+    bigBlind: hand.blinds.bigBlind,
+    smallBlind: hand.blinds.smallBlind,
+    preflopLimpersCount: countPreflopLimpers(room),
+    streetActionCount: hand.actions.filter((action) => action.phase === hand.phase).length,
     holeCards: [...(actor.holeCards as Card[])],
     communityCards: [...(hand.communityCards as Card[])],
     activePlayerCount: hand.players.length,
