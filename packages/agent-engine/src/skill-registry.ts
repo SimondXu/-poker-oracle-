@@ -1,6 +1,30 @@
 import type { BotDecisionContext } from '@aipoker/shared';
 
 import type { AgentSkillDefinition, AgentSkillId } from './types.ts';
+import { getSkillInstructionBuilder } from './skills/index.ts';
+
+const ACTION_PLAN_OUTPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['skillId', 'intent', 'confidence', 'reasoning'],
+  properties: {
+    skillId: { type: 'string' },
+    intent: { type: 'string' },
+    sizePreset: { type: 'string' },
+    confidence: { type: 'number' },
+    reasoning: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['situation', 'analysis', 'decision', 'alternativeConsidered'],
+      properties: {
+        situation: { type: 'string' },
+        analysis: { type: 'string' },
+        decision: { type: 'string' },
+        alternativeConsidered: { type: 'string' },
+      },
+    },
+  },
+} as const;
 
 function isFacingBet(context: BotDecisionContext): boolean {
   return !context.canCheck && context.canCall && context.callAmount > 0;
@@ -21,7 +45,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['get_preflop_mix', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call', 'all_in'],
     allowedSizePresets: ['jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'preflop' && context.effectiveStackBb <= 12 && context.canAllIn,
+    buildInstruction: getSkillInstructionBuilder('short_stack_push_fold'),
   },
   {
     id: 'preflop_iso',
@@ -32,7 +58,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['get_preflop_mix', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call', 'raise', 'all_in'],
     allowedSizePresets: ['iso_4bb_plus_1', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'preflop' && context.bettingState === 'facing_limpers' && context.canRaise,
+    buildInstruction: getSkillInstructionBuilder('preflop_iso'),
   },
   {
     id: 'preflop_vs_3bet',
@@ -43,10 +71,12 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['get_preflop_mix', 'get_required_equity', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call', 'raise', 'all_in'],
     allowedSizePresets: ['three_bet_4x', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) =>
       context.phase === 'preflop'
       && (context.bettingState === 'facing_raise' || context.bettingState === 'facing_3bet_plus')
       && context.canRaise,
+    buildInstruction: getSkillInstructionBuilder('preflop_vs_3bet'),
   },
   {
     id: 'preflop_vs_open',
@@ -57,7 +87,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['get_preflop_mix', 'get_required_equity', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call', 'raise', 'all_in'],
     allowedSizePresets: ['three_bet_3x', 'three_bet_4x', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'preflop' && context.bettingState === 'facing_open',
+    buildInstruction: getSkillInstructionBuilder('preflop_vs_open'),
   },
   {
     id: 'preflop_open',
@@ -68,7 +100,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['get_preflop_mix', 'get_opponent_profile'],
     allowedIntents: ['fold', 'raise', 'all_in'],
     allowedSizePresets: ['open_2_2bb', 'open_2_5bb', 'open_3bb', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'preflop' && context.bettingState === 'unopened' && context.canRaise,
+    buildInstruction: getSkillInstructionBuilder('preflop_open'),
   },
   {
     id: 'flop_cbet',
@@ -79,7 +113,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_pot_odds', 'get_opponent_profile'],
     allowedIntents: ['check', 'raise', 'all_in'],
     allowedSizePresets: ['bet_33', 'bet_50', 'bet_75', 'bet_100', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'flop' && context.canCheck && context.isPreflopAggressor,
+    buildInstruction: getSkillInstructionBuilder('flop_cbet'),
   },
   {
     id: 'flop_defend',
@@ -90,7 +126,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_opponent_profile'],
     allowedIntents: ['check', 'raise'],
     allowedSizePresets: ['bet_33', 'bet_50', 'bet_75'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'flop' && context.canCheck,
+    buildInstruction: getSkillInstructionBuilder('flop_defend'),
   },
   {
     id: 'flop_facing_bet',
@@ -101,7 +139,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_pot_odds', 'get_required_equity', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call', 'raise', 'all_in'],
     allowedSizePresets: ['raise_min', 'raise_2_5x', 'raise_3x', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'flop' && isFacingBet(context),
+    buildInstruction: getSkillInstructionBuilder('flop_facing_bet'),
   },
   {
     id: 'turn_barrel',
@@ -112,7 +152,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_opponent_profile'],
     allowedIntents: ['check', 'raise', 'all_in'],
     allowedSizePresets: ['bet_50', 'bet_75', 'bet_100', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'turn' && context.canCheck && context.isLastStreetAggressor,
+    buildInstruction: getSkillInstructionBuilder('turn_barrel'),
   },
   {
     id: 'turn_facing_bet',
@@ -123,7 +165,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_pot_odds', 'get_required_equity', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call', 'raise', 'all_in'],
     allowedSizePresets: ['raise_min', 'raise_2_5x', 'raise_3x', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'turn' && isFacingBet(context),
+    buildInstruction: getSkillInstructionBuilder('turn_facing_bet'),
   },
   {
     id: 'river_value',
@@ -134,7 +178,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_opponent_profile'],
     allowedIntents: ['check', 'raise', 'all_in'],
     allowedSizePresets: ['bet_50', 'bet_75', 'bet_100', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'river' && context.canCheck,
+    buildInstruction: getSkillInstructionBuilder('river_value'),
   },
   {
     id: 'river_bluff_catch',
@@ -145,10 +191,12 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_pot_odds', 'get_required_equity', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call'],
     allowedSizePresets: [],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) =>
       context.phase === 'river'
       && isFacingBet(context)
       && context.callAmount > context.potTotal * 0.5,
+    buildInstruction: getSkillInstructionBuilder('river_bluff_catch'),
   },
   {
     id: 'river_facing_bet',
@@ -159,7 +207,9 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_pot_odds', 'get_required_equity', 'get_opponent_profile'],
     allowedIntents: ['fold', 'call', 'raise', 'all_in'],
     allowedSizePresets: ['raise_min', 'raise_2_5x', 'raise_3x', 'jam'],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) => context.phase === 'river' && isFacingBet(context),
+    buildInstruction: getSkillInstructionBuilder('river_facing_bet'),
   },
   {
     id: 'pot_control',
@@ -170,11 +220,13 @@ export const AGENT_SKILLS: AgentSkillDefinition[] = [
     allowedTools: ['analyze_postflop', 'get_opponent_profile'],
     allowedIntents: ['check', 'call'],
     allowedSizePresets: [],
+    outputSchema: ACTION_PLAN_OUTPUT_SCHEMA,
     isApplicable: (context) =>
       isLaterStreet(context)
       && context.canCheck
       && context.spr > 3
       && !context.isPreflopAggressor,
+    buildInstruction: getSkillInstructionBuilder('pot_control'),
   },
 ];
 

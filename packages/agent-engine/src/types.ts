@@ -1,4 +1,4 @@
-import type { BotDecisionContext } from '@aipoker/shared';
+import type { AgentModel, AgentPersonaId, BotDecisionContext } from '@aipoker/shared';
 
 export type AgentSkillId =
   | 'preflop_open'
@@ -55,7 +55,9 @@ export interface AgentSkillDefinition {
   allowedTools: AgentToolName[];
   allowedIntents: ActionIntent[];
   allowedSizePresets: ActionSizePreset[];
+  outputSchema: Record<string, unknown>;
   isApplicable: (context: BotDecisionContext) => boolean;
+  buildInstruction: (context: BotDecisionContext) => string;
 }
 
 export interface AgentActionPlan {
@@ -79,9 +81,161 @@ export type AgentDecision =
   | { type: 'all_in' };
 
 export interface AgentDecisionResult {
-  skillId: AgentSkillId;
+  skillId: AgentSkillId | null;
   action: AgentDecision;
   confidence: number;
+}
+
+export type AgentRunMode = 'realtime' | 'eval' | 'replay';
+
+export type AgentToolMode = 'realtime_and_eval' | 'eval_only' | 'replay_only';
+
+export interface AgentToolDefinition {
+  name: AgentToolName;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface AgentRuntimeConfig {
+  model: AgentModel;
+  personaId: AgentPersonaId;
+}
+
+export interface AgentToolExecutionContext {
+  context: BotDecisionContext;
+  runtimeConfig: AgentRuntimeConfig;
+  mode: AgentRunMode;
+  memoryPrompt: string;
+}
+
+export interface AgentToolSpec extends AgentToolDefinition {
+  mode: AgentToolMode;
+  execute: (args: Record<string, unknown>, context: AgentToolExecutionContext) => Promise<unknown>;
+}
+
+export interface SystemChatMessage {
+  role: 'system';
+  content: string;
+}
+
+export interface UserChatMessage {
+  role: 'user';
+  content: string;
+}
+
+export interface AssistantToolCallMessage {
+  id: string;
+  type: 'function';
+  function: {
+    name: AgentToolName;
+    arguments: string;
+  };
+}
+
+export interface AssistantChatMessage {
+  role: 'assistant';
+  content: string | null;
+  tool_calls?: AssistantToolCallMessage[];
+}
+
+export interface ToolChatMessage {
+  role: 'tool';
+  content: string;
+  tool_call_id: string;
+  name: AgentToolName;
+}
+
+export type ChatMessage =
+  | SystemChatMessage
+  | UserChatMessage
+  | AssistantChatMessage
+  | ToolChatMessage;
+
+export interface JsonSchemaResponseFormat {
+  type: 'json_schema';
+  json_schema: {
+    name: string;
+    schema: Record<string, unknown>;
+    strict: boolean;
+  };
+}
+
+export interface SkillExecutionInput {
+  skill: AgentSkillDefinition;
+  context: BotDecisionContext;
+  runtimeConfig: AgentRuntimeConfig;
+  memoryPrompt: string;
+  mode: AgentRunMode;
+  tools: AgentToolDefinition[];
+}
+
+export interface SkillExecutionPrompt {
+  messages: ChatMessage[];
+  tools: AgentToolDefinition[];
+  responseFormat: JsonSchemaResponseFormat;
+}
+
+export interface AgentLlmToolCall {
+  id: string;
+  toolName: AgentToolName;
+  args: Record<string, unknown>;
+}
+
+export type AgentLlmResponse =
+  | {
+      type: 'action_plan';
+      actionPlan: AgentActionPlan;
+    }
+  | {
+      type: 'tool_call';
+      toolCall: AgentLlmToolCall;
+    };
+
+export interface AgentLlmRequest {
+  messages: ChatMessage[];
+  tools: AgentToolDefinition[];
+  responseFormat: JsonSchemaResponseFormat;
+  runtimeConfig: AgentRuntimeConfig;
+  mode: AgentRunMode;
+}
+
+export interface AgentLlmClient {
+  complete: (request: AgentLlmRequest) => Promise<AgentLlmResponse>;
+}
+
+export type AgentTraceSpanName =
+  | 'prompt_build'
+  | 'skill_filter'
+  | 'skill_selected'
+  | 'llm_call'
+  | 'tool_call'
+  | 'action_resolution'
+  | 'fallback';
+
+export interface AgentRunTraceSpan {
+  name: AgentTraceSpanName;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentRunTrace {
+  spans: AgentRunTraceSpan[];
+}
+
+export type AgentFallbackReason =
+  | 'invalid_skill'
+  | 'invalid_output'
+  | 'tool_error'
+  | 'tool_loop_exceeded'
+  | 'llm_error'
+  | 'no_candidate_skills';
+
+export interface AgentRunResult {
+  decision: AgentDecisionResult;
+  trace: AgentRunTrace;
+  fallbackReason?: AgentFallbackReason;
 }
 
 export type ResolveActionPlanResult =
