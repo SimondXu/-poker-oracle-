@@ -16,7 +16,7 @@ export function pickSeatIndex(room: RuntimeRoom): number {
 export function getOrCreateRoom(
   rooms: Map<string, RuntimeRoom>,
   roomId: string,
-  config?: { smallBlind?: number; bigBlind?: number; actionTimeoutMs?: number; ownerId?: string | null }
+  config?: { smallBlind?: number; bigBlind?: number; actionTimeoutMs?: number }
 ): RuntimeRoom {
   const existing = rooms.get(roomId);
   if (existing) {
@@ -30,9 +30,6 @@ export function getOrCreateRoom(
       if (config.actionTimeoutMs !== undefined) {
         existing.actionTimeoutMs = config.actionTimeoutMs;
       }
-      if (config.ownerId !== undefined && existing.ownerId === null) {
-        existing.ownerId = config.ownerId;
-      }
     }
     return existing;
   }
@@ -40,7 +37,6 @@ export function getOrCreateRoom(
   const room: RuntimeRoom = {
     id: roomId,
     stateVersion: 0,
-    ownerId: config?.ownerId ?? null,
     handNumber: 0,
     smallBlind: config?.smallBlind ?? DEFAULT_SMALL_BLIND,
     bigBlind: config?.bigBlind ?? DEFAULT_BIG_BLIND,
@@ -48,26 +44,14 @@ export function getOrCreateRoom(
     players: new Map(),
     readyPlayerIds: new Set(),
     pendingDisconnectPlayerIds: new Set(),
+    spectatingPlayerIds: new Set(),
     hand: null,
     lastActionSeqByPlayer: new Map(),
-    lastBroadcastActionCount: 0
+    lastBroadcastActionCount: 0,
+    lastButtonMarkerSeat: null
   };
   rooms.set(roomId, room);
   return room;
-}
-
-function pickOwnerId(room: RuntimeRoom): string | null {
-  return [...room.players.values()]
-    .filter((player) => !player.isBot)
-    .sort((left, right) => left.seatIndex - right.seatIndex)[0]?.id ?? null;
-}
-
-export function syncRoomOwner(room: RuntimeRoom): void {
-  if (room.ownerId && room.players.has(room.ownerId)) {
-    return;
-  }
-
-  room.ownerId = pickOwnerId(room);
 }
 
 export function syncRoomPlayersFromHand(room: RuntimeRoom): void {
@@ -81,5 +65,8 @@ export function syncRoomPlayersFromHand(room: RuntimeRoom): void {
       continue;
     }
     roomPlayer.stack = handPlayer.stack;
+    if (handPlayer.stack > 0) {
+      room.spectatingPlayerIds.delete(handPlayer.id);
+    }
   }
 }

@@ -6,6 +6,7 @@ import { verifyGuestSessionToken } from '../auth/session-token.ts';
 import type { RoomActionTimeouts } from '../game-loop/action-timeout.ts';
 import type { RoomNextHandTimeouts } from '../game-loop/auto-next-hand.ts';
 import type { EmptyRoomTimeouts } from '../game-loop/empty-room-timeout.ts';
+import { DEFAULT_BOT_RUNTIME_DEPS, type BotRuntimeDeps } from '../game-loop/bot-support.ts';
 import type { RoomTaskQueues } from '../rooms/room-queue.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { registerGameEvents } from './handlers/game-events.ts';
@@ -16,12 +17,9 @@ interface AttachRealtimeOptions {
   authSecret?: string;
   authCookieName?: string;
   authStrict?: boolean;
-  debugState?: {
-    rooms?: Map<string, RuntimeRoom>;
-    memberships?: Map<string, RoomMembership>;
-  };
   emptyRoomTtlMs?: number;
   nowMs?: () => number;
+  botRuntime?: Partial<BotRuntimeDeps>;
 }
 
 export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOptions = {}): Server {
@@ -37,17 +35,16 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const authStrict = options.authStrict ?? false;
   const emptyRoomTtlMs = options.emptyRoomTtlMs ?? 60_000;
   const nowMs = options.nowMs ?? (() => Date.now());
+  const botRuntime: BotRuntimeDeps = {
+    ...DEFAULT_BOT_RUNTIME_DEPS,
+    ...(options.botRuntime ?? {}),
+  };
   const rooms = new Map<string, RuntimeRoom>();
   const memberships = new Map<string, RoomMembership>();
   const roomActionTimeouts: RoomActionTimeouts = new Map();
   const roomNextHandTimeouts: RoomNextHandTimeouts = new Map();
   const emptyRoomTimeouts: EmptyRoomTimeouts = new Map();
   const roomTaskQueues: RoomTaskQueues = new Map();
-
-  if (options.debugState) {
-    options.debugState.rooms = rooms;
-    options.debugState.memberships = memberships;
-  }
 
   io.use((socket, next) => {
     const cookies = parseCookies(socket.handshake.headers.cookie);
@@ -73,11 +70,11 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       memberships,
       roomActionTimeouts,
       roomNextHandTimeouts,
-      roomTaskQueues,
       emptyRoomTimeouts,
       authStrict,
       actionTimeoutMs,
       emptyRoomTtlMs,
+      nowMs,
     });
 
     registerGameEvents({
@@ -88,7 +85,9 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       roomActionTimeouts,
       roomNextHandTimeouts,
       roomTaskQueues,
-      actionTimeoutMs
+      actionTimeoutMs,
+      nowMs,
+      botRuntime,
     });
   });
 

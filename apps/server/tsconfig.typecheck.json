@@ -4,7 +4,13 @@
     "noEmit": true,
     "types": ["node"],
     "allowImportingTsExtensions": true,
-    "rootDir": "../../"
+    "rootDir": "../../",
+    "paths": {
+      "@aipoker/shared": ["packages/shared/src/index.ts"],
+      "@aipoker/game-engine": ["packages/game-engine/src/index.ts"],
+      "@aipoker/bot-engine": ["packages/bot-engine/src/index.ts"],
+      "@aipoker/strategy-engine": ["packages/strategy-engine/src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

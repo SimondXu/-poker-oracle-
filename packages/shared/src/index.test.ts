@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildBotPositionMap,
+  deriveBotBettingState,
   err,
   generateRoomCode,
+  hasPreflopLimpers,
   isValidRoomCode,
   normalizeRoomCode,
   ok,
@@ -42,4 +45,44 @@ test('generateRoomCode returns a canonical invite code', () => {
   const code = generateRoomCode();
   assert.equal(code.length, ROOM_CODE_LENGTH);
   assert.equal(isValidRoomCode(code), true);
+});
+
+test('buildBotPositionMap compresses occupied seats before assigning positions', () => {
+  const positions = buildBotPositionMap([0, 2, 5], 0);
+
+  assert.equal(positions.get(0), 'btn');
+  assert.equal(positions.get(2), 'sb');
+  assert.equal(positions.get(5), 'bb');
+});
+
+test('hasPreflopLimpers detects passive preflop entries before any raise', () => {
+  assert.equal(
+    hasPreflopLimpers(
+      [
+        { phase: 'betting_preflop', type: 'call', toAmount: 100 },
+      ],
+      'betting_preflop',
+      100,
+    ),
+    true,
+  );
+
+  assert.equal(
+    hasPreflopLimpers(
+      [
+        { phase: 'betting_preflop', type: 'raise_to', toAmount: 300 },
+        { phase: 'betting_preflop', type: 'call', toAmount: 300 },
+      ],
+      'betting_preflop',
+      100,
+    ),
+    false,
+  );
+});
+
+test('deriveBotBettingState separates limp pots from unopened and raised pots', () => {
+  assert.equal(deriveBotBettingState(0, false), 'unopened');
+  assert.equal(deriveBotBettingState(0, true), 'facing_limpers');
+  assert.equal(deriveBotBettingState(1, false), 'facing_open');
+  assert.equal(deriveBotBettingState(3, false), 'facing_3bet_plus');
 });

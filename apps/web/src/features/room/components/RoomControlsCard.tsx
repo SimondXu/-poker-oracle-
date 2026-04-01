@@ -8,7 +8,6 @@ interface RoomControlsCardProps {
   isPlaying: boolean;
   isConnected: boolean;
   isReady: boolean;
-  isOwner: boolean;
   canSelfStart: boolean;
   canStart: boolean;
   hasEnoughPlayers: boolean;
@@ -24,7 +23,6 @@ export function RoomControlsCard({
   isPlaying,
   isConnected,
   isReady,
-  isOwner,
   canSelfStart,
   canStart,
   hasEnoughPlayers,
@@ -36,14 +34,12 @@ export function RoomControlsCard({
 }: RoomControlsCardProps) {
   const statusMessage = isTableFinished
     ? '本场已结束，当前房间不再继续自动开局'
-    : !isOwner
-      ? '只有房主可以开始游戏；房主开局后，你会自动进入牌桌。'
+    : !canSelfStart
+      ? '你已淘汰，可进入牌桌观战或返回大厅重新建局。'
       : !hasEnoughPlayers
         ? '至少需要 2 名玩家（可添加机器人）'
         : !allHumansReady
           ? '等待所有真人玩家点击“我已准备”'
-          : !canSelfStart
-            ? '你已淘汰，但作为房主仍可在其他真人准备后继续发起下一手。'
           : '全部就绪，可直接开始游戏';
 
   return (

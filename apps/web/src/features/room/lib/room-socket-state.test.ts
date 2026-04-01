@@ -6,7 +6,6 @@ import { initialRoomSocketViewState, roomSocketViewReducer, toRoomState } from '
 const roomState = toRoomState({
   roomId: 'AAAABA',
   stateVersion: 1,
-  ownerId: 'p0',
   players: [
     {
       id: 'p0',

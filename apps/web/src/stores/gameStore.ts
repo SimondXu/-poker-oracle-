@@ -21,7 +21,7 @@ export interface HandResult {
   payouts: PayoutInfo[];
   winnerIds: string[];
   potTotal: number;
-  phase: 'announcing' | 'showing' | 'done';
+  phase: 'announcing' | 'revealing' | 'showing' | 'done';
   table: TableLifecycleSnapshot;
 }
 

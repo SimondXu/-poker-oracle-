@@ -3,14 +3,12 @@ import type { Server, Socket } from 'socket.io';
 import type { GuestSession } from '../../auth/session-token.ts';
 import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop/action-timeout.ts';
 import { clearRoomNextHandTimeout, type RoomNextHandTimeouts } from '../../game-loop/auto-next-hand.ts';
-import { syncBotsOnlyAutoNextHand } from '../../game-loop/bots-only-auto-next.ts';
 import {
   clearEmptyRoomTimeout,
   scheduleEmptyRoomTimeout,
   type EmptyRoomTimeouts,
 } from '../../game-loop/empty-room-timeout.ts';
-import type { RoomTaskQueues } from '../../rooms/room-queue.ts';
-import { getOrCreateRoom, pickSeatIndex, syncRoomOwner } from '../../rooms/room-store.ts';
+import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameStateToSocket, emitRoomState } from '../emitters.ts';
 import {
@@ -32,11 +30,11 @@ interface RegisterRoomEventsInput {
   memberships: Map<string, RoomMembership>;
   roomActionTimeouts: RoomActionTimeouts;
   roomNextHandTimeouts: RoomNextHandTimeouts;
-  roomTaskQueues: RoomTaskQueues;
   emptyRoomTimeouts: EmptyRoomTimeouts;
   authStrict: boolean;
   actionTimeoutMs: number;
   emptyRoomTtlMs: number;
+  nowMs: () => number;
 }
 
 const CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -50,11 +48,11 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     memberships,
     roomActionTimeouts,
     roomNextHandTimeouts,
-    roomTaskQueues,
     emptyRoomTimeouts,
     authStrict,
     actionTimeoutMs,
     emptyRoomTtlMs,
+    nowMs,
   } = input;
   const createTimestamps: number[] = [];
 
@@ -82,16 +80,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     room.players.delete(playerId);
     room.readyPlayerIds.delete(playerId);
     room.pendingDisconnectPlayerIds.delete(playerId);
-    syncRoomOwner(room);
-    syncBotsOnlyAutoNextHand({
-      io,
-      room,
-      rooms,
-      memberships,
-      roomActionTimeouts,
-      roomNextHandTimeouts,
-      roomTaskQueues
-    });
+    room.spectatingPlayerIds.delete(playerId);
   }
 
   function deleteRoom(roomId: string): void {
@@ -102,7 +91,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
   }
 
   function isCreateRateLimited(): boolean {
-    const now = Date.now();
+    const now = nowMs();
     while (createTimestamps.length > 0) {
       const oldest = createTimestamps[0];
       if (oldest === undefined || now - oldest < CREATE_RATE_LIMIT_WINDOW_MS) {
@@ -145,8 +134,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     const room = getOrCreateRoom(rooms, parsed.data.roomId, {
       smallBlind: parsed.data.smallBlind,
       bigBlind: parsed.data.bigBlind,
-      actionTimeoutMs,
-      ownerId: authSession?.userId ?? null,
+      actionTimeoutMs
     });
     scheduleEmptyRoomTimeout(emptyRoomTimeouts, room.id, emptyRoomTtlMs, () => {
       const latestRoom = rooms.get(room.id);
@@ -194,20 +182,6 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
     clearEmptyRoomTimeout(emptyRoomTimeouts, room.id);
-
-    const currentMembership = memberships.get(socket.id);
-    if (
-      isBot
-      && (
-        !currentMembership
-        || currentMembership.roomId !== roomId
-        || !room.ownerId
-        || currentMembership.playerId !== room.ownerId
-      )
-    ) {
-      ack?.({ ok: false, error: 'not_room_owner' });
-      return;
-    }
 
     const normalizedName = resolvedPlayerName.trim().toLowerCase();
     const hasNameConflict = [...room.players.values()].some(
@@ -262,6 +236,9 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     room.players.set(resolvedPlayerId, nextPlayer);
     room.pendingDisconnectPlayerIds.delete(resolvedPlayerId);
+    if (nextPlayer.stack > 0) {
+      room.spectatingPlayerIds.delete(resolvedPlayerId);
+    }
     if (existingPlayer) {
       if (room.readyPlayerIds.has(resolvedPlayerId)) {
         room.readyPlayerIds.add(resolvedPlayerId);
@@ -273,16 +250,6 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     } else {
       room.readyPlayerIds.delete(resolvedPlayerId);
     }
-    syncRoomOwner(room);
-    syncBotsOnlyAutoNextHand({
-      io,
-      room,
-      rooms,
-      memberships,
-      roomActionTimeouts,
-      roomNextHandTimeouts,
-      roomTaskQueues
-    });
 
     if (!isBot) {
       memberships.set(socket.id, { roomId, playerId: resolvedPlayerId });
@@ -340,11 +307,6 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     const room = rooms.get(parsed.data.roomId);
     if (!room) {
       ack?.({ ok: false, error: 'room_not_found' });
-      return;
-    }
-
-    if (!room.ownerId || membership.playerId !== room.ownerId) {
-      ack?.({ ok: false, error: 'not_room_owner' });
       return;
     }
 

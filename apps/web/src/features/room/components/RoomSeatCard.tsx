@@ -22,7 +22,6 @@ interface RoomSeatCardProps {
   player: RoomPlayer | null;
   currentUserId: string;
   isPlaying: boolean;
-  canManageBots: boolean;
   onAddBot: (strategy: BotPersonality, seatIndex: number) => void;
   onRemoveBot: (playerId: string) => void;
 }
@@ -32,7 +31,6 @@ export function RoomSeatCard({
   player,
   currentUserId,
   isPlaying,
-  canManageBots,
   onAddBot,
   onRemoveBot,
 }: RoomSeatCardProps) {
@@ -51,15 +49,13 @@ export function RoomSeatCard({
   return (
     <div className="relative">
       <motion.div
-        whileHover={!player && !isPlaying && canManageBots ? { scale: 1.015 } : {}}
+        whileHover={!player && !isPlaying ? { scale: 1.015 } : {}}
         className={cn(
           'relative rounded-[20px] border transition-all duration-200',
           !player
             ? isPlaying
               ? 'border-white/8 bg-white/[0.015] opacity-45'
-              : canManageBots
-                ? 'cursor-pointer border-dashed border-white/22 bg-white/[0.03] hover:-translate-y-0.5 hover:border-white/36 hover:bg-white/[0.05]'
-                : 'border-dashed border-white/12 bg-white/[0.02]'
+              : 'cursor-pointer border-dashed border-white/22 bg-white/[0.03] hover:-translate-y-0.5 hover:border-white/36 hover:bg-white/[0.05]'
             : isMe
               ? 'border-[var(--color-gold)]/45 bg-[linear-gradient(145deg,rgba(255,215,0,0.14),rgba(255,215,0,0.05))]'
               : 'border-white/12 bg-[rgba(18,27,40,0.86)]',
@@ -69,7 +65,7 @@ export function RoomSeatCard({
           boxShadow: 'var(--shadow-hairline)',
         }}
         onClick={() => {
-          if (!player && !isPlaying && canManageBots) {
+          if (!player && !isPlaying) {
             setShowBotMenu(true);
           }
         }}
@@ -78,11 +74,7 @@ export function RoomSeatCard({
           <div className="flex h-full flex-col items-center justify-center gap-1.5 px-4 py-[18px]">
             <span className="text-[30px] leading-none text-[var(--color-text-dim)]">＋</span>
             <span className="text-[13px] font-medium text-[var(--color-text-secondary)]">座位 {seatIndex + 1}</span>
-            {!isPlaying && (
-              <span className="text-[11px] text-[var(--color-text-muted)]">
-                {canManageBots ? '添加机器人' : '仅房主可配置'}
-              </span>
-            )}
+            {!isPlaying && <span className="text-[11px] text-[var(--color-text-muted)]">添加机器人</span>}
           </div>
         ) : (
           <div className="flex items-center gap-3 p-4">
@@ -131,7 +123,7 @@ export function RoomSeatCard({
               </div>
             </div>
 
-            {player.isBot && !isPlaying && canManageBots && (
+            {player.isBot && !isPlaying && (
               <button
                 onClick={(event) => {
                   event.stopPropagation();

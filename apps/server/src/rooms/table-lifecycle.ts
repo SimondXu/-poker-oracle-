@@ -2,8 +2,12 @@ import type { TableLifecycleSnapshot } from '@aipoker/shared';
 
 import type { RuntimeRoom } from './types.ts';
 
+function getEligiblePlayers(room: RuntimeRoom) {
+  return [...room.players.values()].filter((player) => !room.pendingDisconnectPlayerIds.has(player.id));
+}
+
 export function getTableLifecycleSnapshot(room: RuntimeRoom): TableLifecycleSnapshot {
-  const eligiblePlayers = [...room.players.values()].filter((player) => !room.pendingDisconnectPlayerIds.has(player.id));
+  const eligiblePlayers = getEligiblePlayers(room);
   const activeStackPlayers = eligiblePlayers.filter((player) => player.stack > 0);
   const activeHumanStackPlayers = activeStackPlayers.filter((player) => !player.isBot);
   const activeBotStackPlayers = activeStackPlayers.filter((player) => player.isBot);
@@ -25,4 +29,31 @@ export function getTableLifecycleSnapshot(room: RuntimeRoom): TableLifecycleSnap
     championPlayerId: champion?.id ?? null,
     championPlayerName: champion?.name ?? null,
   };
+}
+
+export function hasPendingEliminatedHumanDecision(room: RuntimeRoom): boolean {
+  return getEligiblePlayers(room).some(
+    (player) =>
+      !player.isBot
+      && player.stack <= 0
+      && !room.spectatingPlayerIds.has(player.id)
+  );
+}
+
+export function canAutoContinueBotsOnly(room: RuntimeRoom): boolean {
+  const lifecycle = getTableLifecycleSnapshot(room);
+  return lifecycle.isBotsOnlyContinuation && !hasPendingEliminatedHumanDecision(room);
+}
+
+export function canPlayerStartNextHand(room: RuntimeRoom, playerId: string): boolean {
+  if (room.pendingDisconnectPlayerIds.has(playerId)) {
+    return false;
+  }
+
+  const starter = room.players.get(playerId);
+  if (!starter) {
+    return false;
+  }
+
+  return !starter.isBot && starter.stack > 0;
 }

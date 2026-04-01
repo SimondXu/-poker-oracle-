@@ -5,14 +5,16 @@ export interface CommunityRevealStep {
   delayMs: number;
 }
 
-export type ResultAnimationPhase = 'announcing' | 'showing' | 'done' | undefined;
+export type ResultAnimationPhase = 'announcing' | 'revealing' | 'showing' | 'done' | undefined;
 
-const MIN_SECOND_PASS_DELAY = 0.38;
-const SECOND_PASS_PER_PLAYER_DELAY = 0.05;
+const MIN_SECOND_PASS_DELAY = 0.62;
+const SECOND_PASS_PER_PLAYER_DELAY = 0.08;
 
 const HAND_RESULT_PHASE_TIMELINE = {
-  announcingMs: 1200,
-  doneMs: 3800,
+  revealingMs: 1400,
+  showingMs: 2300,
+  doneMs: 5200,
+  nextHandAutoStartMs: 2000,
 } as const;
 
 export function buildCommunityRevealSteps(previousCount: number, nextCount: number): CommunityRevealStep[] {
@@ -21,9 +23,9 @@ export function buildCommunityRevealSteps(previousCount: number, nextCount: numb
   }
 
   const steps: CommunityRevealStep[] = [];
-  const flopStartDelayMs = previousCount === 0 ? 120 : 0;
-  const flopStaggerMs = 110;
-  const streetBeatMs = 360;
+  const flopStartDelayMs = previousCount === 0 ? 180 : 0;
+  const flopStaggerMs = 160;
+  const streetBeatMs = 780;
 
   let elapsedMs = 0;
   for (let count = previousCount + 1; count <= nextCount; count += 1) {
@@ -42,6 +44,10 @@ export function buildCommunityRevealSteps(previousCount: number, nextCount: numb
 }
 
 export function shouldRevealShowdownCards(resultPhase: ResultAnimationPhase): boolean {
+  return resultPhase === 'revealing' || resultPhase === 'showing' || resultPhase === 'done';
+}
+
+export function shouldShowWinnerIdentity(resultPhase: ResultAnimationPhase): boolean {
   return resultPhase === 'showing' || resultPhase === 'done';
 }
 
@@ -58,7 +64,7 @@ export function getDisplayedSeatStack(
   payoutAmount: number | undefined,
   resultPhase: ResultAnimationPhase,
 ): number {
-  if (resultPhase !== 'announcing' || payoutAmount === undefined) {
+  if ((resultPhase !== 'announcing' && resultPhase !== 'revealing') || payoutAmount === undefined) {
     return settledStack;
   }
 
@@ -119,7 +125,7 @@ export function shouldDimLosingSeat(input: {
     return false;
   }
 
-  if (!shouldRevealShowdownCards(input.resultPhase) || input.isWinner) {
+  if (!shouldShowWinnerIdentity(input.resultPhase) || input.isWinner) {
     return false;
   }
 

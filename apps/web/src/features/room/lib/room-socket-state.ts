@@ -11,7 +11,6 @@ export interface RoomPlayer {
 }
 
 export interface RoomState {
-  ownerId: string | null;
   players: RoomPlayer[];
   playerCount: number;
   readyCount: number;
@@ -43,7 +42,6 @@ export const initialRoomSocketViewState = createInitialRoomSocketViewState();
 
 export function toRoomState(state: RoomStateEvent): RoomState {
   return {
-    ownerId: state.ownerId,
     players: state.players,
     playerCount: state.playerCount,
     readyCount: state.readyCount,

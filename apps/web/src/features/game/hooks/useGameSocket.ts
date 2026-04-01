@@ -16,6 +16,7 @@ import { useHandResultPhaseTimers } from './useHandResultPhaseTimers';
 import type { ActionType, GameActionRequiredEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
 
 const GAME_START_ACK_TIMEOUT_MS = 5000;
+const GAME_SPECTATE_ACK_TIMEOUT_MS = 5000;
 
 export function useGameSocket(
   roomId: string,
@@ -212,5 +213,41 @@ export function useGameSocket(
     [clearNextHandRequested, enabled, markNextHandRequested, roomId],
   );
 
-  return { sendAction, startNextHand };
+  const spectateAfterElimination = useCallback(async (): Promise<boolean> => {
+    if (!enabled || !playerId) {
+      toast.error('玩家身份无效，请返回大厅重试');
+      return false;
+    }
+
+    const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+      getSocket()
+        .timeout(GAME_SPECTATE_ACK_TIMEOUT_MS)
+        .emit(
+          'game:spectate',
+          { roomId },
+          (timeoutError: Error | null, ack?: { ok: boolean; error?: string }) => {
+            if (timeoutError || !ack) {
+              resolve({ ok: false, error: 'timeout' });
+              return;
+            }
+
+            resolve(ack);
+          },
+        );
+    });
+
+    if (result.ok) {
+      return true;
+    }
+
+    const message = result.error === 'timeout'
+      ? '进入观战超时，请稍后重试'
+      : result.error === 'not_eliminated'
+      ? '当前还不能进入观战'
+      : '进入观战失败，请稍后重试';
+    toast.error(message);
+    return false;
+  }, [enabled, playerId, roomId]);
+
+  return { sendAction, startNextHand, spectateAfterElimination };
 }

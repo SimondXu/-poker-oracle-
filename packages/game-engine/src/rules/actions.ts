@@ -21,6 +21,10 @@ import {
   resetPendingActors
 } from './shared.ts';
 
+interface ApplyActionContext {
+  timestamp: number;
+}
+
 function baseInvalidActions(): ValidActions {
   return {
     canFold: false,
@@ -296,7 +300,11 @@ function applyRaiseTo(
   });
 }
 
-export function applyAction(state: HandState, action: PlayerActionInput): EngineResult<HandState, ApplyActionError> {
+export function applyAction(
+  state: HandState,
+  action: PlayerActionInput,
+  context: ApplyActionContext
+): EngineResult<HandState, ApplyActionError> {
   if (state.currentActorSeat === null || !isBettingPhase(state.phase)) {
     return err('hand_not_actionable');
   }
@@ -311,15 +319,24 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
   let betting = { ...state.betting };
   const toCall = Math.max(0, state.betting.currentBetToMatch - actor.streetCommitted);
   const phaseAtAction = state.phase;
+  const potTotalBefore = computePotTotal(state.players);
+  const stackBefore = actor.stack;
+  const actionTimestamp = context.timestamp;
 
-  function withActionLog(nextState: HandState, record: Omit<HandActionRecord, 'phase'>): HandState {
+  function withActionLog(
+    nextState: HandState,
+    record: Omit<HandActionRecord, 'phase' | 'stackBefore' | 'potTotalBefore' | 'timestamp'>
+  ): HandState {
     return {
       ...nextState,
       actions: [
         ...state.actions,
         {
           ...record,
-          phase: phaseAtAction
+          phase: phaseAtAction,
+          stackBefore,
+          potTotalBefore,
+          timestamp: actionTimestamp
         }
       ]
     };
@@ -334,7 +351,9 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
       withActionLog(nextState, {
         playerId: actor.id,
         type: 'fold',
-        amount: 0
+        amount: 0,
+        addedAmount: 0,
+        toAmount: actor.streetCommitted
       })
     );
   }
@@ -351,7 +370,9 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
       withActionLog(nextState, {
         playerId: actor.id,
         type: 'check',
-        amount: 0
+        amount: 0,
+        addedAmount: 0,
+        toAmount: actor.streetCommitted
       })
     );
   }
@@ -377,7 +398,9 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
       withActionLog(nextState, {
         playerId: actor.id,
         type: 'call',
-        amount: contribution
+        amount: contribution,
+        addedAmount: contribution,
+        toAmount: actor.streetCommitted
       })
     );
   }
@@ -400,7 +423,9 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
       withActionLog(nextState, {
         playerId: actor.id,
         type: 'raise_to',
-        amount: toAmount
+        amount: toAmount,
+        addedAmount: stackBefore - actor.stack,
+        toAmount
       })
     );
   }
@@ -425,7 +450,9 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
         withActionLog(nextState, {
           playerId: actor.id,
           type: 'all_in',
-          amount: contribution
+          amount: actor.streetCommitted,
+          addedAmount: contribution,
+          toAmount: actor.streetCommitted
         })
       );
     }
@@ -441,7 +468,9 @@ export function applyAction(state: HandState, action: PlayerActionInput): Engine
       withActionLog(nextState, {
         playerId: actor.id,
         type: 'all_in',
-        amount: actor.streetCommitted
+        amount: actor.streetCommitted,
+        addedAmount: stackBefore - actor.stack,
+        toAmount: actor.streetCommitted
       })
     );
   }

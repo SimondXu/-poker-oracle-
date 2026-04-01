@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getTableLifecycleSnapshot } from '../../../rooms/table-lifecycle.ts';
+import {
+  canAutoContinueBotsOnly,
+  canPlayerStartNextHand,
+  getTableLifecycleSnapshot,
+} from '../../../rooms/table-lifecycle.ts';
 import type { RuntimeRoom } from '../../../rooms/types.ts';
 
 interface RoomPlayerSeed {
@@ -33,9 +37,11 @@ function createRoom(input: { handNumber: number; players: RoomPlayerSeed[] }): R
     players,
     readyPlayerIds: new Set(),
     pendingDisconnectPlayerIds: new Set(),
+    spectatingPlayerIds: new Set(),
     hand: null,
     lastActionSeqByPlayer: new Map(),
     lastBroadcastActionCount: 0,
+    lastButtonMarkerSeat: null,
   };
 }
 
@@ -102,6 +108,38 @@ test('table lifecycle: bots-only continuation when no active humans remain', () 
   assert.equal(lifecycle.isTableFinished, false);
 });
 
+test('table lifecycle: eliminated human must choose spectate before bots-only auto continuation', () => {
+  const room = createRoom({
+    handNumber: 7,
+    players: [{ stack: 0 }, { stack: 900, isBot: true }, { stack: 1100, isBot: true }],
+  });
+
+  assert.equal(getTableLifecycleSnapshot(room).isBotsOnlyContinuation, true);
+  assert.equal(canAutoContinueBotsOnly(room), false);
+});
+
+test('table lifecycle: spectating approval unblocks bots-only auto continuation', () => {
+  const room = createRoom({
+    handNumber: 7,
+    players: [{ stack: 0 }, { stack: 900, isBot: true }, { stack: 1100, isBot: true }],
+  });
+  room.spectatingPlayerIds.add('p0');
+
+  assert.equal(canAutoContinueBotsOnly(room), true);
+});
+
+test('canPlayerStartNextHand: only active human can start', () => {
+  const room = createRoom({
+    handNumber: 3,
+    players: [{ stack: 0 }, { stack: 1200 }, { stack: 500, isBot: true }],
+  });
+
+  assert.equal(canPlayerStartNextHand(room, 'p0'), false);
+  assert.equal(canPlayerStartNextHand(room, 'p1'), true);
+  assert.equal(canPlayerStartNextHand(room, 'p2'), false);
+  assert.equal(canPlayerStartNextHand(room, 'missing-player'), false);
+});
+
 test('table lifecycle: pending disconnect players do not count as active stacks', () => {
   const room = createRoom({
     handNumber: 9,
@@ -115,4 +153,5 @@ test('table lifecycle: pending disconnect players do not count as active stacks'
   assert.equal(lifecycle.activeHumanStackPlayerCount, 0);
   assert.equal(lifecycle.activeBotStackPlayerCount, 2);
   assert.equal(lifecycle.isBotsOnlyContinuation, true);
+  assert.equal(canPlayerStartNextHand(room, 'p0'), false);
 });

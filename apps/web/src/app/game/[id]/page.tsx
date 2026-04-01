@@ -25,7 +25,7 @@ export default function GamePage({ params }: GamePageProps) {
   const currentUserId = user?.id ?? '';
   const currentUserName = user?.username ?? '';
 
-  const { sendAction, startNextHand } = useGameSocket(
+  const { sendAction, startNextHand, spectateAfterElimination } = useGameSocket(
     roomId,
     currentUserId,
     currentUserName,
@@ -51,6 +51,7 @@ export default function GamePage({ params }: GamePageProps) {
   } = useGameScreenState({
     currentUserId,
     startNextHand,
+    spectateAfterElimination,
   });
 
   const isTrainingHUDVisible = useUIStore((state) => state.isTrainingHUDVisible);
@@ -96,10 +97,10 @@ export default function GamePage({ params }: GamePageProps) {
                   currentUserId={currentUserId}
                   {...(timerStartedAt !== null ? { timerStartedAt } : {})}
                   {...(timerDurationMs !== null ? { timerDurationMs } : {})}
-                  winnerCards={screenState.shouldRevealOutcome ? winnerCards : []}
-                  winnerIds={screenState.shouldRevealOutcome ? winnerIds : []}
+                  winnerCards={screenState.shouldHighlightWinners ? winnerCards : []}
+                  winnerIds={screenState.shouldHighlightWinners ? winnerIds : []}
                   winnerBestCardsByPlayer={
-                    screenState.shouldRevealOutcome ? screenState.winnerBestCardsByPlayer : {}
+                    screenState.shouldHighlightWinners ? screenState.winnerBestCardsByPlayer : {}
                   }
                   payoutAmountsByPlayer={screenState.payoutAmountsByPlayer}
                   handResultPhase={handResult?.phase}
@@ -120,8 +121,6 @@ export default function GamePage({ params }: GamePageProps) {
             isTrainingHUDVisible={isTrainingHUDVisible}
             isActionHistoryVisible={isActionHistoryVisible}
             onToggleTrainingHUD={toggleTrainingHUD}
-            validActions={validActions}
-            pot={screenState.pot}
             trainingData={screenState.trainingData}
           />
         </div>

@@ -20,14 +20,17 @@ export function useHandResultPhaseTimers(
 
   const schedulePhaseTimers = useCallback(() => {
     clearPhaseTimers();
-    const revealTimer = setTimeout(() => {
+    const revealingTimer = setTimeout(() => {
+      setHandResultPhase('revealing');
+    }, HAND_RESULT_PHASE_TIMELINE.revealingMs);
+    const showingTimer = setTimeout(() => {
       setHandResultPhase('showing');
-    }, HAND_RESULT_PHASE_TIMELINE.announcingMs);
+    }, HAND_RESULT_PHASE_TIMELINE.showingMs);
     const doneTimer = setTimeout(() => {
       setHandResultPhase('done');
     }, HAND_RESULT_PHASE_TIMELINE.doneMs);
 
-    phaseTimersRef.current = [revealTimer, doneTimer];
+    phaseTimersRef.current = [revealingTimer, showingTimer, doneTimer];
   }, [clearPhaseTimers, setHandResultPhase]);
 
   useEffect(() => clearPhaseTimers, [clearPhaseTimers]);

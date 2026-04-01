@@ -5,7 +5,6 @@ const ROOM_ERROR_MESSAGES: Record<string, string> = {
   room_already_exists: '房间号已被占用，请重新创建',
   rate_limited: '操作过于频繁，请稍后重试',
   player_name_taken: '该房间内用户名已被占用，请更换用户名后重试',
-  not_room_owner: '只有房主可以管理房间配置',
 };
 
 export function getRoomErrorMessage(error?: string, fallback = '房间操作失败'): string {

@@ -1,45 +1,38 @@
-Original prompt: 我现在遇到一个问题就是我刚实验了打开两个浏览器 第一个浏览器创建了一个房间 然后的第二个浏览器尝试加入刚创建的房间的时候 会导致第一个浏览器创建房间的user不见了 应该是有逻辑错误 查看相关的代码和dev doc深度思考找到问题解决修复
+Original prompt: 按照这个计划去开发 确保开发规则是按照我门的规则 代码是高质量的 高复用性 高扩展性和高维护性现代typescript代码
 
-2026-03-07
-- Read debugging/TDD/develop-web-game skills and set a root-cause-first plan.
-- Inspected room join/leave handlers, auth guest-session flow, room/game socket hooks, and architecture docs.
-- Reproduced the bug with two sockets that share the same guest cookie: the second `room:join` reused the same `userId`, overwrote the existing room player snapshot, and a later disconnect from either socket could evict the player entirely.
-- Added regression tests for same-guest multi-socket join/disconnect behavior and updated the room handler so a player can keep multiple sockets attached without losing seat/name/stack/ready state.
-- Verification: `pnpm --filter @aipoker/server test -- --test-name-pattern "same guest"` ended up executing the full server test suite successfully (`68` passing), and `pnpm --filter @aipoker/server typecheck` passed.
-- Updated the room page so once `roomState.isPlaying` becomes `true`, clients in the waiting room auto-navigate to `/game/:id`; the room owner still navigates immediately on successful `game:start`.
-- Added a small web-side navigation helper test for the route decision.
-- Verification: `node --experimental-strip-types --test apps/web/src/lib/room-navigation.test.ts` passed and `pnpm --filter @aipoker/web typecheck` passed.
-- Investigated the table animation complaints with the required frontend/game testing workflow; found that the biggest remaining rough edges were mechanical hole-card dealing order and the end-of-hand footer competing visually with the showdown overlay.
-- Added pure helpers/tests for seat deal order, second-pass hole-card delay, and result-phase timing in `apps/web/src/lib/table-animation.ts`.
-- Updated the table to deal from the seat after the button using occupied-seat order instead of raw `seatIndex`, and to base the second card pass on active player count rather than max seats.
-- Shortened the announcing phase and lengthened the reveal linger (`1200ms` to reveal, `3800ms` to done) so the pot transfer resolves sooner and the showdown/result emphasis has more screen time.
-- Suppressed the next-hand/table-finished footer panels while the result overlay is active, replacing them with a neutral "正在播放结算动画" status pill to avoid abrupt stacked UI.
-- Browser verification on the rebuilt production frontend (`http://127.0.0.1:3100` against backend `3101`) confirmed: opponents stay face-down at `announce-start`, flip during reveal, the footer no longer jumps straight to champion/next-hand UI during the overlay, and the overlay eventually dismisses before the footer panel appears.
-- Verification: `node --experimental-strip-types --test apps/web/src/lib/table-animation.test.ts apps/web/src/lib/room-navigation.test.ts` passed, `pnpm --filter @aipoker/web typecheck` passed, `NEXT_PUBLIC_SERVER_URL=http://127.0.0.1:3101 pnpm --filter @aipoker/web build` passed, and live Playwright sampling on the rebuilt app matched the intended animation sequence.
-- Follow-up fix for result leakage: traced the user-reported “牌还没开完就被 modal 告知输赢” issue to `WinnerAnnouncement` rendering during `handResult.phase === 'announcing'`, with additional early leakage from winner badges, pot-award animation, and winner stacks.
-- Added regression coverage for phase-gated result presentation and temporary announcing-stack masking in `apps/web/src/lib/table-animation.test.ts`.
-- Updated the game page/table to keep `announcing` neutral: no winner modal, no winner badges/highlights, no pot-award animation, and no awarded chips added to seat stacks until `showing`.
-- Browser verification on the rebuilt frontend confirmed `announce-start` now shows only the neutral “正在播放结算动画” state with unrevealed winners and pre-award stacks, while `showing` is the first point where the modal and final winner stack appear.
-- New create-room regression pass:
-- Reproduced the current “输入名字后无法创建房间” report and found two separate blockers along the real flow.
-- First blocker: after `fix(web): align socket join flow with guest session state`, the frontend correctly resolved local dev API URLs to `127.0.0.1:3001` when opened from `127.0.0.1:3000`, but the server still hard-coded HTTP CORS to `http://localhost:3000`, so guest-session bootstrap failed before room creation.
-- Added a server regression test in `apps/server/src/tests/integration/http/auth-http.test.ts` that exercises the `OPTIONS /api/auth/guest` preflight for `Origin: http://127.0.0.1:3000`, then updated `apps/server/src/index.ts` to reflect allowed local-dev origins dynamically instead of always replying with `localhost`.
-- Second blocker surfaced only after the CORS fix let navigation continue: entering `/room/[id]` crashed because `apps/web/src/hooks/useSocketSession.ts` used `useEffectEvent`, which the current client runtime did not expose consistently on the room route.
-- Replaced the `useEffectEvent` usage with stable ref-backed callback holders so the socket/session hook keeps the same behavior without relying on that runtime export.
-- Verification:
-- `node --experimental-strip-types --test src/tests/integration/http/auth-http.test.ts` passed under `apps/server`.
-- `pnpm --filter @aipoker/server typecheck` passed.
-- `pnpm --filter @aipoker/web typecheck` passed.
-- Browser verification on an isolated pair (`web 3012` -> `server 3002`) confirmed the full flow: home page button enables after typing, create-room click succeeds, guest session initializes, and the app lands on `/room/<code>?intent=join` with the creator seated and connected.
-- New room-ownership / host-control pass:
-- Added a persistent `ownerId` to room state, transferred ownership when the current host fully leaves the waiting room, and restricted `game:start` to the current room owner only.
-- Aligned the room-page state model with server truth so “all humans ready” only counts stack-positive humans; this keeps the owner able to start the next hand from the rail after busting while still blocking guests from starting.
-- Found and closed a related permission hole: guests could still add or remove Bots, so bot configuration is now owner-only in both the websocket handlers and the waiting-room UI.
-- Full-suite regression surfaced one more room-lifecycle bug: if the last human left right after `hand_end`, the room could transition into bots-only continuation without rescheduling the auto-next-hand timer. Fixed that in the room event handler so bots-only tables keep advancing even when the host disconnects between hands.
-- Added regression coverage for host-only start, ownership transfer, and owner-only bot management in the realtime tests, plus updated room-page state tests for owner-aware start gating.
-- Verification:
-- `pnpm --filter @aipoker/server test` now passes with `79` passing tests after the new ownership/bot-control regressions.
-- `pnpm --filter @aipoker/server typecheck` passed.
-- `pnpm --filter @aipoker/web typecheck` passed.
-- `node --experimental-strip-types --test apps/web/src/features/room/lib/room-page-state.test.ts apps/web/src/features/room/lib/room-socket-state.test.ts apps/web/src/features/room/lib/room-navigation.test.ts` passed.
-- Live browser verification on `web 3010` -> `server 3011` confirmed: host create button enables normally, guests see “只有房主可以开始游戏” and “仅房主可配置”, guests can ready but cannot start, and once the host starts, both contexts auto-navigate from `/room/<code>` to `/game/<code>` with no browser console errors.
+- Loaded and applied required workflow skills: brainstorming, executing-plans, using-git-worktrees, test-driven-development, fullstack-developer, develop-web-game.
+- Current workspace is already on isolated branch `codex/main-b`; continuing in-place to keep work visible in the user's IDE.
+- RED phase complete:
+  - Added `packages/strategy-engine/src/index.test.ts`
+  - Expanded `apps/web/src/features/game/lib/game-screen-state.test.ts`
+  - Confirmed failures:
+    - missing `packages/strategy-engine/src/index.ts`
+    - `getGameScreenState` still emits only thin training data
+- GREEN phase 1 complete:
+  - Added `@aipoker/strategy-engine` workspace package scaffold and installed workspace links
+  - Implemented deterministic training analysis APIs:
+    - `evaluatePreflopPercentile`
+    - `createStableAnalysisRng`
+    - `analyzeTrainingSpot`
+    - shared pot-odds / required-equity helpers
+  - Added `apps/web/src/features/game/lib/training-analysis.ts`
+  - `getGameScreenState` now emits rich `trainingData` on hero turn and static `position + strength` off-turn
+  - Targeted tests passing:
+    - `packages/strategy-engine/src/index.test.ts`
+    - `apps/web/src/features/game/lib/game-screen-state.test.ts`
+- GREEN phase 2 complete:
+  - Added HUD state helpers in `apps/web/src/components/game/hud/training-hud-state.ts`
+  - `TrainingHUD` now renders street-aware strength, deterministic suggestion copy, and detail lines from shared analysis data
+  - `GameSidebar` no longer recomputes pot odds locally; HUD consumes fully derived `trainingData`
+- Refactor complete:
+  - `packages/bot-engine/src/index.ts` is now a facade over `@aipoker/strategy-engine`
+  - Shared strategy code lives in one place; bot tests still pass
+- Docs synced:
+  - `Docs/game-design/ui-spec.md`
+  - `Docs/game-design/bot-roadmap.md`
+  - `Docs/architecture/tech-architecture.md`
+- Verification evidence:
+  - `pnpm typecheck` ✅
+  - `pnpm build` ✅
+  - `pnpm test` ✅
+  - `pnpm lint` ✅ (existing web warnings remain, 0 errors)

@@ -130,20 +130,25 @@ interface Phase2BotConfig {
 此模块同时被 Bot 和训练 HUD 使用：
 
 ```typescript
-// packages/game-engine/src/hand-evaluator.ts
+// packages/strategy-engine/src/index.ts
 
 /** Preflop 手牌排名 */
-function evaluatePreflopStrength(holeCards: [Card, Card]): number; // 0-1
+function evaluatePreflopPercentile(holeCards: [Card, Card]): number; // 0-1, 0.08 = Top 8%
 
 /** Postflop equity：Monte Carlo N次模拟 */
-function estimateEquity(
-  holeCards: [Card, Card],
-  communityCards: Card[],
-  numOpponents: number,
-  simulations: number,  // 默认 1000
-  rng: Rng,
-): number; // 0-1
+function analyzePostflop(context: BotDecisionContext, rng: Rng): PostflopAnalysis;
+
+/** HUD / 教练模式：确定性建议 */
+function analyzeTrainingSpot(
+  context: BotDecisionContext,
+  options?: { personality?: 'tag'; includeRecommendation?: boolean },
+): TrainingAnalysis;
 
 /** 7-card hand ranking（Cactus Kev 或等价算法）*/
 function evaluateHand(cards: Card[]): HandRank;
 ```
+
+当前实现约束：
+- `strategy-engine` 是 Bot 与 Training HUD 的共享策略核心。
+- `bot-engine` 保持为对外 Bot API facade，继续承接现有 bot 测试和 server 依赖。
+- HUD 使用固定种子的 deterministic analysis，不直接复用 bot 的随机动作采样。

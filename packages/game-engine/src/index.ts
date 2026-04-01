@@ -5,6 +5,7 @@ export type {
   EngineResult,
   HandInitPlayerInput,
   HandInitPlayerState,
+  HandActionRecord,
   HandPhase,
   HandState,
   InitializeHandError,

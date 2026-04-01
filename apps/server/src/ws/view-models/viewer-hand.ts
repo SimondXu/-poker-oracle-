@@ -1,4 +1,4 @@
-import type { HandPhase, HandState as EngineHandState } from '@aipoker/game-engine';
+import type { HandActionRecord, HandPhase, HandState as EngineHandState } from '@aipoker/game-engine';
 import type { Card, GameAction, HandState as ClientHandState, Phase } from '@aipoker/shared';
 
 import type { RuntimeRoom } from '../../rooms/types.ts';
@@ -30,24 +30,33 @@ function inferMaxSeats(room: RuntimeRoom): number {
   return Math.max(2, highestSeat + 1);
 }
 
-function buildActions(hand: EngineHandState, room: RuntimeRoom): GameAction[] {
-  return hand.actions.map((action, index) => {
-    const roomPlayer = room.players.get(action.playerId);
-    const handPlayer = hand.players.find((player) => player.id === action.playerId);
+export function buildClientAction(
+  hand: EngineHandState,
+  room: RuntimeRoom,
+  action: HandActionRecord,
+  index: number
+): GameAction {
+  const roomPlayer = room.players.get(action.playerId);
+  const handPlayer = hand.players.find((player) => player.id === action.playerId);
 
-    return {
-      playerId: action.playerId,
-      playerName: roomPlayer?.name ?? action.playerId,
-      seatIndex: roomPlayer?.seatIndex ?? handPlayer?.seatIndex ?? -1,
-      phase: mapPhase(action.phase),
-      type: action.type,
-      amount: action.amount,
-      stackBefore: 0,
-      potTotalBefore: 0,
-      sequenceNum: index + 1,
-      timestamp: index + 1
-    };
-  });
+  return {
+    playerId: action.playerId,
+    playerName: roomPlayer?.name ?? action.playerId,
+    seatIndex: roomPlayer?.seatIndex ?? handPlayer?.seatIndex ?? -1,
+    phase: mapPhase(action.phase),
+    type: action.type,
+    amount: action.amount,
+    addedAmount: action.addedAmount,
+    toAmount: action.toAmount,
+    stackBefore: action.stackBefore,
+    potTotalBefore: action.potTotalBefore,
+    sequenceNum: index + 1,
+    timestamp: action.timestamp
+  };
+}
+
+function buildActions(hand: EngineHandState, room: RuntimeRoom): GameAction[] {
+  return hand.actions.map((action, index) => buildClientAction(hand, room, action, index));
 }
 
 function visibleHoleCards(

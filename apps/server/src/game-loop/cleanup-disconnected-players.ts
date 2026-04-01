@@ -4,7 +4,6 @@ import type { RoomActionTimeouts } from './action-timeout.ts';
 import { clearRoomActionTimeout } from './action-timeout.ts';
 import type { RoomNextHandTimeouts } from './auto-next-hand.ts';
 import { clearRoomNextHandTimeout } from './auto-next-hand.ts';
-import { syncRoomOwner } from '../rooms/room-store.ts';
 import type { RuntimeRoom } from '../rooms/types.ts';
 import { emitRoomState } from '../ws/emitters.ts';
 
@@ -26,7 +25,6 @@ export function cleanupDisconnectedPlayersAfterHandEnd(
   }
 
   room.pendingDisconnectPlayerIds.clear();
-  syncRoomOwner(room);
 
   if (room.players.size === 0) {
     clearRoomActionTimeout(roomActionTimeouts, room.id);

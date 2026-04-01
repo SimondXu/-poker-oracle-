@@ -87,6 +87,7 @@ export default function RoomPage({ params }: RoomPageProps) {
   }, [roomId, roomState?.isPlaying, router]);
 
   const pageState = getRoomPageState(roomState, playerId);
+  const readyHumanCount = pageState.humanPlayers.filter((player) => player.isReady).length;
   const playerBySeat = useMemo(
     () => new Map(roomState?.players.map((player) => [player.seatIndex, player]) ?? []),
     [roomState?.players],
@@ -191,7 +192,7 @@ export default function RoomPage({ params }: RoomPageProps) {
               </div>
               {!roomState?.isPlaying && (
                 <span className="hidden rounded-full border border-white/12 bg-white/[0.03] px-3 py-1 text-[12px] text-[var(--color-text-muted)] sm:inline-flex">
-                  {pageState.isOwner ? '点击空位添加机器人' : '等待房主配置座位'}
+                  点击空位添加机器人
                 </span>
               )}
             </div>
@@ -204,7 +205,6 @@ export default function RoomPage({ params }: RoomPageProps) {
                   player={playerBySeat.get(seatIndex) ?? null}
                   currentUserId={playerId}
                   isPlaying={roomState?.isPlaying ?? false}
-                  canManageBots={pageState.isOwner}
                   onAddBot={addBot}
                   onRemoveBot={removeBot}
                 />
@@ -215,7 +215,7 @@ export default function RoomPage({ params }: RoomPageProps) {
           <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
             <RoomStatusCard
               playerCount={roomState?.playerCount ?? 0}
-              readyCount={pageState.readyHumanCount}
+              readyCount={readyHumanCount}
               activeStackPlayerCount={pageState.activeStackPlayerCount}
               isPlaying={roomState?.isPlaying ?? false}
             />
@@ -224,7 +224,6 @@ export default function RoomPage({ params }: RoomPageProps) {
               isPlaying={roomState?.isPlaying ?? false}
               isConnected={isConnected}
               isReady={isReady}
-              isOwner={pageState.isOwner}
               canSelfStart={pageState.canSelfStart}
               canStart={pageState.canStart}
               hasEnoughPlayers={pageState.hasEnoughPlayers}

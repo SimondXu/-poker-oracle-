@@ -1,10 +1,18 @@
-import type { ActionType, HandState, ValidActions } from '@aipoker/shared';
-import { getPositionName } from '../../../lib/utils.ts';
+import type { HandState, ValidActions } from '@aipoker/shared';
 import type { HandResult } from '../../../stores/gameStore.ts';
-import { shouldAnimatePotAward, shouldRevealShowdownCards, shouldShowWinnerAnnouncement } from './table-animation.ts';
+import {
+  getPositionLabelForSeat,
+  getTrainingData,
+  type GameTrainingData,
+} from './training-analysis.ts';
+import {
+  shouldAnimatePotAward,
+  shouldRevealShowdownCards,
+  shouldShowWinnerAnnouncement,
+  shouldShowWinnerIdentity,
+} from './table-animation.ts';
 
 export type EliminatedDecision = 'pending' | 'spectating' | null;
-export type TrainingSuggestion = Extract<ActionType, 'check' | 'call'>;
 export type GameFooterMode =
   | 'actions'
   | 'eliminated-choice'
@@ -24,13 +32,14 @@ export interface GameScreenState {
   isEliminatedSpectating: boolean;
   isResultPresentationActive: boolean;
   shouldRevealOutcome: boolean;
+  shouldHighlightWinners: boolean;
   shouldShowResultModal: boolean;
   shouldRunAwardAnimation: boolean;
   pot: number;
   championStack: number | null;
   winnerBestCardsByPlayer: Record<string, string[]>;
   payoutAmountsByPlayer: Record<string, number>;
-  trainingData: { position?: string; suggestion?: TrainingSuggestion } | undefined;
+  trainingData: GameTrainingData | undefined;
 }
 
 interface GetGameScreenStateInput {
@@ -49,11 +58,7 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
   );
   const canCurrentUserStartNextHand = Boolean(input.handResult?.table.canStartNextHand) && isCurrentUserActiveStackPlayer;
   const currentSeat = currentPlayer?.seatIndex;
-  const tableSeats = input.hand?.maxSeats ?? 6;
-  const positionLabel =
-    input.hand && currentSeat !== undefined
-      ? getPositionName(currentSeat, input.hand.buttonMarkerSeat, tableSeats)
-      : undefined;
+  const positionLabel = getPositionLabelForSeat(input.hand, currentSeat);
 
   const isMyTurn = input.validActions !== null && currentSeat === input.hand?.currentActorSeat;
   const isTableFinished = Boolean(input.handResult?.table.isTableFinished);
@@ -61,6 +66,7 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
   const isEliminatedSpectating = input.eliminatedDecision === 'spectating' && !isCurrentUserActiveStackPlayer && !isTableFinished;
   const isResultPresentationActive = Boolean(input.handResult && input.handResult.phase !== 'done');
   const shouldRevealOutcome = shouldRevealShowdownCards(input.handResult?.phase);
+  const shouldHighlightWinners = shouldShowWinnerIdentity(input.handResult?.phase);
   const shouldShowResultModal = shouldShowWinnerAnnouncement(input.handResult?.phase);
   const shouldRunAwardAnimation = shouldAnimatePotAward(input.handResult?.phase);
 
@@ -83,17 +89,12 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     payoutAmountsByPlayer[payout.playerId] = payout.amount;
   }
 
-  const trainingData =
-    isMyTurn && input.validActions
-      ? {
-          ...(positionLabel ? { position: positionLabel } : {}),
-          ...(input.validActions.canCheck
-            ? { suggestion: 'check' as const }
-            : input.validActions.canCall
-              ? { suggestion: 'call' as const }
-              : {}),
-        }
-      : undefined;
+  const trainingData = getTrainingData({
+    currentUserId: input.currentUserId,
+    hand: input.hand,
+    validActions: input.validActions,
+    isMyTurn,
+  });
 
   return {
     currentPlayer,
@@ -104,6 +105,7 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     isEliminatedSpectating,
     isResultPresentationActive,
     shouldRevealOutcome,
+    shouldHighlightWinners,
     shouldShowResultModal,
     shouldRunAwardAnimation,
     pot,
@@ -112,6 +114,16 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     payoutAmountsByPlayer,
     trainingData,
   };
+}
+
+export function canAdvanceToNextHand(input: {
+  handPhase: HandState['phase'] | null;
+  handResultPhase: HandResult['phase'] | null;
+  canCurrentUserStartNextHand: boolean;
+}): boolean {
+  return input.handPhase === 'hand_end'
+    && input.handResultPhase === 'done'
+    && input.canCurrentUserStartNextHand;
 }
 
 export function getGameFooterMode(input: {

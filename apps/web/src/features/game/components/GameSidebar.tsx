@@ -1,7 +1,7 @@
 'use client';
 
 import { ActionHistory, TrainingHUD } from '@/components/game/hud';
-import type { HandState, ValidActions } from '@aipoker/shared';
+import type { HandState } from '@aipoker/shared';
 import type { GameScreenState } from '../lib/game-screen-state';
 
 interface GameSidebarProps {
@@ -9,8 +9,6 @@ interface GameSidebarProps {
   isTrainingHUDVisible: boolean;
   isActionHistoryVisible: boolean;
   onToggleTrainingHUD: () => void;
-  validActions: ValidActions | null;
-  pot: number;
   trainingData: GameScreenState['trainingData'];
 }
 
@@ -19,8 +17,6 @@ export function GameSidebar({
   isTrainingHUDVisible,
   isActionHistoryVisible,
   onToggleTrainingHUD,
-  validActions,
-  pot,
   trainingData,
 }: GameSidebarProps) {
   return (
@@ -30,8 +26,6 @@ export function GameSidebar({
           <TrainingHUD
             isVisible={isTrainingHUDVisible}
             onToggle={onToggleTrainingHUD}
-            {...(validActions?.callAmount !== undefined ? { callAmount: validActions.callAmount } : {})}
-            potTotal={pot}
             {...(trainingData ? { data: trainingData } : {})}
             className="w-full"
           />

@@ -3,8 +3,9 @@
 import { memo, useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { cn, formatChips } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import type { GameAction } from '@aipoker/shared';
+import { getActionAmountDisplay } from './action-history-format';
 
 interface ActionHistoryProps {
   actions: GameAction[];
@@ -112,6 +113,7 @@ export const ActionHistory = memo(function ActionHistory({
                 <AnimatePresence>
                   {phaseActions.map((action) => {
                     const cfg = ACTION_LABELS[action.type] ?? { label: action.type, color: 'text-white' };
+                    const amountDisplay = getActionAmountDisplay(action);
                     return (
                       <motion.article
                         key={action.sequenceNum}
@@ -131,9 +133,15 @@ export const ActionHistory = memo(function ActionHistory({
                           <span className={cn('action-history__item-action text-[11px] font-semibold', cfg.color)}>
                             {cfg.label}
                           </span>
-                          {action.amount > 0 && (
+                          {amountDisplay && (
                             <div className="action-history__item-amount mt-0.5 font-chips text-[10px] text-[var(--color-gold)]">
-                              {formatChips(action.amount)}
+                              {amountDisplay.prefix ? `${amountDisplay.prefix} ` : ''}
+                              {amountDisplay.main}
+                            </div>
+                          )}
+                          {amountDisplay?.note && (
+                            <div className="action-history__item-amount-note mt-0.5 text-[9px] text-[var(--color-text-dim)]">
+                              {amountDisplay.note}
                             </div>
                           )}
                         </div>
