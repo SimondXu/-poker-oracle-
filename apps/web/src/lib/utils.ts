@@ -1,5 +1,17 @@
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+// Teach tailwind-merge the design tokens in globals.css; otherwise `text-body` is
+// mistaken for a text color and `cn('text-text-2', 'text-body')` drops the color.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ['micro', 'body', 'lead', 'label', 'value', 'title', 'display', 'kbd', 'input', 'seat-micro', 'seat-tag', 'seat-name', 'seat-amount', 'seat-stack', 'seat-pot'],
+      tracking: ['caps', 'caps-tight', 'caps-wide'],
+      spacing: ['hair', 'tight', 'snug', 'group', 'gutter', 'section', 'major'],
+    },
+  },
+});
 
 /** Tailwind 类名合并工具 */
 export function cn(...inputs: ClassValue[]) {
@@ -25,14 +37,6 @@ export function parseCard(card: string): { rank: string; suit: string } {
 export function isRedSuit(suit: string): boolean {
   return suit === 'h' || suit === 'd';
 }
-
-/** 花色 Unicode 符号 */
-export const SUIT_SYMBOLS: Record<string, string> = {
-  h: '♥',
-  d: '♦',
-  c: '♣',
-  s: '♠',
-};
 
 /** 牌面 Rank 显示（T → 10） */
 export function displayRank(rank: string): string {

@@ -58,3 +58,35 @@ export function describeBestHand(holeCards: readonly string[], boardCards: reado
   }
   return describeRankVector(evaluateBestSevenCards(cards as Card[]).rank);
 }
+
+/** Hand category key for translated labels (`table.hand.<key>`). */
+export type HandCategoryKey =
+  | 'highCard'
+  | 'pair'
+  | 'twoPair'
+  | 'trips'
+  | 'straight'
+  | 'flush'
+  | 'fullHouse'
+  | 'quads'
+  | 'straightFlush'
+  | 'royalFlush';
+
+const CATEGORY_KEYS: readonly HandCategoryKey[] = [
+  'highCard', 'pair', 'twoPair', 'trips', 'straight', 'flush', 'fullHouse', 'quads', 'straightFlush',
+];
+
+export function getRankVectorCategory(rank: readonly (number | undefined)[]): HandCategoryKey {
+  const [category, high] = rank;
+  if (category === 8 && high === 14) return 'royalFlush';
+  return CATEGORY_KEYS[category ?? 0] ?? 'highCard';
+}
+
+/** Best-hand category from hole + board cards, or null with fewer than 5 cards. */
+export function getBestHandCategory(holeCards: readonly string[], boardCards: readonly string[]): HandCategoryKey | null {
+  const cards = [...holeCards, ...boardCards];
+  if (cards.length < 5) {
+    return null;
+  }
+  return getRankVectorCategory(evaluateBestSevenCards(cards as Card[]).rank);
+}

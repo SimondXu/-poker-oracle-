@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { describeBestHand, describeRankVector } from './hand-name.ts';
+import { describeBestHand, describeRankVector, getBestHandCategory } from './hand-name.ts';
 
 test('describeBestHand names every category from real cards', () => {
   const board = ['Kd', '7c', '2h', '9s', '4d'];
@@ -21,4 +21,14 @@ test('describeBestHand needs five cards; describeRankVector tolerates odd input'
   assert.equal(describeBestHand(['Ah', 'Kh'], ['2c', '3d']), null);
   assert.equal(describeBestHand(['Ah', 'Kh'], ['2c', '3d', '9s']), 'Ace High');
   assert.equal(describeRankVector([0]), '? High');
+});
+
+test('getBestHandCategory returns the category key', () => {
+  const board = ['Kd', '7c', '2h', '9s', '4d'];
+  assert.equal(getBestHandCategory(['Ah', 'Js'], board), 'highCard');
+  assert.equal(getBestHandCategory(['Kh', '7s'], board), 'twoPair');
+  assert.equal(getBestHandCategory(['Kh', 'Ks'], ['Kd', '7c', '7h', '9s', '4d']), 'fullHouse');
+  assert.equal(getBestHandCategory(['Th', 'Jh'], ['Qh', 'Kh', 'Ah', '2c', '3d']), 'royalFlush');
+  assert.equal(getBestHandCategory(['6h', '7h'], ['8h', '9h', 'Th', '2c', '3d']), 'straightFlush');
+  assert.equal(getBestHandCategory(['Ah', 'Kh'], ['2c', '3d']), null);
 });

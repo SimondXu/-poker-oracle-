@@ -1,330 +1,343 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════
-   AiPoker Design System — Table UI v2 (PokerNow-style, flat)
-   Spec: Docs/game-design/table-ui-v2.md
+   AiPoker — "Card-Room Print"
+   The table set like a premium printed deck: two inks (navy + vermilion),
+   engraved line (brass hairlines, guilloche), index typography (Barlow
+   Condensed). Direction contract: .impeccable/surfaces/src-app-game-id-page-tsx.md
+
+   Rules of the world
+   - Every neutral comes from the ink ramp (ink-0 … ink-10). Use the
+     semantic aliases (page, panel, line, text …) in components.
+   - Vermilion is the single loud ink: to-act, raise, error. Nothing else.
+   - Ivory card stock appears only on playing cards and seat plates.
+   - Brass is for hairlines, the dealer disc and the winner rule.
    ═══════════════════════════════════════════════════════════ */
 
-@theme {
-  /* ── Fonts (Manrope via next/font; numbers use tabular-nums) ── */
-  --font-sans: var(--font-ui), "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
-  --font-mono: var(--font-code), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-display: var(--font-brand), "Songti SC", "Noto Serif SC", serif;
+@theme static {
+  /* ── Fonts (next/font in app/layout.tsx sets --font-ui / --font-barlow) ──
+     font-sans  = quiet UI face for prose.
+     font-index = condensed index face for every number and label
+                  (utility below also turns on tabular, lining numerals). */
+  --font-sans: var(--font-ui), "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
 
-  /* ── Surfaces ── */
-  --color-page:    #1d1e22;   /* page background */
-  --color-panel:   #26282d;   /* side panel, top bar, action bar */
-  --color-panel-2: #30333a;   /* inputs, hover, tabs */
-  --color-line:    #3a3d44;   /* 1px borders */
+  /* ── Ink ramp: one tinted neutral scale, navy → warm ivory ── */
+  --color-ink-0: #0b1120;
+  --color-ink-1: #0f1524;
+  --color-ink-2: #141c2e;
+  --color-ink-3: #1b2640;
+  --color-ink-4: #2a3654;
+  --color-ink-5: #44506b;
+  --color-ink-6: #606a82;
+  --color-ink-7: #7d869a;
+  --color-ink-8: #a2a6b1;
+  --color-ink-9: #c9c7c1;
+  --color-ink-10: #ece7db;
+
+  /* ── Semantic neutrals (aliases on the ramp) ── */
+  --color-page: var(--color-ink-2);    /* page + stage ground */
+  --color-panel: var(--color-ink-1);   /* top bar, rail, side panel, action bar */
+  --color-panel-2: var(--color-ink-3); /* raised control, hover, selected tab */
+  --color-line: var(--color-ink-3);    /* 1px dividers on panel */
+  --color-line-2: var(--color-ink-4);  /* control borders, stronger rules */
+  --color-text: var(--color-ink-10);   /* primary text (14.8:1 on panel) */
+  --color-text-2: var(--color-ink-8);  /* secondary text (7.4:1 on panel) */
+  --color-text-3: var(--color-ink-7);  /* labels, hints (5.0:1 on panel, 4.1:1 on panel-2) */
 
   /* ── Table ── */
-  --color-rail:    #3a3c41;
-  --color-felt:    #2f8f46;
-  --color-felt-hi: #37a051;   /* felt center lighten */
-  --color-plate:      #f3f4f6; /* seat name plate */
-  --color-plate-text: #1d1e22;
-  --color-chip:    #f2d94e;   /* bet bubble */
+  --color-felt: #1d4a3c;
+  --color-felt-deep: #163b2f;
+  --color-rail: #0f2a21;
 
-  /* ── Cards (4-color deck) ── */
-  --color-card:      #ffffff;
-  --color-card-back: #e0645c;
-  --color-suit-s: #1d1e22;
-  --color-suit-h: #d63c3c;
-  --color-suit-d: #2f6fd6;
-  --color-suit-c: #2a8f3e;
+  /* ── Vermilion: the one loud ink ── */
+  --color-vermilion: #c8372d;     /* to-act ring, timer, raise button, all-in stamp, error */
+  --color-vermilion-hi: #e5584c;  /* vermilion text on navy (5.1:1 on panel), hover */
+  --color-vermilion-ink: #a8281f; /* vermilion text on ivory (6.0:1) */
 
-  /* ── Text tiers ── */
-  --color-text:   #eceef1;
-  --color-text-2: #a9adb6;
-  --color-text-3: #6f747e;
+  /* ── Ivory card stock (playing cards + seat plates only) ── */
+  --color-ivory: #f2ece0;
+  --color-ivory-shade: #d6cab0;  /* inner printed rule on plates */
+  --color-ivory-edge: #cdbf9f;   /* outer card/plate edge */
+  --color-on-ivory: var(--color-ink-2); /* text on ivory (14.5:1) */
+  --color-on-ivory-2: #6b6450;          /* secondary text on ivory (5.0:1) */
 
-  /* ── Actions ── */
-  --color-accent: #2f8f46;    /* primary CTA */
-  --color-fold:   #c94a4a;
-  --color-call:   #2f6fd6;
-  --color-raise:  #2f8f46;
-  --color-timer:     #f2d94e;
-  --color-timer-low: #c94a4a; /* timer under 25% remaining */
+  /* ── Brass: hairlines, dealer disc, winner rule ── */
+  --color-brass: #b89a5e;  /* 6.8:1 on panel; use brass/35 etc. for hairlines */
 
-  /* ── Radii: 6px panels/buttons, 8px cards, full for chips/pills ── */
-  --radius-panel: 6px;
-  --radius-card:  8px;
+  /* ── Four-color deck ── */
+  --color-suit-spade: var(--color-ink-2);
+  --color-suit-heart: var(--color-vermilion);
+  --color-suit-diamond: #2a5db0;
+  --color-suit-club: #1f7a4a;
 
-  /* ── One soft shadow, cards and plate only ── */
-  --shadow-card:  0 1px 3px rgba(0, 0, 0, 0.35);
-  --shadow-plate: 0 1px 3px rgba(0, 0, 0, 0.35);
+  /* ── State colors, only where the state itself is the message ── */
+  --color-caution: #d9a441;  /* connecting / reconnecting */
+  --color-positive: #5aa77a; /* connected, equity clears the price */
+  --color-error: var(--color-vermilion-hi);
 
-  /* ── Motion (≤200ms) ── */
-  --duration-fast:   120ms;
+  /* ── Radii ── */
+  --radius-stamp: 2px;   /* printed tags and stamps */
+  --radius-control: 4px; /* buttons, inputs, sizing chips */
+  --radius-panel: 6px;   /* panels, seat plates, popovers */
+  --radius-card: 0.24em; /* playing cards (em of the card's own font-size) */
+
+  /* ── Depth: offset + soft blur, no halos. Cards and plates only; float for popovers. ── */
+  --shadow-card: 0 0.05em 0.1em rgb(5 8 16 / 0.35), 0 0.16em 0.4em -0.06em rgb(5 8 16 / 0.45);
+  --shadow-plate: 0 2px 3px rgb(5 8 16 / 0.32), 0 6px 14px -4px rgb(5 8 16 / 0.5);
+  --shadow-float: 0 2px 6px rgb(5 8 16 / 0.4), 0 12px 28px -8px rgb(5 8 16 / 0.6);
+
+  /* ── Motion (≤200ms, ease-out family) ── */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --duration-fast: 120ms;
   --duration-normal: 180ms;
 
-  /* ── legacy aliases — remove after migration ──
-     Old "Private Room" names, re-pointed to the closest flat v2 values so
-     not-yet-migrated pages (home, room, components/game/**) still render. */
-  --color-bg-deep:     #1d1e22;
-  --color-bg-primary:  #1d1e22;
-  --color-bg-surface:  #26282d;
-  --color-bg-elevated: #30333a;
-  --color-bg-overlay:  rgba(29, 30, 34, 0.92);
-  --color-felt-light:  #37a051;
-  --color-felt-mid:    #2f8f46;
-  --color-felt-dark:   #2f8f46;
-  --color-rail-light:  #3a3c41;
-  --color-rail-dark:   #3a3c41;
-  --color-table-border: #3a3c41;
-  --color-gold:        #f2d94e;
-  --color-gold-muted:  #d9c247;
-  --color-gold-dim:    rgba(242, 217, 78, 0.15);
-  --color-gold-glow:   rgba(242, 217, 78, 0.25);
-  --color-text-primary:   #eceef1;
-  --color-text-secondary: #a9adb6;
-  --color-text-muted:     #6f747e;
-  --color-text-dim:       #6f747e;
-  --color-error:       #c94a4a;
-  --color-error-dim:   rgba(201, 74, 74, 0.15);
-  --color-success:     #2f8f46;
-  --color-success-dim: rgba(47, 143, 70, 0.15);
-  --color-warning:     #e0a03a;
-  --color-info:        #2f6fd6;
-  --color-chip-white:  #f3f4f6;
-  --color-chip-red:    #c94a4a;
-  --color-chip-blue:   #2f6fd6;
-  --color-chip-green:  #2f8f46;
-  --color-chip-black:  #1d1e22;
-  --color-chip-purple: #7d4fc9;
-  --color-glass:       #26282d;
-  --color-glass-heavy: #26282d;
-  --color-glass-border: #3a3d44;
-  --color-glass-border-strong: #3a3d44;
-  --shadow-panel:      none;
-  --shadow-float:      0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-glow-gold:  none;
-  --shadow-glow-green: none;
-  --shadow-glow-pulse: none;
-  --shadow-hairline:   inset 0 0 0 1px #3a3d44;
-  --duration-deal:   180ms;
-  --duration-flip:   180ms;
-  --duration-bet:    180ms;
-  --duration-win:    200ms;
-  --duration-slow:   200ms;
+  /* ── Type scale: chrome (top bar, rail, dock, panel) and lobby ──
+     Seven steps, one role each; the face (font-index / label-index / font-sans)
+     is chosen separately. Utilities: text-micro … text-display. Each sets
+     font-size + line-height, so put any leading-* AFTER it.
+     Exceptions: text-kbd (hint chips) and text-input (16px, the iOS no-zoom floor).
+     NOTE: src/lib/utils.ts `cn` must register these names with tailwind-merge
+     (theme.text), or `cn('text-text-2', 'text-body')` drops the color class. */
+  --text-micro: 11px;   /* tracked caps labels, stamps, stat labels (with label-index) */
+  --text-micro--line-height: 1;
+  --text-body: 13px;    /* UI prose: status, notes, log rows, captions, tabs */
+  --text-body--line-height: 1.5;
+  --text-lead: 15px;    /* names, emphasised prose, small index values */
+  --text-lead--line-height: 1.35;
+  --text-label: 18px;   /* control labels (Fold | Call 20 | Raise), wordmark, section heads */
+  --text-label--line-height: 1;
+  --text-value: 22px;   /* amounts and stats in the index face */
+  --text-value--line-height: 1;
+  --text-title: 28px;   /* page titles, coach suggestion, invite code */
+  --text-title--line-height: 1.05;
+  --text-display: 44px; /* coach strength, home headline (sm+), seated count (sm+) */
+  --text-display--line-height: 1.05;
+  --text-kbd: 10px;     /* exception: keyboard hint chips only */
+  --text-kbd--line-height: 1;
+  --text-input: 16px;   /* exception: text inputs (no iOS zoom) */
+  --text-input--line-height: 1.25;
+
+  /* ── Tracking for caps in the index face (inverse to size) ──
+     caps: micro labels; caps-tight: 15px+ caps (buttons, stamps, long labels);
+     caps-wide: wordmark and codes (Latin in every locale, so never relaxed). */
+  --tracking-caps: 0.16em;
+  --tracking-caps-tight: 0.1em;
+  --tracking-caps-wide: 0.24em;
+
+  /* ── Spacing rhythm: 4px base. Use the role names (p-gutter, gap-snug …) or the
+     matching numeric steps; avoid the half steps (1.5 / 2.5 / 3.5 = 6 / 10 / 14px).
+       hair 2    label ↔ its value inside one stat
+       tight 4   icon ↔ text, label ↔ value
+       snug 8    sibling controls (button ↔ button, preset ↔ preset), field ↔ its label
+       group 12  items inside a group (top-bar groups, form rows)
+       gutter 16 panel / page side inset, card padding, panel content top
+       section 24 between sections of one surface
+       major 32  between major blocks (not "block": it would collide with inline-block) */
+  --spacing-hair: 2px;
+  --spacing-tight: 4px;
+  --spacing-snug: 8px;
+  --spacing-group: 12px;
+  --spacing-gutter: 16px;
+  --spacing-section: 24px;
+  --spacing-major: 32px;
 }
 
-/* ── legacy utilities — remove after migration (flattened: no blur, no glow) ── */
-@utility glass {
-  background: var(--color-panel);
-  border: 1px solid var(--color-line);
+/* ── Table type scale (inside the stage) ──
+   The stage scales everything by its font-size; TableStage sets `--stage-em`
+   (px) on the stage box. `inline` so each utility evaluates --stage-em on the
+   element that uses it (a :root custom property would freeze the fallback).
+   Six steps in stage em, each with a readability floor:
+     seat-micro 0.62  plate labels (Stack, Folded), personality + blind stamps, pot label
+     seat-tag   0.78  action stamps, hand names, "Your turn", dealer D
+     seat-name  0.82  player names
+     seat-amount 0.92 bet amounts, winner payout
+     seat-stack 1.12  stacks (hero and opponents alike)
+     seat-pot   1.56  pot amount */
+@theme inline {
+  --text-seat-micro: max(11px, calc(var(--stage-em, 16px) * 0.62));
+  --text-seat-micro--line-height: 1;
+  --text-seat-tag: max(11px, calc(var(--stage-em, 16px) * 0.78));
+  --text-seat-tag--line-height: 1;
+  --text-seat-name: max(11px, calc(var(--stage-em, 16px) * 0.82));
+  --text-seat-name--line-height: 1.15;
+  --text-seat-amount: max(11px, calc(var(--stage-em, 16px) * 0.92));
+  --text-seat-amount--line-height: 1;
+  --text-seat-stack: max(12px, calc(var(--stage-em, 16px) * 1.12));
+  --text-seat-stack--line-height: 1;
+  --text-seat-pot: max(16px, calc(var(--stage-em, 16px) * 1.56));
+  --text-seat-pot--line-height: 1;
 }
 
-@utility glass-heavy {
-  background: var(--color-panel);
-  border: 1px solid var(--color-line);
+/* CJK has no letter-case; tracked caps spacing only loosens the glyphs.
+   label-index and tracking-caps / tracking-caps-tight relax under zh. */
+:root:lang(zh) {
+  --tracking-caps: 0.04em;
+  --tracking-caps-tight: 0.02em;
 }
 
-@utility seat-surface {
-  background: var(--color-panel);
-  box-shadow: var(--shadow-plate);
+/* Barlow Condensed with tabular lining numerals so stacks, bets and pots
+   line up and reconcile in columns. */
+@utility font-index {
+  font-family: var(--font-barlow), "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
-@utility seat-footer {
-  border-top: 1px solid var(--color-line);
-  background: var(--color-panel);
+/* Small-caps style label in the index face: uppercase, tracked. */
+@utility label-index {
+  font-family: var(--font-barlow), "PingFang SC", "Hiragino Sans GB", sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps, 0.16em);
+  font-weight: 600;
 }
 
-@utility text-gold {
-  color: var(--color-gold);
+/* Felt with a faint engraved guilloche: two offset rosettes of fine rings
+   plus radial spokes over a centered baize gradient. Pure CSS, no images. */
+@utility felt-guilloche {
+  background:
+    repeating-radial-gradient(circle at 41% 50%, transparent 0 13px, rgb(236 231 219 / 0.032) 13px 14px),
+    repeating-radial-gradient(circle at 59% 50%, transparent 0 13px, rgb(236 231 219 / 0.032) 13px 14px),
+    repeating-conic-gradient(from 0deg at 50% 50%, rgb(236 231 219 / 0.022) 0 0.5deg, transparent 0.5deg 5deg),
+    radial-gradient(ellipse at 50% 42%, color-mix(in oklab, var(--color-felt) 88%, var(--color-ink-10)) 0, var(--color-felt) 55%, var(--color-felt-deep) 100%);
 }
 
-@utility glow-gold {
-  box-shadow: none;
+/* Medallion double-rule frame: brass outer rule, ground gap, brass inner
+   rule, ground gap, faint third rule. Set background to the ground color. */
+@utility medallion-frame {
+  border: 1px solid var(--color-brass);
+  box-shadow:
+    inset 0 0 0 5px var(--medallion-ground, var(--color-ink-2)),
+    inset 0 0 0 6px rgb(184 154 94 / 0.7),
+    inset 0 0 0 9px var(--medallion-ground, var(--color-ink-2)),
+    inset 0 0 0 10px rgb(184 154 94 / 0.35);
 }
 
-@utility glow-green {
-  box-shadow: none;
+/* Engraved card back: navy field with a fine vermilion/ivory crosshatch,
+   double printed border (ivory rule, vermilion rule). Sized in em of the card. */
+@utility card-back-print {
+  background-color: var(--color-ink-3);
+  background-image:
+    repeating-linear-gradient(45deg, rgb(200 55 45 / 0.42) 0 1px, transparent 1px 0.22em),
+    repeating-linear-gradient(-45deg, rgb(236 231 219 / 0.16) 0 1px, transparent 1px 0.22em);
+  box-shadow:
+    inset 0 0 0 1px rgb(184 154 94 / 0.6),
+    inset 0 0 0 0.13em var(--color-ink-3),
+    inset 0 0 0 calc(0.13em + 1px) rgb(236 231 219 / 0.7),
+    inset 0 0 0 0.24em var(--color-ink-3),
+    inset 0 0 0 calc(0.24em + 1px) rgb(200 55 45 / 0.85),
+    var(--shadow-card);
 }
 
-@utility text-chips {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  letter-spacing: -0.02em;
-}
+/* ── Base ── */
+/* Base rules live in the base layer so Tailwind utilities (font-*, text-*, outline-*) win over them. */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-/* ── 基础样式 ── */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+  html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    color-scheme: dark;
+    scrollbar-color: var(--color-ink-5) var(--color-ink-1);
+  }
 
-html {
-  font-size: 16px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-page);
+    color: var(--color-text);
+    caret-color: var(--color-brass);
+    min-height: 100dvh;
+    line-height: 1.45;
+    font-variant-emoji: text;
+  }
 
-body {
-  font-family: var(--font-sans);
-  background: var(--color-page);
-  color: var(--color-text);
-  min-height: 100dvh;
-  line-height: 1.45;
-}
+  input,
+  button,
+  select,
+  textarea {
+    font: inherit;
+  }
 
-input,
-button,
-select,
-textarea {
-  font: inherit;
-}
+  a {
+    text-underline-offset: 0.2em;
+  }
 
-:focus-visible {
-  outline: 2px solid var(--color-chip);
-  outline-offset: 2px;
-}
+  /* ── Browser surfaces, themed from the palette ── */
+  :focus-visible {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 2px;
+  }
 
-.font-display {
-  font-family: var(--font-display);
-  letter-spacing: 0.02em;
-}
+  ::selection {
+    background: rgb(200 55 45 / 0.85);
+    color: var(--color-ivory);
+  }
 
-/* ── 数字/筹码字体特性 ── */
-.font-chips {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
-  letter-spacing: -0.02em;
+  ::placeholder {
+    color: var(--color-text-3);
+    opacity: 1;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-ink-1);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-5);
+    border: 2px solid var(--color-ink-1);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-6);
+  }
+  ::-webkit-scrollbar-corner {
+    background: var(--color-ink-1);
+  }
 }
 
 /* ══════════════════════════════════════════════
-   Keyframe 动画
+   Keyframes shared by the table
    ══════════════════════════════════════════════ */
 
-/* 当前行动者边框脉冲 */
-@keyframes seat-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
-  50%       { box-shadow: 0 0 0 8px rgba(255, 215, 0, 0); }
-}
-
-/* 赢牌金光闪耀 */
-@keyframes winner-glow {
-  0%   { box-shadow: 0 0 8px rgba(255, 215, 0, 0.5); }
-  50%  { box-shadow: 0 0 30px rgba(255, 215, 0, 0.9), 0 0 60px rgba(255, 215, 0, 0.4); }
-  100% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.5); }
-}
-
-/* 牌飞入动画 */
-@keyframes card-deal {
-  0%   { transform: translate(-50%, -100vh) rotate(-20deg) scale(0.5); opacity: 0; }
-  80%  { transform: translate(0, 0) rotate(2deg) scale(1.02); opacity: 1; }
-  100% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
-}
-
-/* 筹码投入动画 */
-@keyframes chip-bet {
-  0%   { transform: translateY(0) scale(1); opacity: 1; }
-  50%  { transform: translateY(-12px) scale(1.1); }
-  100% { transform: translateY(0) scale(1); opacity: 1; }
-}
-
-/* 计时器进度条颜色变化 */
-@keyframes timer-urgency {
-  0%   { background: var(--color-success); }
-  60%  { background: var(--color-warning); }
-  85%  { background: var(--color-error); }
-  100% { background: var(--color-error); }
-}
-
-/* 底池跳动（赢牌时） */
-@keyframes pot-collect {
-  0%   { transform: scale(1); }
-  30%  { transform: scale(1.15); }
-  60%  { transform: scale(0.95); }
-  100% { transform: scale(1); }
-}
-
-/* Table v2: card dealt from table center. Caller sets --deal-dx / --deal-dy
+/* Card dealt from table center. Caller sets --deal-dx / --deal-dy
    (offset from final position) and animation-delay. */
 @keyframes table-deal-in {
   from { transform: translate(var(--deal-dx, 0), var(--deal-dy, 0)) scale(0.6); opacity: 0; }
   to   { transform: translate(0, 0) scale(1); opacity: 1; }
 }
 
-/* Table v2: generic quick fade/slide-in for board cards, bets, tags. */
+/* Generic quick fade/slide-in for board cards, bets, tags. */
 @keyframes table-fade-in {
   from { opacity: 0; transform: translateY(-0.25em); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Table v2: turn timer drains left→right; turns red for the last 25%. Driven by
-   animation-duration = timer length and a negative delay = time already elapsed. */
+/* Turn timer drains left→right: brass, then vermilion for the last 25%.
+   Driven by animation-duration = timer length and a negative delay = time elapsed. */
 @keyframes table-timer-drain {
-  0%     { transform: scaleX(1); background: var(--color-timer); }
-  74.9%  { background: var(--color-timer); }
-  75%    { background: var(--color-timer-low); }
-  100%   { transform: scaleX(0); background: var(--color-timer-low); }
+  0%     { transform: scaleX(1); background: var(--color-brass); }
+  74.9%  { background: var(--color-brass); }
+  75%    { background: var(--color-vermilion); }
+  100%   { transform: scaleX(0); background: var(--color-vermilion); }
 }
 
-/* shimmer 骨架屏 */
-@keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
-}
-
-.shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-bg-surface) 0%,
-    var(--color-bg-elevated) 50%,
-    var(--color-bg-surface) 100%
-  );
-  background-size: 800px 100%;
-  animation: shimmer 1.5s infinite linear;
-}
-
-/* Bot 思考 dots */
+/* Bot thinking dots. */
 @keyframes thinking-dot {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40%           { transform: scale(1); opacity: 1; }
 }
 
-/* 折叠/淡出 */
-@keyframes fade-out-fold {
-  0%   { opacity: 1; transform: scale(1) rotate(0deg); }
-  100% { opacity: 0.3; transform: scale(0.9) rotate(-3deg); }
-}
-
-/* 淡入上移 */
-@keyframes fade-in-up {
-  0%   { opacity: 0; transform: translateY(8px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-/* 牌翻转 */
-@keyframes card-flip {
-  0%   { transform: rotateY(0deg); }
-  50%  { transform: rotateY(90deg); }
-  100% { transform: rotateY(0deg); }
-}
-
 /* ══════════════════════════════════════════════
-   Scrollbar 美化
-   ══════════════════════════════════════════════ */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-text-dim);
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
-}
-
-/* ══════════════════════════════════════════════
-   Radix UI Slider 样式
+   Radix UI Slider
    ══════════════════════════════════════════════ */
 [data-radix-slider-track] {
   background: var(--color-panel-2);
@@ -335,7 +348,7 @@ textarea {
 }
 
 [data-radix-slider-range] {
-  background: var(--color-accent);
+  background: var(--color-vermilion);
   border-radius: 9999px;
   position: absolute;
   height: 100%;
@@ -345,18 +358,20 @@ textarea {
   display: block;
   width: 16px;
   height: 16px;
-  background: var(--color-text);
+  background: var(--color-ivory);
   border-radius: 50%;
   cursor: pointer;
   border: 2px solid var(--color-panel);
-  transition: transform 120ms ease;
+  transition: transform 120ms var(--ease-out);
 }
 
-[data-radix-slider-thumb]:hover {
-  transform: scale(1.1);
+@media (hover: hover) and (pointer: fine) {
+  [data-radix-slider-thumb]:hover {
+    transform: scale(1.1);
+  }
 }
 
 [data-radix-slider-thumb]:focus-visible {
-  outline: 2px solid var(--color-chip);
+  outline: 2px solid var(--color-brass);
   outline-offset: 2px;
 }
