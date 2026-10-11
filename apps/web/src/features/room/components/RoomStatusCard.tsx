@@ -1,9 +1,8 @@
 'use client';
 
-import { Stat } from './Stat';
-
 interface RoomStatusCardProps {
   playerCount: number;
+  maxSeats: number;
   readyCount: number;
   activeStackPlayerCount: number;
   isPlaying: boolean;
@@ -11,30 +10,29 @@ interface RoomStatusCardProps {
 
 export function RoomStatusCard({
   playerCount,
+  maxSeats,
   readyCount,
   activeStackPlayerCount,
   isPlaying,
 }: RoomStatusCardProps) {
+  const rows: Array<[string, string]> = [
+    ['玩家数', `${playerCount} / ${maxSeats}`],
+    ['已准备', String(readyCount)],
+    ['有效筹码', String(activeStackPlayerCount)],
+    ['状态', isPlaying ? '游戏中' : '等待中'],
+  ];
+
   return (
-    <section
-      className="rounded-[24px] border border-white/12 bg-[rgba(10,18,30,0.85)] p-5 sm:p-6"
-      style={{ boxShadow: 'var(--shadow-panel), var(--shadow-hairline)' }}
-    >
-      <h2 className="text-[12px] uppercase tracking-[0.2em] text-[var(--color-text-muted)]">房间状态</h2>
-      <div className="mt-4 grid grid-cols-4 gap-2">
-        <Stat label="玩家数" value={playerCount} />
-        <Stat label="已准备" value={readyCount} color="var(--color-success)" />
-        <Stat label="有效筹码" value={activeStackPlayerCount} color="var(--color-gold)" />
-        <div className="text-center">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-muted)]">状态</div>
-          <div
-            className="mt-2 text-[17px] font-semibold"
-            style={{ color: isPlaying ? 'var(--color-gold)' : 'var(--color-text-secondary)' }}
-          >
-            {isPlaying ? '游戏中' : '等待中'}
+    <section aria-label="房间状态" className="border-b border-line p-4">
+      <h2 className="text-[12px] font-medium text-text-3">房间状态</h2>
+      <dl className="mt-2 divide-y divide-line text-[14px]">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between py-2">
+            <dt className="text-text-2">{label}</dt>
+            <dd className="font-medium tabular-nums text-text">{value}</dd>
           </div>
-        </div>
-      </div>
+        ))}
+      </dl>
     </section>
   );
 }

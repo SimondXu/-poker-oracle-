@@ -1,12 +1,12 @@
 'use client';
 
-import { use, useCallback, useEffect, useMemo, useRef } from 'react';
+import { use, useCallback, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { RoomControlsCard } from '@/features/room/components/RoomControlsCard';
-import { RoomSeatCard } from '@/features/room/components/RoomSeatCard';
+import { RoomInviteCard } from '@/features/room/components/RoomInviteCard';
+import { RoomTable } from '@/features/room/components/RoomTable';
 import { RoomStatusCard } from '@/features/room/components/RoomStatusCard';
 import { useRoomSocket, type RoomJoinIntent } from '@/features/room/hooks/useRoomSocket';
 import { getRoomPageState } from '@/features/room/lib/room-page-state';
@@ -88,10 +88,6 @@ export default function RoomPage({ params }: RoomPageProps) {
 
   const pageState = getRoomPageState(roomState, playerId);
   const readyHumanCount = pageState.humanPlayers.filter((player) => player.isReady).length;
-  const playerBySeat = useMemo(
-    () => new Map(roomState?.players.map((player) => [player.seatIndex, player]) ?? []),
-    [roomState?.players],
-  );
 
   const handleStartGame = useCallback(() => {
     startGame(navigateToGame);
@@ -106,121 +102,71 @@ export default function RoomPage({ params }: RoomPageProps) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-12 top-10 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-12 bottom-10 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-
-      <header className="sticky top-0 z-20 border-b border-white/6 bg-[var(--color-bg-deep)]/70 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1240px] items-center justify-between px-5 py-4 sm:px-8 sm:py-5">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <motion.button
-              whileHover={{ y: -1.5, scale: 1.015 }}
-              whileTap={{ scale: 0.98 }}
+    <div className="min-h-screen bg-page">
+      <header className="border-b border-line bg-panel">
+        <div className="mx-auto flex h-14 w-full max-w-[1240px] items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
               onClick={() => router.push('/')}
               aria-label="返回大厅"
-              className={cn(
-                'group relative flex h-10 items-center gap-2.5 overflow-hidden rounded-[12px] border px-3.5 sm:h-11',
-                'border-white/14 bg-[rgba(12,20,31,0.84)] text-[var(--color-text-secondary)]',
-                'transition-all duration-200',
-                'shadow-[var(--shadow-hairline),0_8px_18px_rgba(0,0,0,0.32)]',
-                'hover:border-[var(--color-gold)]/42 hover:bg-[rgba(16,25,38,0.9)] hover:text-[var(--color-text-primary)] hover:shadow-[var(--shadow-hairline),0_12px_24px_rgba(0,0,0,0.4)]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2d58a]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-deep)]',
-              )}
+              className="flex h-9 items-center gap-1.5 rounded-panel border border-line bg-panel-2 pl-2 pr-3 text-[13px] font-medium text-text hover:bg-line"
             >
-              <span className="pointer-events-none absolute inset-x-2 top-0 h-px bg-gradient-to-r from-transparent via-white/24 to-transparent" />
-              <span className="relative flex h-7 w-7 items-center justify-center rounded-[9px] border border-white/12 bg-white/[0.03] text-[var(--color-gold)] transition-all duration-200 group-hover:border-[var(--color-gold)]/35 group-hover:bg-[var(--color-gold)]/10">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M14.5 6.5L9 12L14.5 17.5"
-                    stroke="currentColor"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              <span className="relative text-[12px] font-semibold tracking-[0.08em] text-[var(--color-text-primary)] sm:text-[13px]">
-                返回大厅
-              </span>
-            </motion.button>
-
-            <div className="flex items-center gap-2">
-              <span className="text-lg text-[var(--color-gold)]">♠</span>
-              <span className="font-display text-[20px] leading-none text-[var(--color-text-primary)]">AiPoker</span>
-            </div>
-            <div className="h-5 w-px bg-white/10" />
-            <span className="hidden font-mono text-[12px] tracking-[0.08em] text-[var(--color-text-muted)] sm:inline">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M14.5 6.5L9 12L14.5 17.5"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              返回大厅
+            </button>
+            <span className="text-[16px] font-bold tracking-tight text-text">AiPoker</span>
+            <span className="hidden font-mono text-[13px] tracking-[0.1em] text-text-3 sm:inline">
               {roomId.slice(0, 14)}
-            </span>
-            <span className="hidden rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)] sm:inline-flex">
-              {initialIntent === 'create' ? '创建模式' : '加入模式'}
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <div
-              className={cn(
-                'h-2.5 w-2.5 rounded-full transition-colors',
-                isConnected ? 'bg-[var(--color-success)]' : 'bg-[var(--color-error)]',
-              )}
+          <div className="flex shrink-0 items-center gap-2">
+            <span
+              aria-hidden="true"
+              className={cn('h-2 w-2 rounded-full', isConnected ? 'bg-accent' : 'bg-fold')}
             />
-            <span className="hidden text-[13px] text-[var(--color-text-secondary)] sm:inline">
+            <span className="text-[13px] text-text-2" role="status">
               {isConnected ? '已连接' : '连接中…'}
             </span>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1240px] px-5 pb-10 pt-8 sm:px-8 sm:pb-12 lg:px-12 lg:pt-10">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
-          <div className="space-y-5">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <h1 className="font-display text-[38px] leading-[1.02] text-[var(--color-text-primary)] sm:text-[44px]">
-                  训练室配置
-                </h1>
-                <p className="mt-2 text-[15px] leading-[1.7] text-[var(--color-text-secondary)]">
-                  先安排玩家和机器人风格，开始前确保真人玩家全部准备。
-                </p>
-              </div>
-              {!roomState?.isPlaying && (
-                <span className="hidden rounded-full border border-white/12 bg-white/[0.03] px-3 py-1 text-[12px] text-[var(--color-text-muted)] sm:inline-flex">
-                  点击空位添加机器人
-                </span>
-              )}
+      <main className="mx-auto w-full max-w-[1240px] px-4 py-5 sm:px-6 sm:py-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+          <section aria-label="牌桌预览" className="rounded-panel border border-line bg-panel p-3 sm:p-5">
+            <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+              <h1 className="text-[16px] font-semibold text-text">等待室</h1>
+              {!roomState?.isPlaying && <span className="text-[12px] text-text-3">点击空位添加机器人</span>}
             </div>
+            <RoomTable
+              players={roomState?.players ?? []}
+              currentUserId={playerId}
+              isPlaying={roomState?.isPlaying ?? false}
+              onAddBot={addBot}
+              onRemoveBot={removeBot}
+            />
+          </section>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-              {Array.from({ length: MAX_SEATS }, (_, seatIndex) => (
-                <RoomSeatCard
-                  key={seatIndex}
-                  seatIndex={seatIndex}
-                  player={playerBySeat.get(seatIndex) ?? null}
-                  currentUserId={playerId}
-                  isPlaying={roomState?.isPlaying ?? false}
-                  onAddBot={addBot}
-                  onRemoveBot={removeBot}
-                />
-              ))}
-            </div>
-          </div>
-
-          <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          <aside className="rounded-panel border border-line bg-panel lg:sticky lg:top-5">
+            <RoomInviteCard roomId={roomId} />
             <RoomStatusCard
               playerCount={roomState?.playerCount ?? 0}
+              maxSeats={MAX_SEATS}
               readyCount={readyHumanCount}
               activeStackPlayerCount={pageState.activeStackPlayerCount}
               isPlaying={roomState?.isPlaying ?? false}
             />
             <RoomControlsCard
-              roomId={roomId}
               isPlaying={roomState?.isPlaying ?? false}
               isConnected={isConnected}
               isReady={isReady}
@@ -234,7 +180,7 @@ export default function RoomPage({ params }: RoomPageProps) {
               onEnterGame={handleEnterGame}
             />
           </aside>
-        </section>
+        </div>
       </main>
     </div>
   );

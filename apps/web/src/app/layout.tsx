@@ -24,8 +24,8 @@ const notoSerifSC = Noto_Serif_SC({
 });
 
 export const metadata = {
-  title: 'AiPoker — 专业德州训练室',
-  description: '系统性提升你的德州扑克水平',
+  title: 'AiPoker — 无限注德州扑克',
+  description: '和 AI 对手练习无限注德州扑克',
 };
 
 interface RootLayoutProps {

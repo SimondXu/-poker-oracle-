@@ -1,148 +1,151 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════
-   AiPoker Design System — "The Private Room"
-   深色、专业、精准——高端私人扑克训练室质感
+   AiPoker Design System — Table UI v2 (PokerNow-style, flat)
+   Spec: Docs/game-design/table-ui-v2.md
    ═══════════════════════════════════════════════════════════ */
 
 @theme {
-  /* ── 字体 ── */
+  /* ── Fonts (Manrope via next/font; numbers use tabular-nums) ── */
   --font-sans: var(--font-ui), "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
   --font-mono: var(--font-code), "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
   --font-display: var(--font-brand), "Songti SC", "Noto Serif SC", serif;
 
-  /* ── 背景层级 ── */
-  --color-bg-deep:     #07090F;   /* 最深背景：氛围感暗室 */
-  --color-bg-primary:  #0D1117;   /* 主背景 */
-  --color-bg-surface:  #161B22;   /* 卡片/面板 */
-  --color-bg-elevated: #1C2333;   /* 悬浮层 */
-  --color-bg-overlay:  rgba(7, 9, 15, 0.92);  /* 遮罩 */
+  /* ── Surfaces ── */
+  --color-page:    #1d1e22;   /* page background */
+  --color-panel:   #26282d;   /* side panel, top bar, action bar */
+  --color-panel-2: #30333a;   /* inputs, hover, tabs */
+  --color-line:    #3a3d44;   /* 1px borders */
 
-  /* ── 牌桌 ── */
-  --color-felt-light:  #1E5C33;   /* 桌布高光区 */
-  --color-felt-mid:    #164426;   /* 桌布主色 */
-  --color-felt-dark:   #0E2D19;   /* 桌布暗部 */
-  --color-rail-light:  #5C3D1E;   /* 木质边框亮 */
-  --color-rail-dark:   #2C1C0A;   /* 木质边框暗 */
-  --color-table-border: #3D2B0F;
+  /* ── Table ── */
+  --color-rail:    #3a3c41;
+  --color-felt:    #2f8f46;
+  --color-felt-hi: #37a051;   /* felt center lighten */
+  --color-plate:      #f3f4f6; /* seat name plate */
+  --color-plate-text: #1d1e22;
+  --color-chip:    #f2d94e;   /* bet bubble */
 
-  /* ── 强调色 ── */
-  --color-gold:        #FFD700;
-  --color-gold-muted:  #C9A227;
-  --color-gold-dim:    rgba(255, 215, 0, 0.15);
-  --color-gold-glow:   rgba(255, 215, 0, 0.35);
+  /* ── Cards (4-color deck) ── */
+  --color-card:      #ffffff;
+  --color-card-back: #e0645c;
+  --color-suit-s: #1d1e22;
+  --color-suit-h: #d63c3c;
+  --color-suit-d: #2f6fd6;
+  --color-suit-c: #2a8f3e;
 
-  /* ── 文字 ── */
-  --color-text-primary:   #E6EDF3;
-  --color-text-secondary: #A5B3C2;
-  --color-text-muted:     #738295;
-  --color-text-dim:       #4F6072;
+  /* ── Text tiers ── */
+  --color-text:   #eceef1;
+  --color-text-2: #a9adb6;
+  --color-text-3: #6f747e;
 
-  /* ── 语义颜色 ── */
-  --color-error:       #EF5350;
-  --color-error-dim:   rgba(239, 83, 80, 0.15);
-  --color-success:     #4CAF50;
-  --color-success-dim: rgba(76, 175, 80, 0.15);
-  --color-warning:     #FF9800;
-  --color-info:        #2196F3;
+  /* ── Actions ── */
+  --color-accent: #2f8f46;    /* primary CTA */
+  --color-fold:   #c94a4a;
+  --color-call:   #2f6fd6;
+  --color-raise:  #2f8f46;
+  --color-timer:     #f2d94e;
+  --color-timer-low: #c94a4a; /* timer under 25% remaining */
 
-  /* ── 筹码颜色 ── */
-  --color-chip-white:  #F5F5F5;
-  --color-chip-red:    #E53935;
-  --color-chip-blue:   #1E88E5;
-  --color-chip-green:  #43A047;
-  --color-chip-black:  #212121;
-  --color-chip-purple: #8E24AA;
+  /* ── Radii: 6px panels/buttons, 8px cards, full for chips/pills ── */
+  --radius-panel: 6px;
+  --radius-card:  8px;
 
-  /* ── 玻璃拟态 ── */
-  --color-glass:       rgba(22, 27, 34, 0.75);
-  --color-glass-heavy: rgba(13, 17, 23, 0.88);
-  --color-glass-border: rgba(255, 255, 255, 0.06);
-  --color-glass-border-strong: rgba(255, 255, 255, 0.12);
+  /* ── One soft shadow, cards and plate only ── */
+  --shadow-card:  0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-plate: 0 1px 3px rgba(0, 0, 0, 0.35);
 
-  /* ── 圆角 ── */
-  --radius-sm:  4px;
-  --radius-md:  8px;
-  --radius-lg:  12px;
-  --radius-xl:  16px;
-  --radius-2xl: 24px;
-  --radius-card: 10px;  /* 扑克牌圆角 */
+  /* ── Motion (≤200ms) ── */
+  --duration-fast:   120ms;
+  --duration-normal: 180ms;
 
-  /* ── 阴影 ── */
-  --shadow-card:    0 4px 16px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-panel:   0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-float:   0 16px 48px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-glow-gold: 0 0 20px rgba(255, 215, 0, 0.4), 0 0 40px rgba(255, 215, 0, 0.2);
-  --shadow-glow-green: 0 0 16px rgba(76, 175, 80, 0.4);
-  --shadow-glow-pulse: 0 0 0 0 rgba(255, 215, 0, 0.7);
-  --shadow-hairline: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
-
-  /* ── 动画时长 ── */
-  --duration-deal:   300ms;
-  --duration-flip:   400ms;
-  --duration-bet:    500ms;
-  --duration-win:    600ms;
-  --duration-fast:   150ms;
-  --duration-normal: 250ms;
-  --duration-slow:   400ms;
+  /* ── legacy aliases — remove after migration ──
+     Old "Private Room" names, re-pointed to the closest flat v2 values so
+     not-yet-migrated pages (home, room, components/game/**) still render. */
+  --color-bg-deep:     #1d1e22;
+  --color-bg-primary:  #1d1e22;
+  --color-bg-surface:  #26282d;
+  --color-bg-elevated: #30333a;
+  --color-bg-overlay:  rgba(29, 30, 34, 0.92);
+  --color-felt-light:  #37a051;
+  --color-felt-mid:    #2f8f46;
+  --color-felt-dark:   #2f8f46;
+  --color-rail-light:  #3a3c41;
+  --color-rail-dark:   #3a3c41;
+  --color-table-border: #3a3c41;
+  --color-gold:        #f2d94e;
+  --color-gold-muted:  #d9c247;
+  --color-gold-dim:    rgba(242, 217, 78, 0.15);
+  --color-gold-glow:   rgba(242, 217, 78, 0.25);
+  --color-text-primary:   #eceef1;
+  --color-text-secondary: #a9adb6;
+  --color-text-muted:     #6f747e;
+  --color-text-dim:       #6f747e;
+  --color-error:       #c94a4a;
+  --color-error-dim:   rgba(201, 74, 74, 0.15);
+  --color-success:     #2f8f46;
+  --color-success-dim: rgba(47, 143, 70, 0.15);
+  --color-warning:     #e0a03a;
+  --color-info:        #2f6fd6;
+  --color-chip-white:  #f3f4f6;
+  --color-chip-red:    #c94a4a;
+  --color-chip-blue:   #2f6fd6;
+  --color-chip-green:  #2f8f46;
+  --color-chip-black:  #1d1e22;
+  --color-chip-purple: #7d4fc9;
+  --color-glass:       #26282d;
+  --color-glass-heavy: #26282d;
+  --color-glass-border: #3a3d44;
+  --color-glass-border-strong: #3a3d44;
+  --shadow-panel:      none;
+  --shadow-float:      0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-glow-gold:  none;
+  --shadow-glow-green: none;
+  --shadow-glow-pulse: none;
+  --shadow-hairline:   inset 0 0 0 1px #3a3d44;
+  --duration-deal:   180ms;
+  --duration-flip:   180ms;
+  --duration-bet:    180ms;
+  --duration-win:    200ms;
+  --duration-slow:   200ms;
 }
 
-/* ── 自定义工具类（通过 @utility 定义 Tailwind v4 工具类） ── */
+/* ── legacy utilities — remove after migration (flattened: no blur, no glow) ── */
 @utility glass {
-  background: var(--color-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-glass-border);
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
 }
 
 @utility glass-heavy {
-  background: var(--color-glass-heavy);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--color-glass-border-strong);
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
 }
 
-/* ── Seat（玩家卡片）质感工具类 ── */
 @utility seat-surface {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.10) 0%,
-      rgba(255, 255, 255, 0.03) 38%,
-      rgba(0, 0, 0, 0.14) 100%
-    ),
-    linear-gradient(
-      145deg,
-      rgba(10, 18, 30, 0.92),
-      rgba(12, 21, 34, 0.90) 54%,
-      rgba(9, 15, 24, 0.94)
-    );
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: var(--shadow-card), var(--shadow-hairline);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-plate);
 }
 
 @utility seat-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(0, 0, 0, 0.14) 100%);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-panel);
 }
 
 @utility text-gold {
   color: var(--color-gold);
 }
 
+@utility glow-gold {
+  box-shadow: none;
+}
+
+@utility glow-green {
+  box-shadow: none;
+}
+
 @utility text-chips {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
   letter-spacing: -0.02em;
-}
-
-@utility glow-gold {
-  box-shadow: var(--shadow-glow-gold);
-}
-
-@utility glow-green {
-  box-shadow: var(--shadow-glow-green);
 }
 
 /* ── 基础样式 ── */
@@ -161,39 +164,10 @@ html {
 
 body {
   font-family: var(--font-sans);
-  background:
-    radial-gradient(1100px 520px at 50% 46%, rgba(23, 74, 44, 0.42), transparent 72%),
-    radial-gradient(900px 600px at 50% 120%, rgba(11, 29, 52, 0.42), transparent 82%),
-    linear-gradient(160deg, #04060B 0%, #060B13 52%, #02050A 100%);
-  color: var(--color-text-primary);
+  background: var(--color-page);
+  color: var(--color-text);
   min-height: 100dvh;
-  letter-spacing: 0.01em;
   line-height: 1.45;
-  position: relative;
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 18% 16%, rgba(255, 215, 0, 0.09), transparent 26%),
-    radial-gradient(circle at 82% 90%, rgba(34, 135, 219, 0.08), transparent 28%);
-  mix-blend-mode: screen;
-  z-index: -2;
-}
-
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.02) 0%, transparent 42%),
-    radial-gradient(circle at center, rgba(255, 255, 255, 0.015), transparent 56%);
-  opacity: 0.5;
-  z-index: -1;
 }
 
 input,
@@ -204,7 +178,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid rgba(255, 215, 0, 0.55);
+  outline: 2px solid var(--color-chip);
   outline-offset: 2px;
 }
 
@@ -265,6 +239,28 @@ textarea {
   30%  { transform: scale(1.15); }
   60%  { transform: scale(0.95); }
   100% { transform: scale(1); }
+}
+
+/* Table v2: card dealt from table center. Caller sets --deal-dx / --deal-dy
+   (offset from final position) and animation-delay. */
+@keyframes table-deal-in {
+  from { transform: translate(var(--deal-dx, 0), var(--deal-dy, 0)) scale(0.6); opacity: 0; }
+  to   { transform: translate(0, 0) scale(1); opacity: 1; }
+}
+
+/* Table v2: generic quick fade/slide-in for board cards, bets, tags. */
+@keyframes table-fade-in {
+  from { opacity: 0; transform: translateY(-0.25em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Table v2: turn timer drains left→right; turns red for the last 25%. Driven by
+   animation-duration = timer length and a negative delay = time already elapsed. */
+@keyframes table-timer-drain {
+  0%     { transform: scaleX(1); background: var(--color-timer); }
+  74.9%  { background: var(--color-timer); }
+  75%    { background: var(--color-timer-low); }
+  100%   { transform: scaleX(0); background: var(--color-timer-low); }
 }
 
 /* shimmer 骨架屏 */
@@ -331,7 +327,7 @@ textarea {
    Radix UI Slider 样式
    ══════════════════════════════════════════════ */
 [data-radix-slider-track] {
-  background: var(--color-bg-elevated);
+  background: var(--color-panel-2);
   border-radius: 9999px;
   height: 4px;
   position: relative;
@@ -339,7 +335,7 @@ textarea {
 }
 
 [data-radix-slider-range] {
-  background: linear-gradient(90deg, var(--color-gold-muted), var(--color-gold));
+  background: var(--color-accent);
   border-radius: 9999px;
   position: absolute;
   height: 100%;
@@ -347,22 +343,20 @@ textarea {
 
 [data-radix-slider-thumb] {
   display: block;
-  width: 18px;
-  height: 18px;
-  background: var(--color-gold);
+  width: 16px;
+  height: 16px;
+  background: var(--color-text);
   border-radius: 50%;
   cursor: pointer;
-  border: 2px solid var(--color-bg-surface);
-  box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
-  transition: box-shadow 150ms ease, transform 150ms ease;
+  border: 2px solid var(--color-panel);
+  transition: transform 120ms ease;
 }
 
 [data-radix-slider-thumb]:hover {
-  box-shadow: 0 0 16px rgba(255, 215, 0, 0.8);
   transform: scale(1.1);
 }
 
-[data-radix-slider-thumb]:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.4);
+[data-radix-slider-thumb]:focus-visible {
+  outline: 2px solid var(--color-chip);
+  outline-offset: 2px;
 }

@@ -1,10 +1,8 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 interface RoomControlsCardProps {
-  roomId: string;
   isPlaying: boolean;
   isConnected: boolean;
   isReady: boolean;
@@ -18,8 +16,12 @@ interface RoomControlsCardProps {
   onEnterGame: () => void;
 }
 
+const primaryClass =
+  'h-12 w-full rounded-panel bg-accent text-[16px] font-semibold text-white transition-colors hover:bg-felt-hi disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-text-3';
+const secondaryClass =
+  'h-11 w-full rounded-panel border border-line bg-panel-2 text-[14px] font-medium text-text hover:bg-line disabled:cursor-not-allowed disabled:opacity-50';
+
 export function RoomControlsCard({
-  roomId,
   isPlaying,
   isConnected,
   isReady,
@@ -43,80 +45,41 @@ export function RoomControlsCard({
           : '全部就绪，可直接开始游戏';
 
   return (
-    <>
-      <section
-        className="rounded-[24px] border border-white/12 bg-[rgba(10,18,30,0.85)] p-5 sm:p-6"
-        style={{ boxShadow: 'var(--shadow-panel), var(--shadow-hairline)' }}
-      >
-        <h3 className="text-[12px] uppercase tracking-[0.2em] text-[var(--color-text-muted)]">开局控制</h3>
-        <div className="mt-4 space-y-3.5">
-          {isTableFinished && (
-            <div className="rounded-xl border border-[var(--color-gold)]/32 bg-[var(--color-gold)]/10 px-3 py-2 text-[12px] leading-[1.55] text-[var(--color-text-secondary)]">
-              本场已结束，请返回大厅重新建局。
-            </div>
-          )}
-
-          {!isPlaying && (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onMarkReady}
-              disabled={isReady || !isConnected || !canSelfStart}
-              className={cn(
-                'h-[50px] w-full rounded-[14px] border text-[15px] font-semibold transition-all',
-                isReady
-                  ? 'cursor-default border-[var(--color-success)]/45 bg-[var(--color-success-dim)] text-[var(--color-success)]'
-                  : 'border-[var(--color-success)]/30 bg-[rgba(76,175,80,0.1)] text-[var(--color-success)] hover:border-[var(--color-success)]/45 hover:bg-[rgba(76,175,80,0.16)]',
-                (!isConnected || !canSelfStart) && 'cursor-not-allowed opacity-50',
-              )}
-            >
-              {canSelfStart ? (isReady ? '✓ 已准备' : '我已准备') : '已淘汰'}
-            </motion.button>
-          )}
-
-          {!isPlaying ? (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onStartGame}
-              disabled={!canStart || !isConnected}
-              className={cn(
-                'h-[54px] w-full rounded-[14px] border text-[16px] font-semibold tracking-[0.01em] transition-all',
-                canStart && isConnected
-                  ? 'border-[#f3d27a]/55 bg-gradient-to-r from-[#c9a540] via-[#e0bf6a] to-[#f0d186] text-[#251800] shadow-[0_12px_32px_rgba(214,178,84,0.3)] hover:brightness-105'
-                  : 'cursor-not-allowed border-white/10 bg-white/[0.04] text-[var(--color-text-dim)]',
-              )}
-            >
-              开始游戏
-            </motion.button>
-          ) : (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onEnterGame}
-              className="h-[54px] w-full rounded-[14px] border border-[#f3d27a]/50 bg-gradient-to-r from-[#c9a540] via-[#e0bf6a] to-[#f0d186] text-[16px] font-semibold tracking-[0.01em] text-[#251800] shadow-[0_12px_32px_rgba(214,178,84,0.3)]"
-            >
-              进入游戏 →
-            </motion.button>
-          )}
-
-          {!isPlaying && !canSelfStart && (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onEnterGame}
-              className="h-[42px] w-full rounded-[12px] border border-white/12 bg-white/[0.04] text-[13px] font-semibold text-[var(--color-text-secondary)] transition-all hover:border-[var(--color-gold)]/34 hover:text-[var(--color-text-primary)]"
-            >
-              进入牌桌观战
-            </motion.button>
-          )}
-
-          {!isPlaying && (
-            <p className="text-[13px] leading-[1.6] text-[var(--color-text-muted)]">{statusMessage}</p>
-          )}
+    <section aria-label="开局控制" className="space-y-3 p-4">
+      {isTableFinished && (
+        <div className="rounded-panel border border-line bg-page px-3 py-2 text-[13px] text-chip">
+          本场已结束，请返回大厅重新建局。
         </div>
-      </section>
+      )}
 
-      <section className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-dim)]">房间编号</p>
-        <p className="mt-1.5 font-mono text-[13px] text-[var(--color-text-secondary)]">{roomId}</p>
-      </section>
-    </>
+      {!isPlaying && (
+        <button
+          type="button"
+          onClick={onMarkReady}
+          disabled={isReady || !isConnected || !canSelfStart}
+          className={cn(secondaryClass, isReady && 'cursor-default border-accent text-accent opacity-100')}
+        >
+          {canSelfStart ? (isReady ? '✓ 已准备' : '我已准备') : '已淘汰'}
+        </button>
+      )}
+
+      {!isPlaying ? (
+        <button type="button" onClick={onStartGame} disabled={!canStart || !isConnected} className={primaryClass}>
+          开始游戏
+        </button>
+      ) : (
+        <button type="button" onClick={onEnterGame} className={primaryClass}>
+          进入游戏
+        </button>
+      )}
+
+      {!isPlaying && !canSelfStart && (
+        <button type="button" onClick={onEnterGame} className={secondaryClass}>
+          进入牌桌观战
+        </button>
+      )}
+
+      {!isPlaying && <p className="text-[13px] leading-[1.6] text-text-3">{statusMessage}</p>}
+    </section>
   );
 }
