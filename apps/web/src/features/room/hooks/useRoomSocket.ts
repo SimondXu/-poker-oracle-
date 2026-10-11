@@ -2,21 +2,41 @@
 
 import { useEffect, useCallback, useReducer, useRef } from 'react';
 import { toast } from 'sonner';
-import { getGameStartErrorMessage } from '@/features/game/lib/game-start-errors';
+import { useT } from '@/i18n';
 import { getSocket } from '@/lib/socket';
 import { useSocketSession } from '@/hooks/useSocketSession';
 import type { BotPersonality, RoomStateEvent } from '@aipoker/shared';
-import { getRoomErrorMessage } from '../lib/room-errors';
+import { getBotDisplayName } from '../lib/bot-names';
+import { getRoomErrorKey } from '../lib/room-errors';
 import type { RoomJoinIntent } from '../lib/room-types';
 import {
   initialRoomSocketViewState,
   roomSocketViewReducer,
   toRoomState,
-  type RoomPlayer,
 } from '../lib/room-socket-state';
 
 export type { RoomJoinIntent } from '../lib/room-types';
 export type { RoomPlayer, RoomState } from '../lib/room-socket-state';
+
+export interface RoomAck {
+  ok: boolean;
+  error?: string | undefined;
+}
+
+const ACK_TIMEOUT_MS = 5000;
+
+/** Emit with an ack, resolving `{ ok: false, error: 'timeout' }` instead of hanging when the server is silent. */
+function emitWithAck(socket: ReturnType<typeof getSocket>, event: string, payload: unknown): Promise<RoomAck> {
+  return new Promise((resolve) => {
+    socket.timeout(ACK_TIMEOUT_MS).emit(event, payload, (err: Error | null, res?: RoomAck) => {
+      if (err || !res) {
+        resolve({ ok: false, error: 'timeout' });
+        return;
+      }
+      resolve(res);
+    });
+  });
+}
 
 interface UseRoomSocketOptions {
   intent?: RoomJoinIntent;
@@ -29,6 +49,7 @@ export function useRoomSocket(
   playerName: string,
   options?: UseRoomSocketOptions,
 ) {
+  const t = useT();
   const intent = options?.intent ?? 'join';
   const onJoinFailed = options?.onJoinFailed;
   const [{ roomState, isConnected, isReady }, dispatch] = useReducer(
@@ -66,12 +87,12 @@ export function useRoomSocket(
           }
 
           dispatch({ type: 'reset' });
-          toast.error(getRoomErrorMessage(res.error, '加入房间失败'));
+          toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.join')));
           onJoinFailed?.(res.error);
         },
       );
     },
-    [normalizedPlayerName, onJoinFailed, playerId, roomId],
+    [normalizedPlayerName, onJoinFailed, playerId, roomId, t],
   );
 
   const handleConnect = useCallback(
@@ -89,7 +110,7 @@ export function useRoomSocket(
         (res: { ok: boolean; error?: string }) => {
           if (!res.ok) {
             dispatch({ type: 'reset' });
-            toast.error(getRoomErrorMessage(res.error, '创建房间失败'));
+            toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.create')));
             onJoinFailed?.(res.error);
             return;
           }
@@ -99,7 +120,7 @@ export function useRoomSocket(
         },
       );
     },
-    [intent, joinRoom, onJoinFailed, roomId],
+    [intent, joinRoom, onJoinFailed, roomId, t],
   );
 
   const handleDisconnect = useCallback(() => {
@@ -124,8 +145,8 @@ export function useRoomSocket(
 
   const handleAuthError = useCallback(() => {
     dispatch({ type: 'reset' });
-    toast.error('会话初始化失败，请刷新重试');
-  }, []);
+    toast.error(t('lobby.room.error.session'));
+  }, [t]);
 
   useSocketSession({
     enabled: Boolean(roomId && playerId && normalizedPlayerName),
@@ -138,29 +159,33 @@ export function useRoomSocket(
     onAuthError: handleAuthError,
   });
 
+  const requestAddBot = useCallback(
+    (strategy: BotPersonality, seatIndex: number) =>
+      emitWithAck(getSocket(), 'room:join', {
+        roomId,
+        playerId: `bot-${strategy}-${seatIndex}`,
+        playerName: getBotDisplayName(seatIndex),
+        seatIndex,
+        stack: 1000,
+        isBot: true,
+        botStrategy: strategy,
+      }),
+    [roomId],
+  );
+
+  const requestReady = useCallback(() => emitWithAck(getSocket(), 'room:ready', {}), []);
+
+  const requestStart = useCallback(() => emitWithAck(getSocket(), 'game:start', { roomId }), [roomId]);
+
   const addBot = useCallback(
     (strategy: BotPersonality, seatIndex: number) => {
-      const socket = getSocket();
-      const botId = `bot-${strategy}-${seatIndex}`;
-      socket.emit(
-        'room:join',
-        {
-          roomId,
-          playerId: botId,
-          playerName: `${strategy.toUpperCase()} Bot ${seatIndex + 1}`,
-          seatIndex,
-          stack: 1000,
-          isBot: true,
-          botStrategy: strategy,
-        },
-        (res: { ok: boolean; error?: string }) => {
-          if (!res.ok) {
-            toast.error(getRoomErrorMessage(res.error, '添加 Bot 失败'));
-          }
-        },
-      );
+      void requestAddBot(strategy, seatIndex).then((res) => {
+        if (!res.ok) {
+          toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.addBot')));
+        }
+      });
     },
-    [roomId],
+    [requestAddBot, t],
   );
 
   const removeBot = useCallback(
@@ -172,35 +197,36 @@ export function useRoomSocket(
   );
 
   const markReady = useCallback(() => {
-    const socket = getSocket();
-    socket.emit(
-      'room:ready',
-      {},
-      (res: { ok: boolean; readyCount?: number; playerCount?: number; error?: string }) => {
-        if (!res.ok) {
-          toast.error(res.error ?? '准备失败');
-        }
-      },
-    );
-  }, []);
+    void requestReady().then((res) => {
+      if (!res.ok) {
+        toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.ready')));
+      }
+    });
+  }, [requestReady, t]);
 
   const startGame = useCallback(
     (onSuccess: () => void) => {
-      const socket = getSocket();
-      socket.emit(
-        'game:start',
-        { roomId },
-        (res: { ok: boolean; error?: string }) => {
-          if (res.ok) {
-            onSuccess();
-          } else {
-            toast.error(getGameStartErrorMessage(res.error, '开始游戏失败'));
-          }
-        },
-      );
+      void requestStart().then((res) => {
+        if (res.ok) {
+          onSuccess();
+        } else {
+          toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.start')));
+        }
+      });
     },
-    [roomId],
+    [requestStart, t],
   );
 
-  return { roomState, isConnected, isReady, addBot, removeBot, markReady, startGame };
+  return {
+    roomState,
+    isConnected,
+    isReady,
+    addBot,
+    removeBot,
+    markReady,
+    startGame,
+    requestAddBot,
+    requestReady,
+    requestStart,
+  };
 }

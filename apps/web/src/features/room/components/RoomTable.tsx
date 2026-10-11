@@ -1,27 +1,14 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
+import { useCallback, useRef, useState, type CSSProperties } from 'react';
 import type { BotPersonality } from '@aipoker/shared';
+import { useT } from '@/i18n';
+import { cn } from '@/lib/utils';
+import { ROOM_MAX_SEATS } from '../lib/practice-plan';
 import type { RoomPlayer } from '../lib/room-socket-state';
-import { RoomSeatCard, type MenuAlign, type MenuSide } from './RoomSeatCard';
-
-interface SeatSlot {
-  /** [mobile, desktop] left/top, % of the stage. */
-  left: [number, number];
-  top: [number, number];
-  menuSide: MenuSide;
-  menuAlign: MenuAlign;
-}
-
-/** 6 seats around the oval, clockwise from the left; positions are % of the stage. */
-const SEAT_SLOTS: SeatSlot[] = [
-  { left: [11, 9], top: [50, 50], menuSide: 'below', menuAlign: 'left' },
-  { left: [33, 28], top: [13, 13], menuSide: 'below', menuAlign: 'center' },
-  { left: [67, 72], top: [13, 13], menuSide: 'below', menuAlign: 'center' },
-  { left: [89, 91], top: [50, 50], menuSide: 'below', menuAlign: 'right' },
-  { left: [67, 72], top: [87, 87], menuSide: 'above', menuAlign: 'center' },
-  { left: [33, 28], top: [87, 87], menuSide: 'above', menuAlign: 'center' },
-];
+import { SEAT_SLOTS, slotToSeat } from '../lib/seat-slots';
+import { BotMenu } from './BotMenu';
+import { RoomSeatCard } from './RoomSeatCard';
 
 interface RoomTableProps {
   players: RoomPlayer[];
@@ -31,49 +18,97 @@ interface RoomTableProps {
   onRemoveBot: (playerId: string) => void;
 }
 
+interface OpenMenu {
+  seatIndex: number;
+  anchor: HTMLElement;
+}
+
+/** Mini felt table: six seats around the rail, the player at the bottom, seat count in the middle. */
 export function RoomTable({ players, currentUserId, isPlaying, onAddBot, onRemoveBot }: RoomTableProps) {
-  const [openSeat, setOpenSeat] = useState<number | null>(null);
+  const t = useT();
+  const [menu, setMenu] = useState<OpenMenu | null>(null);
   const playerBySeat = new Map(players.map((player) => [player.seatIndex, player]));
+  const anchorSeat = players.find((player) => player.id === currentUserId)?.seatIndex ?? 0;
+
+  const anchorRef = useRef<HTMLElement | null>(null);
+
+  const closeMenu = useCallback(() => {
+    setMenu(null);
+    anchorRef.current?.focus({ preventScroll: true });
+  }, []);
 
   return (
-    <div className="relative mx-auto aspect-[5/4] w-full max-w-[860px] sm:aspect-[16/10]">
+    <div
+      data-layout-box="room-table"
+      className="relative mx-auto aspect-[4/5] w-full max-w-[900px] sm:aspect-[16/10]"
+    >
       <div
-        aria-hidden="true"
-        className="absolute inset-[6%_4%] rounded-[50%] border-[10px] border-rail bg-felt sm:border-[14px]"
+        aria-hidden
+        className="absolute inset-x-[2%] inset-y-[2.5%] rounded-[50%] border-[10px] border-rail bg-felt felt-guilloche shadow-[0_18px_40px_-18px_rgb(0_0_0/0.7)] sm:inset-x-[2.5%] sm:inset-y-[5%] sm:border-[14px]"
       />
-      <span
-        aria-hidden="true"
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none text-[clamp(18px,4vw,34px)] font-bold tracking-tight text-white/15"
+      <div
+        aria-hidden
+        className="absolute inset-x-[2%] inset-y-[2.5%] rounded-[50%] shadow-[inset_0_0_0_1px_rgb(184_154_94/0.3)] sm:inset-x-[2.5%] sm:inset-y-[5%]"
+      />
+
+      <div
+        aria-live="polite"
+        className="medallion-frame absolute left-1/2 top-1/2 flex w-[72px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-[50%] bg-ink-2 py-3 [--medallion-ground:var(--color-ink-2)] sm:w-[148px] sm:py-4"
       >
-        AiPoker
-      </span>
-      {SEAT_SLOTS.map((slot, seatIndex) => (
-        <div
-          key={seatIndex}
-          className={`absolute ${openSeat === seatIndex ? 'z-30' : ''} left-[var(--x-m)] top-[var(--y-m)] -translate-x-1/2 -translate-y-1/2 sm:left-[var(--x-d)] sm:top-[var(--y-d)]`}
-          style={
-            {
-              '--x-m': `${slot.left[0]}%`,
-              '--x-d': `${slot.left[1]}%`,
-              '--y-m': `${slot.top[0]}%`,
-              '--y-d': `${slot.top[1]}%`,
-            } as CSSProperties
-          }
-        >
-          <RoomSeatCard
-            seatIndex={seatIndex}
-            player={playerBySeat.get(seatIndex) ?? null}
-            currentUserId={currentUserId}
-            isPlaying={isPlaying}
-            menuSide={slot.menuSide}
-            menuAlign={slot.menuAlign}
-            menuOpen={openSeat === seatIndex}
-            onMenuOpenChange={(open) => setOpenSeat(open ? seatIndex : null)}
-            onAddBot={onAddBot}
-            onRemoveBot={onRemoveBot}
-          />
-        </div>
-      ))}
+        <span className="font-index text-title font-bold text-text sm:text-display">
+          {players.length}
+          <span className="text-text-3">/{ROOM_MAX_SEATS}</span>
+        </span>
+        <span className="label-index mt-1 text-micro text-text-3">
+          {t('lobby.room.seatedLabel')}
+        </span>
+      </div>
+
+      {SEAT_SLOTS.map((slot, slotIndex) => {
+        const seatIndex = slotToSeat(slotIndex, anchorSeat);
+        return (
+          <div
+            key={slotIndex}
+            className={cn(
+              'absolute -translate-x-1/2 -translate-y-1/2',
+              'left-[var(--x-tall)] top-[var(--y-tall)] sm:left-[var(--x-wide)] sm:top-[var(--y-wide)]',
+            )}
+            style={
+              {
+                '--x-tall': `${slot.tall.x}%`,
+                '--y-tall': `${slot.tall.y}%`,
+                '--x-wide': `${slot.wide.x}%`,
+                '--y-wide': `${slot.wide.y}%`,
+              } as CSSProperties
+            }
+          >
+            <RoomSeatCard
+              seatNumber={seatIndex + 1}
+              player={playerBySeat.get(seatIndex) ?? null}
+              currentUserId={currentUserId}
+              isPlaying={isPlaying}
+              menuOpen={menu?.seatIndex === seatIndex}
+              onOpenMenu={(anchor) => {
+                anchorRef.current = anchor;
+                setMenu({ seatIndex, anchor });
+              }}
+              onRemoveBot={onRemoveBot}
+            />
+          </div>
+        );
+      })}
+
+      {menu && (
+        <BotMenu
+          anchor={menu.anchor}
+          seatNumber={menu.seatIndex + 1}
+          onClose={closeMenu}
+          onPick={(strategy) => {
+            onAddBot(strategy, menu.seatIndex);
+            setMenu(null);
+          }}
+        />
+      )}
     </div>
   );
 }

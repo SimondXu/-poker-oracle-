@@ -1,6 +1,9 @@
 'use client';
 
+import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { getRoomStatusKey } from '../lib/room-page-state';
+import { primaryButton, secondaryButton } from '../lib/room-ui';
 
 interface RoomControlsCardProps {
   isPlaying: boolean;
@@ -16,11 +19,6 @@ interface RoomControlsCardProps {
   onEnterGame: () => void;
 }
 
-const primaryClass =
-  'h-12 w-full rounded-panel bg-accent text-[16px] font-semibold text-white transition-colors hover:bg-felt-hi disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-text-3';
-const secondaryClass =
-  'h-11 w-full rounded-panel border border-line bg-panel-2 text-[14px] font-medium text-text hover:bg-line disabled:cursor-not-allowed disabled:opacity-50';
-
 export function RoomControlsCard({
   isPlaying,
   isConnected,
@@ -34,52 +32,65 @@ export function RoomControlsCard({
   onStartGame,
   onEnterGame,
 }: RoomControlsCardProps) {
-  const statusMessage = isTableFinished
-    ? '本场已结束，当前房间不再继续自动开局'
-    : !canSelfStart
-      ? '你已淘汰，可进入牌桌观战或返回大厅重新建局。'
-      : !hasEnoughPlayers
-        ? '至少需要 2 名玩家（可添加机器人）'
-        : !allHumansReady
-          ? '等待所有真人玩家点击“我已准备”'
-          : '全部就绪，可直接开始游戏';
+  const t = useT();
+  const statusKey = getRoomStatusKey({
+    isConnected,
+    isPlaying,
+    isTableFinished,
+    canSelfStart,
+    hasEnoughPlayers,
+    isReady,
+    allHumansReady,
+  });
+  const isGo = statusKey === 'lobby.room.status.canStart';
 
   return (
-    <section aria-label="开局控制" className="space-y-3 p-4">
-      {isTableFinished && (
-        <div className="rounded-panel border border-line bg-page px-3 py-2 text-[13px] text-chip">
-          本场已结束，请返回大厅重新建局。
-        </div>
-      )}
-
-      {!isPlaying && (
-        <button
-          type="button"
-          onClick={onMarkReady}
-          disabled={isReady || !isConnected || !canSelfStart}
-          className={cn(secondaryClass, isReady && 'cursor-default border-accent text-accent opacity-100')}
-        >
-          {canSelfStart ? (isReady ? '✓ 已准备' : '我已准备') : '已淘汰'}
-        </button>
-      )}
+    <section aria-label={t('lobby.room.title')} className="space-y-4 p-4 sm:p-5">
+      <p role="status" className="flex items-start gap-snug text-lead text-text">
+        <span
+          aria-hidden
+          className={cn('mt-[7px] size-2 shrink-0 rounded-full', isGo ? 'bg-positive' : isConnected ? 'bg-brass' : 'bg-vermilion')}
+        />
+        {t(statusKey)}
+      </p>
 
       {!isPlaying ? (
-        <button type="button" onClick={onStartGame} disabled={!canStart || !isConnected} className={primaryClass}>
-          开始游戏
-        </button>
+        <div className="grid grid-cols-2 gap-snug">
+          <button
+            type="button"
+            onClick={onMarkReady}
+            data-testid="room-ready"
+            disabled={isReady || !isConnected || !canSelfStart}
+            className={cn(secondaryButton, isReady && canSelfStart && 'border-positive/60 text-positive disabled:opacity-100')}
+          >
+            {isReady && canSelfStart && (
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                <path d="M2.5 7.5l3 3 6-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+            {canSelfStart ? t(isReady ? 'lobby.room.readyDone' : 'lobby.room.ready') : t('lobby.room.eliminated')}
+          </button>
+          <button
+            type="button"
+            onClick={onStartGame}
+            disabled={!canStart || !isConnected}
+            data-testid="room-start"
+            className={primaryButton}
+          >
+            {t('lobby.room.start')}
+          </button>
+        </div>
       ) : (
-        <button type="button" onClick={onEnterGame} className={primaryClass}>
-          进入游戏
+        <button type="button" onClick={onEnterGame} className={primaryButton}>
+          {t('lobby.room.enter')}
         </button>
       )}
 
       {!isPlaying && !canSelfStart && (
-        <button type="button" onClick={onEnterGame} className={secondaryClass}>
-          进入牌桌观战
+        <button type="button" onClick={onEnterGame} className={secondaryButton}>
+          {t('lobby.room.spectate')}
         </button>
       )}
-
-      {!isPlaying && <p className="text-[13px] leading-[1.6] text-text-3">{statusMessage}</p>}
     </section>
   );
 }

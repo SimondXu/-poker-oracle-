@@ -1,8 +1,15 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { LocaleToggle } from '@/components/LocaleToggle';
+import { HomeScene } from '@/features/room/components/HomeScene';
+import { Wordmark } from '@/features/room/components/Wordmark';
+import { readLastUsername, saveLastUsername } from '@/features/room/lib/last-username';
+import { codeField, fieldLabel, primaryButtonLarge, secondaryButton, textField } from '@/features/room/lib/room-ui';
+import { useT } from '@/i18n';
 import { ensureGuestSession } from '@/lib/auth-session';
+import { cn } from '@/lib/utils';
 import {
   generateRoomCode,
   isValidRoomCode,
@@ -11,187 +18,203 @@ import {
 } from '@/lib/room-code';
 import { useAuthStore } from '@/stores/authStore';
 
-type PendingAction = 'create' | 'join' | null;
-type EntryTab = 'create' | 'join';
-
-const TABS: Array<{ value: EntryTab; label: string }> = [
-  { value: 'create', label: '创建房间' },
-  { value: 'join', label: '加入房间' },
-];
-
-const FEATURES = ['实时多人对战', '规则 Bot 与 LLM 对手', '训练提示'];
-
-const inputClass =
-  'h-11 w-full rounded-panel border border-line bg-panel-2 px-3 text-[15px] text-text outline-none placeholder:text-text-3 focus:border-accent';
-const labelClass = 'block text-[13px] font-medium text-text-2';
-const primaryButtonClass =
-  'h-12 w-full rounded-panel bg-accent text-[16px] font-semibold text-white transition-colors hover:bg-felt-hi disabled:cursor-not-allowed disabled:opacity-40';
+type PendingAction = 'practice' | 'create' | 'join' | null;
+type FormError = 'name' | 'network' | null;
 
 export default function HomePage() {
+  const t = useT();
   const router = useRouter();
-  const { user, setUser } = useAuthStore();
-  const [tab, setTab] = useState<EntryTab>('create');
-  const [name, setName] = useState(user?.username ?? '');
-  const [joinRoomCodeInput, setJoinRoomCodeInput] = useState('');
-  const [joinRoomCodeTouched, setJoinRoomCodeTouched] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [codeTouched, setCodeTouched] = useState(false);
+  const [pending, setPending] = useState<PendingAction>(null);
+  const [formError, setFormError] = useState<FormError>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const practiceRef = useRef<HTMLButtonElement>(null);
+  const nameTouchedRef = useRef(false);
 
-  const normalizedJoinRoomCode = useMemo(
-    () => normalizeRoomCode(joinRoomCodeInput),
-    [joinRoomCodeInput],
-  );
-  const isJoinRoomCodeValid = isValidRoomCode(normalizedJoinRoomCode);
-  const canCreate = name.trim().length > 0 && pendingAction === null;
-  const canJoin = name.trim().length > 0 && isJoinRoomCodeValid && pendingAction === null;
+  // Remember the last name. Loaded after mount so the server render and first client render match.
+  useEffect(() => {
+    const remembered = readLastUsername() ?? user?.username ?? '';
+    if (remembered && !nameTouchedRef.current) {
+      setName(remembered);
+    }
+    // Keyboard devices: land on the next step. Touch devices: do not pop the keyboard.
+    if (window.matchMedia('(pointer: fine)').matches) {
+      (remembered ? practiceRef.current : nameRef.current)?.focus({ preventScroll: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount
+  }, []);
 
-  const joinRoomCodeError =
-    joinRoomCodeTouched && normalizedJoinRoomCode.length > 0 && !isJoinRoomCodeValid
-      ? `房间号需为 ${ROOM_CODE_LENGTH} 位，且仅可使用大写字母和数字`
-      : null;
+  const isCodeValid = isValidRoomCode(code);
+  const codeError = codeTouched && !isCodeValid;
+  const busy = pending !== null;
 
-  const bootstrapGuest = useCallback(
-    async (username: string) => {
-      const guestUser = await ensureGuestSession(username);
-      setUser({ id: guestUser.id, username: guestUser.username, isGuest: true, chips: 1000 });
+  const enter = useCallback(
+    async (kind: Exclude<PendingAction, null>, targetCode: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        setFormError('name');
+        nameRef.current?.focus();
+        return;
+      }
+
+      setPending(kind);
+      setFormError(null);
+      try {
+        const guest = await ensureGuestSession(trimmed);
+        setUser({ id: guest.id, username: guest.username, isGuest: true, chips: 1000 });
+        saveLastUsername(trimmed);
+        const query = kind === 'join' ? 'intent=join' : kind === 'practice' ? 'intent=create&mode=practice' : 'intent=create';
+        router.push(`/room/${targetCode}?${query}`);
+      } catch {
+        setPending(null);
+        setFormError('network');
+      }
     },
-    [setUser],
+    [name, router, setUser],
   );
 
-  const handleCreateRoom = useCallback(async () => {
-    const trimmedName = name.trim();
-    if (!trimmedName || pendingAction) return;
+  const onPractice = (event: FormEvent) => {
+    event.preventDefault();
+    if (!busy) void enter('practice', generateRoomCode());
+  };
 
-    setPendingAction('create');
-    try {
-      await bootstrapGuest(trimmedName);
-      const roomCode = generateRoomCode();
-      router.push(`/room/${roomCode}?intent=create`);
-    } finally {
-      setPendingAction(null);
-    }
-  }, [bootstrapGuest, name, pendingAction, router]);
+  const onCreate = () => {
+    if (!busy) void enter('create', generateRoomCode());
+  };
 
-  const handleJoinRoom = useCallback(async () => {
-    const trimmedName = name.trim();
-    const roomCode = normalizeRoomCode(joinRoomCodeInput);
-    setJoinRoomCodeInput(roomCode);
-    setJoinRoomCodeTouched(true);
-
-    if (!trimmedName || !isValidRoomCode(roomCode) || pendingAction) {
-      return;
-    }
-
-    setPendingAction('join');
-    try {
-      await bootstrapGuest(trimmedName);
-      router.push(`/room/${roomCode}?intent=join`);
-    } finally {
-      setPendingAction(null);
-    }
-  }, [bootstrapGuest, name, joinRoomCodeInput, pendingAction, router]);
-
-  const canSubmit = tab === 'create' ? canCreate : canJoin;
-  const submit = () => void (tab === 'create' ? handleCreateRoom() : handleJoinRoom());
+  const onJoin = (event: FormEvent) => {
+    event.preventDefault();
+    setCodeTouched(true);
+    if (!busy && isCodeValid) void enter('join', code);
+  };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-page px-4 py-10">
-      <div className="w-full max-w-[420px]">
-        <header className="text-center">
-          <h1 className="text-[36px] font-bold leading-none tracking-tight text-text">AiPoker</h1>
-          <p className="mt-3 text-[15px] text-text-2">和 AI 对手练习无限注德州扑克</p>
-        </header>
+    <div className="flex min-h-dvh flex-col bg-page">
+      <header className="border-b border-line bg-panel">
+        <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
+          <Wordmark />
+          <LocaleToggle />
+        </div>
+      </header>
 
-        <section className="mt-8 rounded-panel border border-line bg-panel p-5 sm:p-6">
-          <div role="tablist" aria-label="入口" className="grid grid-cols-2 rounded-panel bg-page p-1">
-            {TABS.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                role="tab"
-                id={`tab-${item.value}`}
-                aria-selected={tab === item.value}
-                aria-controls="entry-panel"
-                onClick={() => setTab(item.value)}
-                className={`h-9 rounded-[4px] text-[14px] font-medium transition-colors ${
-                  tab === item.value ? 'bg-panel-2 text-text' : 'text-text-2 hover:text-text'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+      <main className="mx-auto grid w-full max-w-[1280px] flex-1 content-start gap-6 px-4 pb-10 pt-5 sm:px-6 sm:pt-8 lg:grid-cols-[minmax(380px,460px)_minmax(0,1fr)] lg:content-center lg:items-center lg:gap-14 lg:py-10">
+        <div className="lg:order-2">
+          <HomeScene />
+        </div>
 
-          <form
-            id="entry-panel"
-            role="tabpanel"
-            aria-labelledby={`tab-${tab}`}
-            className="mt-5 space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              submit();
-            }}
-          >
-            <label className="block space-y-1.5">
-              <span className={labelClass}>用户名</span>
+        <div data-layout-box="home-form" className="w-full max-w-[460px] justify-self-center lg:justify-self-start">
+          <h1 className="font-index text-balance text-title font-bold tracking-[0.005em] text-text sm:text-display">
+            {t('lobby.home.title')}
+          </h1>
+
+          <form onSubmit={onPractice} noValidate className="mt-section space-y-3">
+            <div className="space-y-snug">
+              <label htmlFor="home-name" className={fieldLabel}>
+                {t('lobby.home.nameLabel')}
+              </label>
               <input
+                id="home-name"
+                ref={nameRef}
                 type="text"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="例如：Alex"
+                onChange={(event) => {
+                  nameTouchedRef.current = true;
+                  setName(event.target.value);
+                  if (formError === 'name') setFormError(null);
+                }}
+                placeholder={t('lobby.home.namePlaceholder')}
+                data-testid="home-username"
                 maxLength={20}
-                autoFocus
                 autoComplete="nickname"
-                className={inputClass}
+                autoCapitalize="words"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="go"
+                aria-invalid={formError === 'name' ? true : undefined}
+                aria-describedby={formError ? 'home-form-error' : undefined}
+                className={cn(textField, formError === 'name' && 'border-vermilion focus:border-vermilion')}
               />
-            </label>
+            </div>
 
-            {tab === 'join' && (
-              <div className="space-y-1.5">
-                <label className="block space-y-1.5">
-                  <span className={labelClass}>房间号</span>
-                  <input
-                    type="text"
-                    value={normalizedJoinRoomCode}
-                    onChange={(event) => {
-                      setJoinRoomCodeInput(event.target.value);
-                      setJoinRoomCodeTouched(true);
-                    }}
-                    onBlur={() => setJoinRoomCodeTouched(true)}
-                    placeholder="例如：A3K9Q2"
-                    maxLength={ROOM_CODE_LENGTH}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-invalid={joinRoomCodeError ? true : undefined}
-                    aria-describedby="join-code-hint"
-                    className={`${inputClass} font-mono text-[17px] uppercase tracking-[0.2em] placeholder:tracking-normal ${
-                      joinRoomCodeError ? 'border-fold focus:border-fold' : ''
-                    }`}
-                  />
-                </label>
-                <p
-                  id="join-code-hint"
-                  role={joinRoomCodeError ? 'alert' : undefined}
-                  className={`min-h-[18px] text-[12px] ${joinRoomCodeError ? 'text-fold' : 'text-text-3'}`}
-                >
-                  {joinRoomCodeError ?? `${ROOM_CODE_LENGTH} 位房间号，自动大写`}
-                </p>
-              </div>
-            )}
+            <p
+              id="home-form-error"
+              role="alert"
+              className={cn('text-body text-vermilion-hi', !formError && 'hidden')}
+            >
+              {formError === 'name' ? t('lobby.home.nameRequired') : formError === 'network' ? t('lobby.home.errorNetwork') : ''}
+            </p>
 
-            <button type="submit" disabled={!canSubmit} className={primaryButtonClass}>
-              {tab === 'create'
-                ? pendingAction === 'create' ? '创建中...' : '创建并进入房间'
-                : pendingAction === 'join' ? '加入中...' : '加入并进入房间'}
-            </button>
+            <div className="space-y-snug">
+              <button
+                ref={practiceRef}
+                type="submit"
+                disabled={busy}
+                data-testid="home-practice"
+                className={primaryButtonLarge}
+              >
+                {pending === 'practice' ? t('lobby.home.practicePending') : t('lobby.home.practice')}
+                {pending !== 'practice' && (
+                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+                    <path d="M3 9h11M10 4.5L14.5 9 10 13.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+              <p className="text-body text-text-3">{t('lobby.home.practiceCaption')}</p>
+            </div>
           </form>
-        </section>
 
-        <ul className="mt-6 flex flex-wrap justify-center gap-x-5 gap-y-1 text-[13px] text-text-3">
-          {FEATURES.map((feature) => (
-            <li key={feature}>{feature}</li>
-          ))}
-        </ul>
-      </div>
-    </main>
+          <div className="mt-6 space-y-gutter border-t border-brass/25 pt-6">
+            <button type="button" onClick={onCreate} disabled={busy} data-testid="home-submit" className={secondaryButton}>
+              {pending === 'create' ? t('lobby.home.createPending') : t('lobby.home.create')}
+            </button>
+
+            <form onSubmit={onJoin} noValidate className="space-y-snug">
+              <label htmlFor="home-code" className={fieldLabel}>
+                {t('lobby.home.join')}
+              </label>
+              <div className="flex gap-snug">
+                <input
+                  id="home-code"
+                  type="text"
+                  value={code}
+                  onChange={(event) => {
+                    const next = normalizeRoomCode(event.target.value);
+                    setCode(next);
+                    if (isValidRoomCode(next)) setCodeTouched(false);
+                  }}
+                  onBlur={() => setCodeTouched(code.length > 0)}
+                  placeholder={t('lobby.home.joinPlaceholder')}
+                  maxLength={ROOM_CODE_LENGTH}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="go"
+                  aria-invalid={codeError ? true : undefined}
+                  aria-describedby="home-code-hint"
+                  className={cn(codeField, 'min-w-0 flex-1', codeError && 'border-vermilion focus:border-vermilion')}
+                />
+                <button type="submit" disabled={busy} className={cn(secondaryButton, 'w-[96px] shrink-0 px-3')}>
+                  {pending === 'join' ? t('lobby.home.joinPending') : t('lobby.home.joinSubmit')}
+                </button>
+              </div>
+              <p
+                id="home-code-hint"
+                role={codeError ? 'alert' : undefined}
+                className={cn('text-body', codeError ? 'text-vermilion-hi' : 'text-text-3')}
+              >
+                {codeError
+                  ? t('lobby.home.joinError', { length: ROOM_CODE_LENGTH })
+                  : t('lobby.home.joinHint', { length: ROOM_CODE_LENGTH })}
+              </p>
+            </form>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }

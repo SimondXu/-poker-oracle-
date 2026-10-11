@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useT } from '@/i18n';
+import { cn } from '@/lib/utils';
+import { secondaryButtonCompact } from '../lib/room-ui';
 
 interface RoomInviteCardProps {
   roomId: string;
@@ -16,6 +19,7 @@ async function writeClipboard(text: string): Promise<boolean> {
 }
 
 export function RoomInviteCard({ roomId }: RoomInviteCardProps) {
+  const t = useT();
   const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -31,22 +35,26 @@ export function RoomInviteCard({ roomId }: RoomInviteCardProps) {
   }, [roomId]);
 
   return (
-    <section aria-label="邀请码" className="border-b border-line p-4">
-      <h2 className="text-[12px] font-medium text-text-3">邀请码</h2>
-      <div className="mt-2 flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate rounded-panel border border-line bg-page px-3 py-2 font-mono text-[20px] tracking-[0.2em] text-text">
+    <section aria-labelledby="room-invite-title" className="border-t border-line p-4 sm:p-5">
+      <h2 id="room-invite-title" className="label-index text-micro text-text-3">
+        {t('lobby.room.invite.title')}
+      </h2>
+      <div className="mt-2 flex items-stretch gap-2">
+        <span
+          className="font-index flex h-12 min-w-0 flex-1 items-center justify-center rounded-[var(--radius-control)] border border-brass/40 bg-page px-3 text-title font-semibold tracking-caps-wide text-text select-all"
+        >
           {roomId}
         </span>
         <button
           type="button"
           onClick={() => void handleCopy()}
-          className="h-[44px] shrink-0 rounded-panel border border-line bg-panel-2 px-4 text-[14px] font-medium text-text hover:bg-line"
+          className={cn(secondaryButtonCompact, 'w-[104px] shrink-0', status === 'copied' && 'border-brass text-brass')}
         >
-          {status === 'copied' ? '已复制' : status === 'failed' ? '复制失败' : '复制'}
+          {status === 'copied' ? t('common.button.copied') : status === 'failed' ? t('lobby.room.invite.copyFailed') : t('common.button.copy')}
         </button>
       </div>
-      <p className="mt-2 text-[12px] text-text-3" aria-live="polite">
-        把邀请码发给朋友，在首页选择“加入房间”输入即可。
+      <p className="mt-2 text-body text-text-3 max-sm:hidden" aria-live="polite">
+        {t('lobby.room.invite.hint')}
       </p>
     </section>
   );

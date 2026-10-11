@@ -1,187 +1,126 @@
 'use client';
 
-import { cn } from '@/lib/utils';
+import { forwardRef } from 'react';
+import { useT } from '@/i18n';
 import { getPlayerAvatarMeta } from '@/lib/player-avatar';
-import type { BotPersonality } from '@aipoker/shared';
+import { cn } from '@/lib/utils';
+import { getBotProfile } from '../lib/bot-profiles';
 import type { RoomPlayer } from '../lib/room-socket-state';
 
-const BOT_PERSONALITIES: Array<{
-  value: BotPersonality;
-  label: string;
-  desc: string;
-}> = [
-  { value: 'fish', label: 'Fish', desc: '松散被动' },
-  { value: 'tag', label: 'TAG', desc: '紧凶' },
-  { value: 'lag', label: 'LAG', desc: '松凶' },
-];
-
-export type MenuSide = 'above' | 'below';
-export type MenuAlign = 'left' | 'center' | 'right';
-
 interface RoomSeatCardProps {
-  seatIndex: number;
+  /** 1-based, for labels. */
+  seatNumber: number;
   player: RoomPlayer | null;
   currentUserId: string;
   isPlaying: boolean;
-  menuSide?: MenuSide;
-  menuAlign?: MenuAlign;
   menuOpen: boolean;
-  onMenuOpenChange: (open: boolean) => void;
-  onAddBot: (strategy: BotPersonality, seatIndex: number) => void;
+  onOpenMenu: (anchor: HTMLElement) => void;
   onRemoveBot: (playerId: string) => void;
 }
 
-const MENU_ALIGN_CLASS: Record<MenuAlign, string> = {
-  left: 'left-0',
-  center: 'left-1/2 -translate-x-1/2',
-  right: 'right-0',
-};
+const PLATE_SIZE = 'w-[100px] min-[380px]:w-[104px] sm:w-[152px]';
 
-export function RoomSeatCard({
-  seatIndex,
-  player,
-  currentUserId,
-  isPlaying,
-  menuSide = 'below',
-  menuAlign = 'center',
-  menuOpen,
-  onMenuOpenChange,
-  onAddBot,
-  onRemoveBot,
-}: RoomSeatCardProps) {
-  const isMe = player?.id === currentUserId;
-  const personalityConfig = BOT_PERSONALITIES.find((personality) => personality.value === player?.botStrategy);
-  const avatarMeta = player
-    ? getPlayerAvatarMeta({
-        name: player.name,
-        isBot: player.isBot,
-        botStrategy: player.botStrategy,
-        isHeroPlayer: isMe,
-      })
-    : null;
+/** One seat on the mini table: an ivory plate when taken, a dashed brass slot when open. */
+export const RoomSeatCard = forwardRef<HTMLDivElement, RoomSeatCardProps>(function RoomSeatCard(
+  { seatNumber, player, currentUserId, isPlaying, menuOpen, onOpenMenu, onRemoveBot },
+  ref,
+) {
+  const t = useT();
 
-  const canAddBot = !player && !isPlaying;
-
-  return (
-    <div className="relative flex w-[70px] flex-col items-center sm:w-[108px]">
-      {!player ? (
+  if (!player) {
+    const canAddBot = !isPlaying;
+    return (
+      <div ref={ref} data-layout-box="room-seat" className={cn('relative', PLATE_SIZE)}>
         <button
           type="button"
           disabled={!canAddBot}
-          onClick={() => onMenuOpenChange(!menuOpen)}
+          onClick={(event) => onOpenMenu(event.currentTarget)}
+          data-testid={canAddBot ? 'seat-add-bot' : undefined}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          aria-label={`座位 ${seatIndex + 1}${canAddBot ? '：添加机器人' : '：空位'}`}
+          aria-label={t(canAddBot ? 'lobby.room.seat.addAria' : 'lobby.room.seat.emptyAria', { seat: seatNumber })}
           className={cn(
-            'group flex flex-col items-center gap-1 rounded-panel p-1',
-            canAddBot ? 'cursor-pointer' : 'cursor-default opacity-40',
+            'flex h-[46px] w-full touch-manipulation select-none items-center justify-center gap-snug rounded-[var(--radius-control)] border border-dashed bg-ink-1/55 text-text-2 [-webkit-tap-highlight-color:transparent] transition-[transform,background-color,border-color,color] duration-[var(--duration-fast)] ease-out active:scale-[0.97] motion-reduce:transition-none',
+            menuOpen ? 'border-brass bg-ink-1/80 text-text' : 'border-brass/55 hover:border-brass hover:bg-ink-1/80 hover:text-text',
+            !canAddBot && 'cursor-default opacity-45 hover:border-brass/55 hover:bg-ink-1/55 hover:text-text-2',
           )}
         >
-          <span
-            aria-hidden="true"
-            className={cn(
-              'flex h-11 w-11 items-center justify-center rounded-full border border-dashed border-white/50 text-[22px] leading-none text-white/80 sm:h-12 sm:w-12',
-              canAddBot && 'group-hover:border-white group-hover:bg-black/20',
-            )}
-          >
-            +
-          </span>
-          <span className="text-[11px] font-medium leading-tight text-white/85 sm:text-[12px]">
-            {canAddBot ? '添加机器人' : '空位'}
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden className="shrink-0 text-brass">
+            <path d="M6 1.5v9M1.5 6h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+          <span className="label-index text-micro">
+            {t(canAddBot ? 'lobby.room.seat.add' : 'lobby.room.seat.empty')}
           </span>
         </button>
-      ) : (
-        <div className="relative flex w-full flex-col items-center">
-          <div
-            className={cn(
-              'relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 bg-panel text-base font-semibold text-text-2 sm:h-12 sm:w-12',
-              isMe ? 'border-chip' : 'border-plate',
-            )}
-          >
-            {avatarMeta?.src ? (
-              <img src={avatarMeta.src} alt={avatarMeta.alt ?? ''} className="h-full w-full object-cover" />
-            ) : (
-              <span>{avatarMeta?.fallbackLabel ?? player.name.charAt(0).toUpperCase()}</span>
-            )}
-          </div>
+      </div>
+    );
+  }
 
-          <div className="-mt-2 w-full rounded-panel bg-plate px-1 py-1 sm:px-2 text-center shadow-plate">
-            <div className="flex items-center justify-center gap-1">
-              <span className="truncate text-[11px] font-semibold leading-tight text-plate-text sm:text-[12px]">{player.name}</span>
-              {isMe && <span className="shrink-0 text-[10px] font-medium leading-tight text-accent">你</span>}
-            </div>
-            <div className="mt-0.5 truncate text-[10px] leading-tight text-[#5b606a] sm:text-[11px]">
-              {player.isBot
-                ? `${personalityConfig?.label ?? 'Bot'} · ${personalityConfig?.desc ?? ''}`
-                : player.isReady
-                  ? '已准备'
-                  : '未准备'}
-            </div>
-          </div>
+  const isMe = player.id === currentUserId;
+  const profile = player.isBot ? getBotProfile(player.botStrategy) : null;
+  const displayName = profile ? t(profile.nameKey) : player.name;
+  const avatar = getPlayerAvatarMeta({
+    name: player.name,
+    isBot: player.isBot,
+    botStrategy: player.botStrategy,
+    isHeroPlayer: isMe,
+  });
 
-          {player.isBot && !isPlaying && (
-            <button
-              type="button"
-              onClick={() => onRemoveBot(player.id)}
-              aria-label={`移除机器人 ${player.name}`}
-              className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-panel text-[11px] text-text-2 hover:bg-fold hover:text-white"
-            >
-              ✕
-            </button>
+  return (
+    <div className={cn('relative', PLATE_SIZE)}>
+      <div
+        ref={ref}
+        data-layout-box="room-seat"
+        className={cn(
+          'flex h-[46px] items-center gap-2 rounded-[var(--radius-control)] bg-ivory px-2 text-on-ivory shadow-plate',
+          isMe && 'ring-2 ring-brass ring-offset-2 ring-offset-felt',
+        )}
+      >
+        <span className="relative hidden size-7 shrink-0 overflow-hidden rounded-full border border-ivory-edge bg-ivory-shade sm:block sm:size-8">
+          {avatar.src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={avatar.src} alt="" className="size-full object-cover" />
+          ) : (
+            <span className="flex size-full items-center justify-center font-index text-lead font-bold">
+              {avatar.fallbackLabel}
+            </span>
           )}
-        </div>
-      )}
-
-      {menuOpen && canAddBot && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => onMenuOpenChange(false)} aria-hidden="true" />
-          <div
-            role="menu"
-            aria-label={`座位 ${seatIndex + 1} 添加机器人`}
-            className={cn(
-              'absolute z-50 w-[168px] overflow-hidden rounded-panel border border-line bg-panel shadow-float',
-              MENU_ALIGN_CLASS[menuAlign],
-              menuSide === 'below' ? 'top-full mt-1' : 'bottom-full mb-1',
+        </span>
+        <span className="min-w-0 flex-1 leading-none">
+          <span className="flex items-baseline gap-snug">
+            <span className="font-index truncate text-lead font-bold leading-[1.1]">{displayName}</span>
+            {isMe && (
+              <span className="label-index shrink-0 text-micro tracking-caps-tight text-vermilion-ink">
+                {t('lobby.room.seat.you')}
+              </span>
             )}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') onMenuOpenChange(false);
-            }}
-          >
-            {BOT_PERSONALITIES.map((personality) => {
-              const botAvatar = getPlayerAvatarMeta({
-                name: personality.label,
-                isBot: true,
-                botStrategy: personality.value,
-              });
+          </span>
+          <span className="mt-1 block truncate text-micro text-on-ivory-2">
+            {profile
+              ? t(profile.styleKey)
+              : t(player.isReady ? 'lobby.room.seat.ready' : 'lobby.room.seat.notReady')}
+          </span>
+        </span>
+        {!profile && (
+          <span
+            aria-hidden
+            className={cn('size-2 shrink-0 rounded-full', player.isReady ? 'bg-positive' : 'bg-on-ivory-2/40')}
+          />
+        )}
+      </div>
 
-              return (
-                <button
-                  key={personality.value}
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-panel-2"
-                  onClick={() => {
-                    onAddBot(personality.value, seatIndex);
-                    onMenuOpenChange(false);
-                  }}
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-page">
-                    <img
-                      src={botAvatar.src ?? '/avatars/bot-default.svg'}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  </span>
-                  <span>
-                    <span className="block text-[14px] font-medium leading-tight text-text">{personality.label}</span>
-                    <span className="block text-[12px] leading-tight text-text-3">{personality.desc}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>
+      {player.isBot && !isPlaying && (
+        <button
+          type="button"
+          onClick={() => onRemoveBot(player.id)}
+          aria-label={t('lobby.room.seat.remove', { name: displayName })}
+          className="absolute -right-2 -top-2 flex size-6 touch-manipulation items-center justify-center rounded-full border border-line-2 bg-panel text-text-2 shadow-plate [-webkit-tap-highlight-color:transparent] transition-[transform,background-color,color] duration-[var(--duration-fast)] ease-out before:absolute before:-inset-2.5 before:content-[''] hover:bg-vermilion hover:text-ivory active:scale-90 motion-reduce:transition-none"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+            <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
       )}
     </div>
   );
-}
+});

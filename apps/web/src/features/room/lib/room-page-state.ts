@@ -1,3 +1,4 @@
+import type { MessageKey } from '@/i18n';
 import type { RoomPlayer, RoomState } from './room-socket-state';
 
 export interface RoomPageState {
@@ -35,4 +36,26 @@ export function getRoomPageState(roomState: RoomState | null, playerId: string):
     canSelfStart,
     canStart,
   };
+}
+
+export interface RoomStatusInput {
+  isConnected: boolean;
+  isPlaying: boolean;
+  isTableFinished: boolean;
+  canSelfStart: boolean;
+  hasEnoughPlayers: boolean;
+  isReady: boolean;
+  allHumansReady: boolean;
+}
+
+/** The one-line "what happens next" shown above the waiting room buttons. */
+export function getRoomStatusKey(input: RoomStatusInput): MessageKey {
+  if (!input.isConnected) return 'lobby.room.status.connecting';
+  if (input.isTableFinished) return 'lobby.room.status.finished';
+  if (!input.canSelfStart) return 'lobby.room.status.eliminated';
+  if (input.isPlaying) return 'lobby.room.status.playing';
+  if (!input.hasEnoughPlayers) return 'lobby.room.status.needPlayers';
+  if (!input.isReady) return 'lobby.room.status.needReady';
+  if (!input.allHumansReady) return 'lobby.room.status.waitOthers';
+  return 'lobby.room.status.canStart';
 }
