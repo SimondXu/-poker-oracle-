@@ -1,3 +1,4 @@
+import { useT, type MessageKey } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { PreActionKind } from '../../lib/action-bar-preaction';
 
@@ -8,39 +9,53 @@ interface WaitingBarProps {
   onPreActionChange: (kind: PreActionKind | null) => void;
 }
 
-const OPTIONS: Array<{ kind: PreActionKind; label: string; title: string }> = [
-  { kind: 'check_fold', label: 'Check/Fold', title: 'When it is your turn: check if free, otherwise fold' },
-  { kind: 'call_any', label: 'Call any', title: 'When it is your turn: check if free, otherwise call any amount' },
+const OPTIONS: Array<{ kind: PreActionKind; label: MessageKey; title: MessageKey }> = [
+  { kind: 'check_fold', label: 'actionbar.pre.checkFold', title: 'actionbar.pre.checkFoldHint' },
+  { kind: 'call_any', label: 'actionbar.pre.callAny', title: 'actionbar.pre.callAnyHint' },
 ];
 
-/** Not hero's turn: muted status plus optional pre-select toggles (client-side only). */
+/** Not hero's turn: muted status plus optional pre-select switches (client-side only). */
 export function WaitingBar({ preAction, canPreAct, onPreActionChange }: WaitingBarProps) {
+  const t = useT();
   return (
-    <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-1 md:min-h-14">
-      <p role="status" className="text-[13px] text-text-2">
-        Waiting for other players…
+    <div className="flex flex-col gap-snug sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <p role="status" className="min-w-0 truncate text-body text-text-2">
+        {t('actionbar.waiting.status')}
       </p>
       {canPreAct && (
-        <div role="group" aria-label="Pre-select action" className="flex items-center gap-1">
+        <div role="group" aria-label={t('actionbar.pre.group')} className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
           {OPTIONS.map((option) => {
-            const checked = preAction === option.kind;
+            const on = preAction === option.kind;
             return (
-              <label
+              <button
                 key={option.kind}
-                title={option.title}
+                type="button"
+                role="switch"
+                aria-checked={on}
+                title={t(option.title)}
+                onClick={() => onPreActionChange(on ? null : option.kind)}
                 className={cn(
-                  'flex min-h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-panel)] px-2.5 text-[13px] transition-colors duration-[var(--duration-fast)] hover:bg-panel-2',
-                  checked ? 'text-text' : 'text-text-2',
+                  'flex h-11 min-w-0 touch-manipulation select-none items-center gap-snug rounded-[var(--radius-control)] border px-3 text-body font-semibold',
+                  'outline-offset-2 transition-colors duration-[var(--duration-fast)] [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:outline-[var(--color-brass)]',
+                  on ? 'border-vermilion/60 bg-vermilion/10 text-text' : 'border-line-2 text-text-2 hover:text-text',
                 )}
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) => onPreActionChange(event.target.checked ? option.kind : null)}
-                  className="size-4 cursor-pointer accent-[var(--color-accent)]"
-                />
-                {option.label}
-              </label>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'relative h-[18px] w-8 shrink-0 rounded-full border transition-colors duration-[var(--duration-fast)]',
+                    on ? 'border-vermilion bg-vermilion' : 'border-line-2 bg-ink-0',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'absolute top-px size-3.5 rounded-full transition-[left,background-color] duration-[var(--duration-fast)] ease-out',
+                      on ? 'left-[15px] bg-ivory' : 'left-px bg-text-3',
+                    )}
+                  />
+                </span>
+                <span className="min-w-0 truncate">{t(option.label)}</span>
+              </button>
             );
           })}
         </div>

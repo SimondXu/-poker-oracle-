@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ValidActions } from '@aipoker/shared';
+import { useT } from '@/i18n';
 import {
   canOfferPreAction,
   isPreActionCurrent,
@@ -22,9 +23,10 @@ import { useHeroContext } from './useHeroContext';
 import { WaitingBar } from './WaitingBar';
 
 /**
- * Action bar slot: bottom-right over the stage on md+, fixed full-width at the
- * bottom below md (GameView owns the positioning). One instance, so the
- * keyboard handlers inside `ActionControls` are registered once.
+ * Action bar slot: the dock. GameView gives it its own grid row at the bottom of the
+ * table column (full column width, never over the felt); it grows upward inside that
+ * row while the raise sizing row is open. One instance, so the keyboard handlers
+ * inside `ActionControls` are registered once.
  */
 export function ActionBar({
   mode,
@@ -40,6 +42,7 @@ export function ActionBar({
   onPlayAgain,
   onBackToLobby,
 }: ActionBarProps) {
+  const t = useT();
   const hero = useHeroContext();
   const [selection, setSelection] = useState<PreActionSelection | null>(null);
   const [autoSentFor, setAutoSentFor] = useState<ValidActions | null>(null);
@@ -74,10 +77,11 @@ export function ActionBar({
 
   return (
     <section
-      aria-label="Actions"
-      className="border-t border-line bg-panel p-2.5 md:ml-auto md:max-w-[440px] pb-[max(0.625rem,env(safe-area-inset-bottom))] md:rounded-[var(--radius-panel)] md:border md:p-3"
+      aria-label={t('actionbar.group.actions')}
+      data-layout-box="action-bar"
+      className="shrink-0 border-t border-brass/25 bg-panel px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 md:px-4 md:py-3"
     >
-      {content}
+      <div className="mx-auto flex min-h-18 w-full max-w-[640px] flex-col justify-center">{content}</div>
     </section>
   );
 
@@ -87,8 +91,8 @@ export function ActionBar({
         if (!validActions) return null;
         if (autoSentFor === validActions || resolvedPre) {
           return (
-            <p role="status" className="flex min-h-12 items-center justify-center text-[13px] text-text-2 md:min-h-14">
-              Auto-sending your pre-selected action…
+            <p role="status" className="text-center text-body text-text-2">
+              {t('actionbar.auto.sending')}
             </p>
           );
         }

@@ -42,7 +42,7 @@ export interface SidePanelProps {
   className?: string | undefined;
 }
 
-/** `./TopBar.tsx` — owner: panel agent. */
+/** `./TopBar.tsx` — owner: action-bar agent. The panel button shows below `md` only (the rail has it from md). */
 export interface TopBarProps {
   roomCode: string;
   handNumber: number | null;
@@ -50,9 +50,11 @@ export interface TopBarProps {
   bigBlind: number | null;
   onBack: () => void;
   onToggleHUD: () => void;
+  onTogglePanel: () => void;
+  isPanelOpen: boolean;
 }
 
-/** `./IconRail.tsx` — owner: panel agent. Hidden below `md`. */
+/** `./IconRail.tsx` — owner: action-bar agent. Hidden below `md`. */
 export interface IconRailProps {
   isPanelOpen: boolean;
   isTrainingHUDVisible: boolean;

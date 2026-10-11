@@ -1,23 +1,30 @@
-import { formatAmount } from '../../lib/action-bar-sizing';
+import { useFormatNumber, useT } from '@/i18n';
+import { HandResultBanner } from '../result/HandResultBanner';
 import { ActionButton } from './ActionButton';
 
-/** Compact, flat equivalents of the v1 footer panels. Callbacks and copy are unchanged. */
+/** Between-hand and end-of-game bars. They sit in the same dock as the action buttons. */
 
+/** The hand-result banner lives in the dock while the result is shown (it reads the store itself). */
 export function ResultPresentationBar() {
+  const t = useT();
   return (
-    <p role="status" className="flex min-h-12 items-center justify-center text-[13px] text-text-2 md:min-h-14">
-      正在播放结算动画
-    </p>
+    <>
+      <p className="sr-only">{t('actionbar.result.playing')}</p>
+      <HandResultBanner className="relative inset-x-0 bottom-0 z-auto w-full" />
+    </>
   );
 }
 
 export function NextHandBar({ onStartNextHand }: { onStartNextHand: () => void }) {
+  const t = useT();
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <ActionButton variant="raise" hint="Space" onClick={onStartNextHand} className="w-full">
-        发下一手牌
+    <div className="flex flex-col gap-snug sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <p className="order-2 text-center text-body text-text-3 sm:order-1 sm:text-left">
+        {t('actionbar.next.hint')}
+      </p>
+      <ActionButton variant="raise" hint="Space" onClick={onStartNextHand} className="order-1 sm:order-2 sm:w-56">
+        {t('actionbar.next.button')}
       </ActionButton>
-      <p className="text-[11px] text-text-3">若未手动开始，系统会自动推进下一手</p>
     </div>
   );
 }
@@ -25,8 +32,8 @@ export function NextHandBar({ onStartNextHand }: { onStartNextHand: () => void }
 function PanelText({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="min-w-0">
-      <h3 className="text-[15px] font-semibold text-text">{title}</h3>
-      <p className="text-[12px] leading-snug text-text-2">{subtitle}</p>
+      <h3 className="label-index text-lead text-text">{title}</h3>
+      <p className="text-body text-text-2">{subtitle}</p>
     </div>
   );
 }
@@ -38,18 +45,16 @@ export function EliminatedChoiceBar({
   onSpectate: () => void;
   onBackToLobby: () => void;
 }) {
+  const t = useT();
   return (
-    <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:justify-between md:gap-4">
-      <PanelText
-        title="你已淘汰"
-        subtitle="桌上仍有玩家持筹码，选择返回大厅或继续观战。"
-      />
-      <div className="grid shrink-0 grid-cols-2 gap-2 md:w-72">
+    <div className="flex flex-col gap-group md:flex-row md:items-center md:justify-between md:gap-4">
+      <PanelText title={t('actionbar.out.title')} subtitle={t('actionbar.out.subtitle')} />
+      <div className="grid shrink-0 grid-cols-2 gap-2 md:w-80">
         <ActionButton variant="raise" onClick={onSpectate}>
-          继续观战
+          {t('actionbar.out.spectate')}
         </ActionButton>
         <ActionButton variant="neutral" onClick={onBackToLobby}>
-          返回大厅
+          {t('actionbar.out.lobby')}
         </ActionButton>
       </div>
     </div>
@@ -63,13 +68,14 @@ export function EliminatedSpectatingBar({
   isBotsOnlyContinuation: boolean;
   onBackToLobby: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-3">
-      <p role="status" className="text-[13px] text-text-2">
-        {isBotsOnlyContinuation ? '观战中 · Bot 自动续局' : '观战中 · 存活玩家控制续局'}
+      <p role="status" className="min-w-0 text-body text-text-2">
+        {isBotsOnlyContinuation ? t('actionbar.spectating.bots') : t('actionbar.spectating.survivors')}
       </p>
-      <ActionButton variant="neutral" onClick={onBackToLobby} className="min-h-11 shrink-0 px-4 text-[13px] md:min-h-11 md:text-[13px]">
-        返回大厅
+      <ActionButton variant="neutral" onClick={onBackToLobby} className="h-11 w-40 shrink-0">
+        {t('actionbar.out.lobby')}
       </ActionButton>
     </div>
   );
@@ -88,30 +94,27 @@ export function TableFinishedBar({
   onPlayAgain: () => void;
   onBackToLobby: () => void;
 }) {
-  const handsPlayed = typeof handNumber === 'number' && handNumber > 0 ? `${handNumber} 手` : null;
+  const t = useT();
+  const fmt = useFormatNumber();
+  const handsPlayed =
+    typeof handNumber === 'number' && handNumber > 0 ? t('actionbar.finished.hands', { count: handNumber }) : null;
   return (
-    <div className="flex flex-col gap-2.5 md:flex-row md:items-center md:justify-between md:gap-4">
-      <div className="flex min-w-0 items-center gap-3">
-        <span aria-hidden="true" className="text-[22px] leading-none text-chip">
-          &#9819;
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold text-text">本场结束</h3>
-          <p className="truncate text-[12px] text-text-2">
-            冠军 <span className="font-semibold text-text">{championName ?? '玩家'}</span>
-            {typeof championStack === 'number' && (
-              <span className="tabular-nums"> · {formatAmount(championStack)}</span>
-            )}
-            {handsPlayed && <span> · {handsPlayed}</span>}
-          </p>
-        </div>
+    <div className="flex flex-col gap-group md:flex-row md:items-center md:justify-between md:gap-4">
+      <div className="min-w-0">
+        <h3 className="label-index text-lead text-brass">{t('actionbar.finished.title')}</h3>
+        <p className="truncate text-body text-text-2">
+          {t('actionbar.finished.champion')}{' '}
+          <span className="font-semibold text-text">{championName ?? t('actionbar.finished.player')}</span>
+          {typeof championStack === 'number' && <span className="font-index"> · {fmt(championStack)}</span>}
+          {handsPlayed && <span> · {handsPlayed}</span>}
+        </p>
       </div>
-      <div className="grid shrink-0 grid-cols-2 gap-2 md:w-72">
+      <div className="grid shrink-0 grid-cols-2 gap-2 md:w-80">
         <ActionButton variant="raise" onClick={onPlayAgain}>
-          再来一局
+          {t('actionbar.finished.playAgain')}
         </ActionButton>
         <ActionButton variant="neutral" onClick={onBackToLobby}>
-          返回大厅
+          {t('actionbar.finished.lobby')}
         </ActionButton>
       </div>
     </div>

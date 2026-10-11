@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActionType, ValidActions } from '@aipoker/shared';
+import { useFormatNumber, useT } from '@/i18n';
 import { useActionHotkeys } from '../../hooks/useActionHotkeys';
 import type { HeroContext } from '../../lib/action-bar-preaction';
 import {
   buildSizingPresets,
-  formatAmount,
   getRaiseBounds,
   isCallAllIn,
   parseAmountDraft,
@@ -28,6 +28,8 @@ const SEND_LOCK_MS = 800;
 
 /** Hero-to-act controls: [Fold] [Check | Call X] [Bet | Raise] plus the sizing row. */
 export function ActionControls({ validActions, pot, hero, onAction }: ActionControlsProps) {
+  const t = useT();
+  const fmt = useFormatNumber();
   const bounds = useMemo(() => getRaiseBounds(validActions), [validActions]);
   const canRaise = validActions.canBet || validActions.canRaise;
   const [raiseOpen, setRaiseOpen] = useState(false);
@@ -140,19 +142,27 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
   });
 
   const callAllIn = isCallAllIn(validActions, hero?.stack ?? null);
-  const callText = `Call ${formatAmount(validActions.callAmount)}`;
-  const raiseKind = validActions.canBet ? 'Bet' : 'Raise';
+  const callAmountText = fmt(validActions.callAmount);
+  const raiseKind = validActions.canBet ? t('actionbar.action.bet') : t('actionbar.action.raise');
 
   const request = resolveRaiseAction(effectiveAmount, validActions);
-  const confirmText =
+  const confirmAmountText = fmt(request.amount);
+  const confirmLabel =
     request.type === 'all_in'
-      ? `All-in ${formatAmount(request.amount)}`
+      ? t('actionbar.action.allIn')
       : request.type === 'bet'
-        ? `Bet ${formatAmount(request.amount)}`
-        : `Raise to ${formatAmount(request.amount)}`;
+        ? t('actionbar.action.bet')
+        : t('actionbar.action.raiseTo');
+  const confirmShortLabel = request.type === 'raise_to' ? t('actionbar.action.raise') : null;
+  const confirmAria =
+    request.type === 'all_in'
+      ? t('actionbar.action.allInAria', { amount: confirmAmountText })
+      : request.type === 'bet'
+        ? t('actionbar.action.betAmountAria', { amount: confirmAmountText })
+        : t('actionbar.action.raiseToAria', { amount: confirmAmountText });
 
   return (
-    <div role="group" aria-label="Your action">
+    <div role="group" aria-label={t('actionbar.group.yourAction')} className="flex w-full flex-col gap-snug">
       {raiseOpen && (
         <SizingRow
           presets={presets}
@@ -172,20 +182,20 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
         />
       )}
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-snug">
         <ActionButton
           variant={validActions.canCheck ? 'fold-secondary' : 'fold'}
           hint="F"
           disabled={!validActions.canFold}
           onClick={fold}
-          aria-label="Fold"
+          data-layout-box="action-fold"
         >
-          Fold
+          {t('actionbar.action.fold')}
         </ActionButton>
 
         {validActions.canCheck ? (
-          <ActionButton variant="call" hint="C" onClick={checkOrCall} aria-label="Check">
-            Check
+          <ActionButton variant="call" hint="C" onClick={checkOrCall} data-layout-box="action-call">
+            {t('actionbar.action.check')}
           </ActionButton>
         ) : (
           <ActionButton
@@ -193,16 +203,17 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
             hint="C"
             disabled={!validActions.canCall}
             onClick={checkOrCall}
-            aria-label={validActions.canCall ? `${callText}${callAllIn ? ' (All-in)' : ''}` : 'Call'}
+            data-layout-box="action-call"
+            amount={validActions.canCall ? callAmountText : undefined}
+            aria-label={
+              validActions.canCall
+                ? callAllIn
+                  ? t('actionbar.action.callAllInAria', { amount: callAmountText })
+                  : t('actionbar.action.call', { amount: callAmountText })
+                : t('actionbar.action.callLabel')
+            }
           >
-            {validActions.canCall ? (
-              <>
-                <span>{callText}</span>
-                {callAllIn && <span className="text-[12px] font-medium opacity-90">(All-in)</span>}
-              </>
-            ) : (
-              'Call'
-            )}
+            {callAllIn ? t('actionbar.action.callAllIn') : t('actionbar.action.callLabel')}
           </ActionButton>
         )}
 
@@ -211,10 +222,13 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
             ref={confirmRef}
             variant="raise"
             hint="Enter"
+            amount={confirmAmountText}
+            shortLabel={confirmShortLabel}
             onClick={confirmRaise}
-            aria-label={confirmText}
+            aria-label={confirmAria}
+            data-layout-box="action-raise"
           >
-            {confirmText}
+            {confirmLabel}
           </ActionButton>
         ) : (
           <ActionButton
@@ -224,6 +238,7 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
             disabled={!canRaise}
             onClick={openRaise}
             aria-label={raiseKind}
+            data-layout-box="action-raise"
           >
             {raiseKind}
           </ActionButton>
