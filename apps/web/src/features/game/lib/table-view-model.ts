@@ -1,5 +1,5 @@
-import type { ActionType, GameAction, HandState, Phase, PlayerStatus } from '@aipoker/shared';
-import { describeBestHand } from '../../../components/poker/hand-name.ts';
+import type { ActionType, BotPersonality, GameAction, HandState, Phase, PlayerStatus } from '@aipoker/shared';
+import { describeBestHand, getBestHandCategory, type HandCategoryKey } from '../../../components/poker/hand-name.ts';
 import type { ActionTagKind } from '../../../components/poker/types.ts';
 import { formatChips } from '../../../lib/utils.ts';
 import { getHandPotTotal } from './game-screen-state.ts';
@@ -50,6 +50,8 @@ export interface OccupiedSeatViewModel extends SeatViewModelBase {
   id: string;
   name: string;
   isBot: boolean;
+  /** Rule-bot personality (stamped on the plate), null for humans / unknown bots. */
+  personality: BotPersonality | null;
   /** Stack to display (during announcing/revealing the payout is held back so it can "arrive"). */
   stack: number;
   status: PlayerStatus;
@@ -79,6 +81,8 @@ export interface OccupiedSeatViewModel extends SeatViewModelBase {
   bestCards: readonly string[];
   /** Showdown reveal only: English name of the shown hand ("Two Pair, Kings and Sevens"), else null. */
   handName: string | null;
+  /** Same hand as `handName`, as a category key for the translated label. */
+  handCategory: HandCategoryKey | null;
   /** Last action on the current street, cleared when the street changes; null at showdown/hand end. */
   lastAction: SeatLastAction | null;
   /** Turn timer for the acting human seat, else null. */
@@ -134,7 +138,7 @@ export interface TableViewModel {
   seatCount: number;
   heroSeatIndex: number | null;
   actorSeatIndex: number | null;
-  /** Dealer button seat; render DealerButton at seats[buttonSeatIndex].layout.button. */
+  /** Dealer button seat; TableSeat draws the disc beside that plate (layout.buttonSide). */
   buttonSeatIndex: number;
   /** One entry per seat index (array index === seatIndex). */
   seats: readonly SeatViewModel[];
@@ -284,6 +288,24 @@ export function getShownHandName(
   return describeBestHand(holeCards as readonly string[], communityCards);
 }
 
+const PERSONALITIES: readonly BotPersonality[] = ['fish', 'tag', 'lag'];
+
+export function toBotPersonality(value: string | undefined): BotPersonality | null {
+  return PERSONALITIES.find((personality) => personality === value) ?? null;
+}
+
+/** Category of a face-up hand at showdown (same gating as getShownHandName). */
+export function getShownHandCategory(
+  holeCards: readonly (string | null)[],
+  communityCards: readonly string[],
+  isShown: boolean,
+): HandCategoryKey | null {
+  if (!isShown || holeCards.length !== HOLE_CARD_COUNT || holeCards.some((card) => card === null)) {
+    return null;
+  }
+  return getBestHandCategory(holeCards as readonly string[], communityCards);
+}
+
 export function buildTableViewModel(input: TableViewModelInput): TableViewModel {
   const { hand, currentUserId } = input;
   const resultPhase = input.handResultPhase;
@@ -326,6 +348,7 @@ export function buildTableViewModel(input: TableViewModelInput): TableViewModel 
       id: player.id,
       name: player.name,
       isBot: player.isBot,
+      personality: player.isBot ? toBotPersonality(player.botStrategy) : null,
       stack: getDisplayedSeatStack(player.stack, payoutAmount, resultPhase),
       status: player.status,
       isHero,
@@ -348,6 +371,7 @@ export function buildTableViewModel(input: TableViewModelInput): TableViewModel 
       showCards: holeCards.some((card) => card !== null),
       bestCards: isWinner ? (input.winnerBestCardsByPlayer[player.id] ?? EMPTY_STRINGS) : EMPTY_STRINGS,
       handName: getShownHandName(holeCards, hand.communityCards, isShowdownReveal && !isFolded),
+      handCategory: getShownHandCategory(holeCards, hand.communityCards, isShowdownReveal && !isFolded),
       lastAction: lastActions.get(player.id) ?? null,
       timer:
         isActor && !player.isBot && input.timerStartedAt !== null

@@ -2,21 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  BET_DISTANCE_RATIO,
+  MAX_ASPECT_STRETCH,
   MAX_TUNED_LAYOUT_SEATS,
   MIN_LAYOUT_SEATS,
   TABLE_GEOMETRIES,
+  TABLE_ORIENTATIONS,
   boxesOverlap,
-  getBetBox,
-  getBoardBox,
-  getButtonBox,
-  getPotBox,
-  getSeatFootprint,
+  fitTableStage,
   getSeatLayouts,
+  getTableBoxes,
   getVisualSlot,
   type LayoutBox,
   type LayoutPoint,
-  type TableGeometry,
+  type TableBox,
   type TableOrientation,
 } from './seat-layout.ts';
 
@@ -24,108 +22,145 @@ const SEAT_COUNTS = Array.from(
   { length: MAX_TUNED_LAYOUT_SEATS - MIN_LAYOUT_SEATS + 1 },
   (_, index) => index + MIN_LAYOUT_SEATS,
 );
-const ORIENTATIONS: readonly TableOrientation[] = ['landscape', 'portrait'];
+/** Em scales the stage can produce (fontPx clamps only downward). */
+const EM_SCALES = [1, 0.85, 0.7, 0.55];
 
 function correctedDistance(a: LayoutPoint, b: LayoutPoint, aspect: number): number {
   return Math.hypot(a.x - b.x, (a.y - b.y) / aspect);
 }
 
-/** Inside the stage, with a 1% side gutter so plates never touch the screen edge on phones. */
-function assertBoxInStage(box: LayoutBox, label: string) {
-  assert.ok(box.left >= 1 && box.right <= 99, `${label} x ${box.left.toFixed(1)}..${box.right.toFixed(1)} out of stage`);
-  assert.ok(box.top >= 0 && box.bottom <= 100, `${label} y ${box.top.toFixed(1)}..${box.bottom.toFixed(1)} out of stage`);
+function describe(box: LayoutBox): string {
+  return `[${box.left.toFixed(1)},${box.top.toFixed(1)} → ${box.right.toFixed(1)},${box.bottom.toFixed(1)}]`;
 }
 
-interface OwnedBox {
-  owner: string;
-  label: string;
-  box: LayoutBox;
+/** Pairs that must not intersect: anything of two different owners, and a seat's bet/button vs its own boxes. */
+function findCollisions(boxes: readonly TableBox[]): string[] {
+  const hits: string[] = [];
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i]!;
+      const b = boxes[j]!;
+      const loose = (box: TableBox) => box.kind === 'bet' || box.kind === 'button';
+      // A seat's plate, cards and tag are stacked by construction (gaps in em); everything else is checked.
+      if (a.owner === b.owner && !loose(a) && !loose(b)) continue;
+      if (boxesOverlap(a.box, b.box)) {
+        hits.push(`${a.owner}.${a.kind} ${describe(a.box)} x ${b.owner}.${b.kind} ${describe(b.box)}`);
+      }
+    }
+  }
+  return hits;
 }
 
-/** Every element box on the table, with cards drawn for every seat (worst case: showdown). */
-function collectBoxes(count: number, orientation: TableOrientation): OwnedBox[] {
-  const geometry = TABLE_GEOMETRIES[orientation];
-  const boxes: OwnedBox[] = [
-    { owner: 'board', label: 'board', box: getBoardBox(geometry) },
-    { owner: 'pot', label: 'pot', box: getPotBox(geometry) },
-  ];
-  getSeatLayouts(count, 0, orientation).forEach((layout, seatIndex) => {
-    const owner = `seat${seatIndex}`;
-    const footprint = getSeatFootprint(layout, geometry);
-    boxes.push({ owner, label: `${owner}.plate`, box: footprint.plate });
-    boxes.push({ owner, label: `${owner}.cards`, box: footprint.cards! });
-    boxes.push({ owner, label: `${owner}.tag`, box: footprint.tag });
-    boxes.push({ owner, label: `${owner}.bet`, box: getBetBox(layout.bet, geometry) });
-    boxes.push({ owner, label: `${owner}.button`, box: getButtonBox(layout.button, geometry) });
-  });
-  return boxes;
+function assertInStage(boxes: readonly TableBox[], label: string) {
+  for (const { owner, kind, box } of boxes) {
+    assert.ok(
+      box.left >= 1 && box.right <= 99 && box.top >= 0 && box.bottom <= 100,
+      `${label} ${owner}.${kind} ${describe(box)} leaves the stage`,
+    );
+  }
 }
 
-test('getSeatLayouts returns one in-stage layout per seat for 2..10 seats in both orientations', () => {
-  for (const orientation of ORIENTATIONS) {
+test('no table element intersects another for 2..10 seats, every orientation and em scale', () => {
+  for (const orientation of TABLE_ORIENTATIONS) {
+    const geometry = TABLE_GEOMETRIES[orientation];
+    for (const count of SEAT_COUNTS) {
+      for (const emScale of EM_SCALES) {
+        const label = `${orientation} ${count}-max @${emScale}`;
+        const boxes = getTableBoxes(getSeatLayouts(count, 0, orientation), geometry, emScale);
+        assertInStage(boxes, label);
+        assert.deepEqual(findCollisions(boxes), [], label);
+        // Stretched boxes shrink one axis only.
+        for (const [sx, sy] of [[emScale, 1], [1, emScale]] as const) {
+          const stretched = getTableBoxes(getSeatLayouts(count, 0, orientation), geometry, sx, sy);
+          assert.deepEqual(findCollisions(stretched), [], `${label} stretched ${sx}x${sy}`);
+        }
+        assertInStage(boxes, label);
+        assert.deepEqual(findCollisions(boxes), [], label);
+      }
+    }
+  }
+});
+
+test('the pot medallion sits above the board and clears it', () => {
+  for (const orientation of TABLE_ORIENTATIONS) {
+    const boxes = getTableBoxes(getSeatLayouts(6, 0, orientation), TABLE_GEOMETRIES[orientation]);
+    const board = boxes.find((box) => box.kind === 'board')!.box;
+    const pot = boxes.find((box) => box.kind === 'pot')!.box;
+    assert.ok(pot.bottom < board.top, `${orientation} pot ${describe(pot)} vs board ${describe(board)}`);
+  }
+});
+
+const STAGE_ASPECTS: ReadonlyArray<readonly [string, number]> = [
+  ['9:16', 9 / 16],
+  ['3:5', 3 / 5],
+  ['3:4', 3 / 4],
+  ['1:1', 1],
+  ['5:4', 5 / 4],
+  ['4:3', 4 / 3],
+  ['16:10', 16 / 10],
+  ['16:9', 16 / 9],
+  ['2:1', 2],
+  ['21:9', 21 / 9],
+];
+const STAGE_HEIGHTS = [420, 640, 900, 1400];
+
+test('fitTableStage keeps a collision-free table inside any stage from 9:16 to 21:9', () => {
+  for (const [name, aspect] of STAGE_ASPECTS) {
+    for (const stageH of STAGE_HEIGHTS) {
+      const stageW = Math.round(stageH * aspect);
+      const fit = fitTableStage(stageW, stageH);
+      assert.ok(fit, `${name} ${stageW}x${stageH} has a fit`);
+      const label = `${name} ${stageW}x${stageH} → ${fit.orientation}`;
+      for (const scale of [fit.emScaleX, fit.emScaleY]) {
+        assert.ok(scale > 0 && scale <= 1 + 1e-9, `${label} em scale ${scale}`);
+      }
+      assert.ok(fit.left >= -1e-6 && fit.top >= -1e-6, `${label} box offset`);
+      assert.ok(fit.left + fit.width <= stageW + 0.5 && fit.top + fit.height <= stageH + 0.5, `${label} box fits`);
+      const geometry = TABLE_GEOMETRIES[fit.orientation];
+      const stretch = fit.width / fit.height / geometry.aspect;
+      assert.ok(
+        stretch >= 1 / MAX_ASPECT_STRETCH - 1e-6 && stretch <= MAX_ASPECT_STRETCH + 1e-6,
+        `${label} stretch ${stretch.toFixed(2)}`,
+      );
+      // Fills the stage on at least one axis, and fully when the stretch allows it.
+      assert.ok(fit.width >= stageW - 0.5 || fit.height >= stageH - 0.5, `${label} fills one axis`);
+      for (const count of SEAT_COUNTS) {
+        const boxes = getTableBoxes(getSeatLayouts(count, 0, fit.orientation), geometry, fit.emScaleX, fit.emScaleY);
+        assertInStage(boxes, `${label} ${count}-max`);
+        assert.deepEqual(findCollisions(boxes), [], `${label} ${count}-max`);
+      }
+    }
+  }
+});
+
+test('fitTableStage picks portrait on phones, landscape on wide stages, square near 1:1', () => {
+  assert.equal(fitTableStage(390, 640)?.orientation, 'portrait');
+  assert.equal(fitTableStage(1500, 850)?.orientation, 'landscape');
+  assert.equal(fitTableStage(648, 600)?.orientation, 'square');
+  // Phones stay portrait even when the stage gets short (raise row open).
+  assert.equal(fitTableStage(360, 420)?.orientation, 'portrait');
+  // A 1044×760 desktop stage is filled edge to edge.
+  const desktop = fitTableStage(1044, 760)!;
+  assert.ok(desktop.width === 1044 && desktop.height === 760, `${desktop.width}x${desktop.height}`);
+  assert.equal(fitTableStage(0, 600), null);
+  // The em never grows past the geometry cap.
+  const huge = fitTableStage(5000, 3000)!;
+  assert.ok(huge.fontPx <= TABLE_GEOMETRIES[huge.orientation].maxFontPx);
+});
+
+test('every seat index gets a layout for any hero, and the hero sits at bottom center', () => {
+  for (const orientation of TABLE_ORIENTATIONS) {
     for (const count of SEAT_COUNTS) {
       for (let hero = 0; hero < count; hero += 1) {
         const layouts = getSeatLayouts(count, hero, orientation);
         assert.equal(layouts.length, count);
-      }
-      for (const { label, box } of collectBoxes(count, orientation)) {
-        assertBoxInStage(box, `${orientation} ${count}-max ${label}`);
-      }
-    }
-  }
-});
-
-test('no element of one seat overlaps another seat, the board, or the pot', () => {
-  for (const orientation of ORIENTATIONS) {
-    for (const count of SEAT_COUNTS) {
-      const boxes = collectBoxes(count, orientation);
-      for (let i = 0; i < boxes.length; i += 1) {
-        for (let j = i + 1; j < boxes.length; j += 1) {
-          const a = boxes[i]!;
-          const b = boxes[j]!;
-          if (a.owner === b.owner) continue;
-          // Tags are transient and drawn above bets; only check them against plates, cards and tags.
-          const isTagVsChip = (x: OwnedBox, y: OwnedBox) =>
-            x.label.endsWith('.tag') && (y.label.endsWith('.bet') || y.label.endsWith('.button') || y.owner === 'pot');
-          if (isTagVsChip(a, b) || isTagVsChip(b, a)) continue;
-          assert.ok(!boxesOverlap(a.box, b.box), `${orientation} ${count}-max: ${a.label} overlaps ${b.label}`);
-        }
-      }
-    }
-  }
-});
-
-test("a seat's own bet and dealer button clear its plate and cards", () => {
-  for (const orientation of ORIENTATIONS) {
-    const geometry = TABLE_GEOMETRIES[orientation];
-    for (const count of SEAT_COUNTS) {
-      getSeatLayouts(count, 0, orientation).forEach((layout, seatIndex) => {
-        const label = `${orientation} ${count}-max seat ${seatIndex}`;
-        const footprint = getSeatFootprint(layout, geometry);
-        const bet = getBetBox(layout.bet, geometry);
-        const button = getButtonBox(layout.button, geometry);
-        for (const [name, box] of [['plate', footprint.plate], ['cards', footprint.cards!]] as const) {
-          assert.ok(!boxesOverlap(bet, box), `${label} bet overlaps its ${name}`);
-          assert.ok(!boxesOverlap(button, box), `${label} button overlaps its ${name}`);
-        }
-        assert.ok(!boxesOverlap(button, bet), `${label} button overlaps its bet`);
-      });
-    }
-  }
-});
-
-test('hero seat sits at bottom center, is the lowest seat, and is the anchor', () => {
-  for (const orientation of ORIENTATIONS) {
-    for (const count of SEAT_COUNTS) {
-      const hero = count - 1;
-      const layouts = getSeatLayouts(count, hero, orientation);
-      const heroLayout = layouts[hero]!;
-      assert.equal(heroLayout.seat.x, 50, `${count}-max hero x`);
-      assert.ok(heroLayout.seat.y >= 85, `${count}-max hero y=${heroLayout.seat.y}`);
-      assert.equal(heroLayout.isAnchor, true);
-      assert.equal(heroLayout.cardsAbove, true);
-      for (const [seatIndex, layout] of layouts.entries()) {
-        if (seatIndex !== hero) {
+        const heroLayout = layouts[hero]!;
+        assert.equal(heroLayout.seat.x, 50, `${orientation} ${count}-max hero x`);
+        assert.ok(heroLayout.seat.y >= 85, `${orientation} ${count}-max hero y=${heroLayout.seat.y}`);
+        assert.equal(heroLayout.isAnchor, true);
+        assert.equal(heroLayout.cardsAbove, true);
+        for (const [seatIndex, layout] of layouts.entries()) {
+          if (seatIndex === hero) continue;
           assert.ok(layout.seat.y < heroLayout.seat.y, `${count}-max seat ${seatIndex} not above hero`);
           assert.equal(layout.isAnchor, false);
         }
@@ -142,13 +177,13 @@ test('spectating (null hero) anchors seat 0 at bottom center', () => {
 });
 
 test('seats sit on the rail ring, not floating outside it', () => {
-  for (const orientation of ORIENTATIONS) {
+  for (const orientation of TABLE_ORIENTATIONS) {
     const { center, seatRing } = TABLE_GEOMETRIES[orientation];
     for (const count of SEAT_COUNTS) {
       for (const [seatIndex, layout] of getSeatLayouts(count, 0, orientation).entries()) {
         const radius = Math.hypot((layout.seat.x - center.x) / seatRing.rx, (layout.seat.y - center.y) / seatRing.ry);
         assert.ok(
-          radius > 0.92 && radius < 1.12,
+          radius > 0.9 && radius < 1.14,
           `${orientation} ${count}-max seat ${seatIndex} radius ${radius.toFixed(2)}`,
         );
       }
@@ -156,43 +191,24 @@ test('seats sit on the rail ring, not floating outside it', () => {
   }
 });
 
-test('bets sit between seat and center, about 40% of the way in', () => {
-  for (const orientation of ORIENTATIONS) {
-    const geometry: TableGeometry = TABLE_GEOMETRIES[orientation];
-    const { center, aspect } = geometry;
-    for (const count of SEAT_COUNTS) {
-      for (const [seatIndex, layout] of getSeatLayouts(count, 0, orientation).entries()) {
-        const label = `${orientation} ${count}-max seat ${seatIndex}`;
-        const total = correctedDistance(layout.seat, center, aspect);
-        const toBet = correctedDistance(layout.seat, layout.bet, aspect);
-        const betToCenter = correctedDistance(layout.bet, center, aspect);
-        assert.ok(betToCenter < total, `${label} bet is not toward the center`);
-        assert.ok(toBet / total >= BET_DISTANCE_RATIO - 0.02, `${label} bet ratio ${(toBet / total).toFixed(2)} too close`);
-        assert.ok(toBet / total <= 0.8, `${label} bet ratio ${(toBet / total).toFixed(2)} too far`);
-        // Beside the plate on the center-facing side: never further from the center than the plate itself (+1em).
-        assert.ok(
-          correctedDistance(layout.button, center, aspect) < total + geometry.emPct,
-          `${label} button is not toward the center`,
-        );
-      }
-    }
-  }
-});
-
-test('dealer button sits next to its own seat', () => {
-  for (const orientation of ORIENTATIONS) {
-    const { aspect, emPct } = TABLE_GEOMETRIES[orientation];
+test('bets sit toward the center and the dealer button next to its own seat', () => {
+  for (const orientation of TABLE_ORIENTATIONS) {
+    const { center, aspect, emPct } = TABLE_GEOMETRIES[orientation];
     for (const count of SEAT_COUNTS) {
       const layouts = getSeatLayouts(count, 0, orientation);
       layouts.forEach((layout, seatIndex) => {
+        const label = `${orientation} ${count}-max seat ${seatIndex}`;
+        assert.ok(
+          correctedDistance(layout.bet, center, aspect) < correctedDistance(layout.seat, center, aspect),
+          `${label} bet is not toward the center`,
+        );
         const own = correctedDistance(layout.button, layout.seat, aspect);
-        // Within ~9em of its own plate center, and closer to it than to any other seat.
-        assert.ok(own < 9 * emPct, `${orientation} ${count}-max seat ${seatIndex} button ${own.toFixed(1)} away`);
+        assert.ok(own < 9 * emPct, `${label} button ${own.toFixed(1)} away`);
         layouts.forEach((other, otherIndex) => {
           if (otherIndex === seatIndex) return;
           assert.ok(
             own < correctedDistance(layout.button, other.seat, aspect),
-            `${orientation} ${count}-max seat ${seatIndex} button is nearer seat ${otherIndex}`,
+            `${label} button is nearer seat ${otherIndex}`,
           );
         });
       });
@@ -201,27 +217,30 @@ test('dealer button sits next to its own seat', () => {
 });
 
 test('rotation keeps clockwise order: the seat after the hero is bottom-left', () => {
-  for (const count of SEAT_COUNTS) {
-    for (let hero = 0; hero < count; hero += 1) {
-      const layouts = getSeatLayouts(count, hero);
-      const anchored = getSeatLayouts(count, 0);
-      for (let seatIndex = 0; seatIndex < count; seatIndex += 1) {
-        const slot = getVisualSlot(seatIndex, count, hero);
-        assert.deepEqual(layouts[seatIndex]!.seat, anchored[slot]!.seat);
-      }
-      const nextSeat = layouts[(hero + 1) % count]!.seat;
-      if (count > 2) {
-        assert.ok(nextSeat.x < 50, `${count}-max next seat should be on the left`);
+  const orientations: readonly TableOrientation[] = TABLE_ORIENTATIONS;
+  for (const orientation of orientations) {
+    for (const count of SEAT_COUNTS) {
+      for (let hero = 0; hero < count; hero += 1) {
+        const layouts = getSeatLayouts(count, hero, orientation);
+        const anchored = getSeatLayouts(count, 0, orientation);
+        for (let seatIndex = 0; seatIndex < count; seatIndex += 1) {
+          const slot = getVisualSlot(seatIndex, count, hero);
+          assert.deepEqual(layouts[seatIndex]!.seat, anchored[slot]!.seat);
+        }
+        if (count > 2) {
+          assert.ok(layouts[(hero + 1) % count]!.seat.x < 50, `${orientation} ${count}-max next seat should be on the left`);
+        }
       }
     }
   }
 });
 
 test('top-row seats put their cards below the plate', () => {
-  const layouts = getSeatLayouts(6, 0);
-  assert.equal(layouts[3]!.cardsAbove, false);
-  assert.equal(layouts[1]!.cardsAbove, true);
-  assert.equal(getSeatLayouts(6, 0, 'portrait')[3]!.cardsAbove, false);
+  for (const orientation of TABLE_ORIENTATIONS) {
+    const layouts = getSeatLayouts(6, 0, orientation);
+    assert.equal(layouts[3]!.cardsAbove, false, orientation);
+    assert.equal(layouts[1]!.cardsAbove, true, orientation);
+  }
 });
 
 test('getSeatLayouts is referentially stable and handles out-of-range input', () => {

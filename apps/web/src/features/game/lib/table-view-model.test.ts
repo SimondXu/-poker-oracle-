@@ -5,6 +5,7 @@ import type { GameAction, HandState, PlayerState } from '@aipoker/shared';
 
 import {
   buildTableViewModel,
+  toBotPersonality,
   getLastActionsForStreet,
   getVisibleHoleCards,
   shareTableViewModel,
@@ -138,6 +139,7 @@ test('hole cards: hero face-up, live opponents face-down, folded opponents hidde
   assert.equal(occupied(vm, 3).showCards, false);
   assert.deepEqual(occupied(vm, 1).holeCards, []);
   assert.equal(occupied(vm, 2).handName, null, 'no hand names before showdown');
+  assert.equal(occupied(vm, 2).handCategory, null);
 });
 
 test('getVisibleHoleCards reveals known cards only at showdown and keeps hero cards after folding', () => {
@@ -213,6 +215,8 @@ test('winner data is gated on the result phase and drives highlight, payout, dim
   assert.deepEqual(occupied(revealing, 3).holeCards, ['Qc', 'Qd'], 'showdown cards revealed');
   assert.equal(occupied(revealing, 3).handName, 'Pair of Queens');
   assert.equal(occupied(revealing, 2).handName, 'Ace High');
+  assert.equal(occupied(revealing, 3).handCategory, 'pair');
+  assert.equal(occupied(revealing, 2).handCategory, 'highCard');
   assert.equal(occupied(buildTableViewModel({ ...base, handResultPhase: 'announcing' }), 3).handName, null);
   assert.deepEqual(revealing.board.winnerCards, []);
   assert.equal(revealing.pot.isAwarding, false);
@@ -301,4 +305,11 @@ test('players who folded on an earlier street show no bet bubble', () => {
   const vm = buildTableViewModel(makeInput({ hand }));
   assert.equal(occupied(vm, 1).streetCommitted, 0);
   assert.equal(occupied(vm, 3).streetCommitted, 40, 'folded this street: chips stay in front');
+});
+
+test('toBotPersonality accepts rule personalities only', () => {
+  assert.equal(toBotPersonality('tag'), 'tag');
+  assert.equal(toBotPersonality('fish'), 'fish');
+  assert.equal(toBotPersonality('gpt'), null);
+  assert.equal(toBotPersonality(undefined), null);
 });

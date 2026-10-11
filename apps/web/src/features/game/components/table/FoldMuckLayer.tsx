@@ -58,6 +58,7 @@ export const FoldMuckLayer = memo(function FoldMuckLayer({
                 <Card
                   key={index}
                   card={event.cards[index]}
+                  size="sm"
                   faceDown={event.faceDown || !event.cards[index]}
                   style={{ fontSize: `${cardFontEm}em` }}
                 />
