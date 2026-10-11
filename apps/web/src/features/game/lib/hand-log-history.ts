@@ -5,7 +5,8 @@
  */
 import type { HandState } from '@aipoker/shared';
 
-import { buildHandLog, type HandLogResultInput, type HandLogResultLine } from './hand-log-model.ts';
+import { summarizeHeroHand, type HeroHandSummary } from './hand-log-hero.ts';
+import { buildHandLog, type HandLog, type HandLogResultInput, type HandLogResultLine } from './hand-log-model.ts';
 
 export const HAND_LOG_HISTORY_LIMIT = 12;
 
@@ -15,9 +16,17 @@ export interface HandLogSummary {
   board: string[];
   results: HandLogResultLine[];
   potTotal: number;
+  /** The full log, so a collapsed hand can be expanded again. */
+  log: HandLog;
+  /** What happened to the hero; `null` when the hero was not in the hand. */
+  hero: HeroHandSummary | null;
 }
 
-export function summarizeFinishedHand(hand: HandState, result: HandLogResultInput): HandLogSummary {
+export function summarizeFinishedHand(
+  hand: HandState,
+  result: HandLogResultInput,
+  heroId?: string | null,
+): HandLogSummary {
   const log = buildHandLog(hand, result);
   return {
     roomId: hand.roomId,
@@ -25,6 +34,8 @@ export function summarizeFinishedHand(hand: HandState, result: HandLogResultInpu
     board: [...hand.communityCards],
     results: log.results,
     potTotal: result.potTotal,
+    log,
+    hero: summarizeHeroHand(hand, result, heroId),
   };
 }
 

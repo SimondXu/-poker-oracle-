@@ -10,6 +10,8 @@ function summary(handNumber: number, roomId = 'room-1', amount = 100): HandLogSu
     board: [],
     potTotal: amount,
     results: [{ playerId: 'p1', playerName: 'TAG Bot 1', amount, handRankName: null, cards: [] }],
+    log: { header: { handNumber, smallBlind: 10, bigBlind: 20, buttonName: null }, entries: [], results: [], potTotal: amount },
+    hero: null,
   };
 }
 

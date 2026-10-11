@@ -1,10 +1,10 @@
 /**
- * Pure builder for the side-panel hand log (PokerNow-style text lines).
+ * Pure builder for the side-panel hand log. It returns structured data only
+ * (action types, chip numbers, bet-to-pot ratios); the panel translates verbs
+ * and formats numbers, so nothing here depends on the locale.
  * No React; `hand-log-model.test.ts` covers it.
  */
 import type { ActionType, GameAction, HandState, Phase } from '@aipoker/shared';
-
-import { formatChips } from '../../../lib/utils.ts';
 
 export type HandLogStreetName = 'preflop' | 'flop' | 'turn' | 'river';
 export type HandLogTone = 'fold' | 'check' | 'call' | 'raise' | 'allin';
@@ -21,7 +21,6 @@ export interface HandLogStreetEntry {
   kind: 'street';
   key: string;
   street: HandLogStreetName;
-  label: string;
   /** Cumulative board as of this street (empty preflop). */
   board: string[];
 }
@@ -29,9 +28,10 @@ export interface HandLogStreetEntry {
 export interface HandLogBlindEntry {
   kind: 'blind';
   key: string;
+  playerId: string;
   playerName: string;
-  label: string;
-  amount: string;
+  blind: 'sb' | 'bb';
+  amount: number;
 }
 
 export interface HandLogActionEntry {
@@ -39,10 +39,12 @@ export interface HandLogActionEntry {
   key: string;
   playerId: string;
   playerName: string;
-  verb: string;
+  type: ActionType;
   tone: HandLogTone;
-  /** Already formatted, `null` for fold / check. */
-  amount: string | null;
+  /** Chips shown next to the verb ("to" amount for bets and raises, added chips for calls); `null` for fold / check. */
+  amount: number | null;
+  /** Chips this bet, raise or call put in, divided by the pot before it; `null` for folds, checks and an unknown pot. */
+  betRatio: number | null;
 }
 
 export type HandLogEntry = HandLogStreetEntry | HandLogBlindEntry | HandLogActionEntry;
@@ -51,7 +53,7 @@ export interface HandLogResultLine {
   playerId: string;
   playerName: string;
   amount: number;
-  /** e.g. "两对"; `null` when the pot was won without showdown. */
+  /** Server hand name as received (e.g. "两对"); `null` when the pot was won without showdown. Use `handRankKey` to translate. */
   handRankName: string | null;
   /** Best five cards, when known. */
   cards: string[];
@@ -77,12 +79,6 @@ export interface HandLog {
 }
 
 const STREET_ORDER: readonly HandLogStreetName[] = ['preflop', 'flop', 'turn', 'river'];
-const STREET_LABEL: Record<HandLogStreetName, string> = {
-  preflop: '翻牌前',
-  flop: '翻牌',
-  turn: '转牌',
-  river: '河牌',
-};
 const STREET_BOARD_SIZE: Record<HandLogStreetName, number> = { preflop: 0, flop: 3, turn: 4, river: 5 };
 
 export function streetFromPhase(phase: Phase): HandLogStreetName | null {
@@ -100,31 +96,72 @@ export function streetFromPhase(phase: Phase): HandLogStreetName | null {
   }
 }
 
-const ACTION_VERB: Record<ActionType, { verb: string; tone: HandLogTone }> = {
-  fold: { verb: '弃牌', tone: 'fold' },
-  check: { verb: '过牌', tone: 'check' },
-  call: { verb: '跟注', tone: 'call' },
-  bet: { verb: '下注', tone: 'raise' },
-  raise_to: { verb: '加注到', tone: 'raise' },
-  all_in: { verb: '全压', tone: 'allin' },
+const ACTION_TONE: Record<ActionType, HandLogTone> = {
+  fold: 'fold',
+  check: 'check',
+  call: 'call',
+  bet: 'raise',
+  raise_to: 'raise',
+  all_in: 'allin',
 };
 
-/** Verb, tone and formatted amount for one action ("加注到 60"). */
+/** Hand names the client attaches to payouts (`HAND_RANK_NAMES` in lib/hand-evaluator), keyed for i18n. */
+const HAND_RANK_KEY: Record<string, HandRankKey> = {
+  高牌: 'high_card',
+  一对: 'one_pair',
+  两对: 'two_pair',
+  三条: 'three_kind',
+  顺子: 'straight',
+  同花: 'flush',
+  葫芦: 'full_house',
+  四条: 'four_kind',
+  同花顺: 'straight_flush',
+};
+
+export type HandRankKey =
+  | 'high_card'
+  | 'one_pair'
+  | 'two_pair'
+  | 'three_kind'
+  | 'straight'
+  | 'flush'
+  | 'full_house'
+  | 'four_kind'
+  | 'straight_flush';
+
+/** i18n key suffix for a server hand name, or `null` for an unknown / empty name. */
+export function handRankKey(name: string | null | undefined): HandRankKey | null {
+  return name ? (HAND_RANK_KEY[name] ?? null) : null;
+}
+
+/** Tone, amount and bet-to-pot ratio for one action. */
 export function describeAction(
-  action: Pick<GameAction, 'type' | 'amount' | 'addedAmount' | 'toAmount'>,
-): { verb: string; tone: HandLogTone; amount: string | null } {
-  const { verb, tone } = ACTION_VERB[action.type];
+  action: Pick<GameAction, 'type' | 'amount' | 'addedAmount' | 'toAmount'> & Partial<Pick<GameAction, 'potTotalBefore'>>,
+): { type: ActionType; tone: HandLogTone; amount: number | null; betRatio: number | null } {
+  const tone = ACTION_TONE[action.type];
   switch (action.type) {
     case 'fold':
     case 'check':
-      return { verb, tone, amount: null };
+      return { type: action.type, tone, amount: null, betRatio: null };
     case 'call':
-      return { verb, tone, amount: formatChips(action.addedAmount || action.amount) };
+      return { type: action.type, tone, amount: action.addedAmount || action.amount, betRatio: potRatio(action) };
     case 'all_in':
-      return { verb, tone, amount: formatChips(action.toAmount || action.addedAmount || action.amount) };
+      return {
+        type: action.type,
+        tone,
+        amount: action.toAmount || action.addedAmount || action.amount,
+        betRatio: potRatio(action),
+      };
     default:
-      return { verb, tone, amount: formatChips(action.toAmount || action.amount) };
+      return { type: action.type, tone, amount: action.toAmount || action.amount, betRatio: potRatio(action) };
   }
+}
+
+function potRatio(action: Pick<GameAction, 'amount' | 'addedAmount'> & Partial<Pick<GameAction, 'potTotalBefore'>>): number | null {
+  const added = action.addedAmount || action.amount;
+  const pot = action.potTotalBefore ?? 0;
+  if (added <= 0 || pot <= 0) return null;
+  return added / pot;
 }
 
 /** One result line per winner (payouts of the same player are merged), biggest first. */
@@ -149,20 +186,15 @@ export function summarizeResult(result: HandLogResultInput): HandLogResultLine[]
   return [...byPlayer.values()].sort((a, b) => b.amount - a.amount);
 }
 
-export function formatResultLine(line: Pick<HandLogResultLine, 'playerName' | 'amount' | 'handRankName'>): string {
-  const base = `${line.playerName} 赢得 ${formatChips(line.amount)}`;
-  return line.handRankName ? `${base} · ${line.handRankName}` : base;
-}
-
 function blindEntries(hand: HandState): HandLogBlindEntry[] {
   const entries: HandLogBlindEntry[] = [];
   const sb = hand.sbSeat === null ? undefined : hand.players.find((p) => p.seatIndex === hand.sbSeat);
   const bb = hand.players.find((p) => p.seatIndex === hand.bbSeat);
   if (sb) {
-    entries.push({ kind: 'blind', key: 'blind-sb', playerName: sb.name, label: '下小盲', amount: formatChips(hand.smallBlind) });
+    entries.push({ kind: 'blind', key: 'blind-sb', playerId: sb.id, playerName: sb.name, blind: 'sb', amount: hand.smallBlind });
   }
   if (bb) {
-    entries.push({ kind: 'blind', key: 'blind-bb', playerName: bb.name, label: '下大盲', amount: formatChips(hand.bigBlind) });
+    entries.push({ kind: 'blind', key: 'blind-bb', playerId: bb.id, playerName: bb.name, blind: 'bb', amount: hand.bigBlind });
   }
   return entries;
 }
@@ -197,7 +229,6 @@ export function buildHandLog(hand: HandState, result?: HandLogResultInput | null
       kind: 'street',
       key: `street-${street}`,
       street,
-      label: STREET_LABEL[street],
       board: hand.communityCards.slice(0, boardSize),
     });
     if (street === 'preflop') entries.push(...blindEntries(hand));
@@ -223,10 +254,4 @@ export function buildHandLog(hand: HandState, result?: HandLogResultInput | null
     results: result ? summarizeResult(result) : [],
     potTotal: result ? result.potTotal : null,
   };
-}
-
-export function formatHandHeader(header: HandLogHeader): string {
-  const parts = [`第 ${header.handNumber} 手`, `盲注 ${formatChips(header.smallBlind)}/${formatChips(header.bigBlind)}`];
-  if (header.buttonName) parts.push(`庄位 ${header.buttonName}`);
-  return parts.join(' · ');
 }

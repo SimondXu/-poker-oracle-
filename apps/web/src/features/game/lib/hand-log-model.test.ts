@@ -6,8 +6,7 @@ import type { GameAction, HandState, Phase, PlayerState } from '@aipoker/shared'
 import {
   buildHandLog,
   describeAction,
-  formatHandHeader,
-  formatResultLine,
+  handRankKey,
   summarizeResult,
   type HandLogActionEntry,
 } from './hand-log-model.ts';
@@ -70,19 +69,35 @@ function makeHand(overrides: Partial<HandState> = {}): HandState {
   };
 }
 
-test('describeAction formats each action type', () => {
-  assert.deepEqual(describeAction({ type: 'fold', amount: 0, addedAmount: 0, toAmount: 0 }), { verb: '弃牌', tone: 'fold', amount: null });
-  assert.deepEqual(describeAction({ type: 'check', amount: 0, addedAmount: 0, toAmount: 0 }), { verb: '过牌', tone: 'check', amount: null });
-  assert.deepEqual(describeAction({ type: 'call', amount: 40, addedAmount: 30, toAmount: 40 }), { verb: '跟注', tone: 'call', amount: '30' });
-  assert.deepEqual(describeAction({ type: 'bet', amount: 50, addedAmount: 50, toAmount: 50 }), { verb: '下注', tone: 'raise', amount: '50' });
-  assert.deepEqual(describeAction({ type: 'raise_to', amount: 60, addedAmount: 40, toAmount: 60 }), { verb: '加注到', tone: 'raise', amount: '60' });
-  assert.deepEqual(describeAction({ type: 'all_in', amount: 1200, addedAmount: 1000, toAmount: 1200 }), { verb: '全压', tone: 'allin', amount: '1,200' });
+test('describeAction returns the amount to show and the chips-to-pot ratio', () => {
+  assert.deepEqual(describeAction({ type: 'fold', amount: 0, addedAmount: 0, toAmount: 0 }), { type: 'fold', tone: 'fold', amount: null, betRatio: null });
+  assert.deepEqual(describeAction({ type: 'check', amount: 0, addedAmount: 0, toAmount: 0 }), { type: 'check', tone: 'check', amount: null, betRatio: null });
+  assert.deepEqual(describeAction({ type: 'call', amount: 40, addedAmount: 30, toAmount: 40, potTotalBefore: 90 }), { type: 'call', tone: 'call', amount: 30, betRatio: 30 / 90 });
+  assert.deepEqual(describeAction({ type: 'bet', amount: 50, addedAmount: 50, toAmount: 50, potTotalBefore: 100 }), { type: 'bet', tone: 'raise', amount: 50, betRatio: 0.5 });
+  assert.deepEqual(describeAction({ type: 'raise_to', amount: 60, addedAmount: 40, toAmount: 60, potTotalBefore: 80 }), { type: 'raise_to', tone: 'raise', amount: 60, betRatio: 0.5 });
+  assert.deepEqual(describeAction({ type: 'all_in', amount: 1200, addedAmount: 1000, toAmount: 1200, potTotalBefore: 500 }), { type: 'all_in', tone: 'allin', amount: 1200, betRatio: 2 });
 });
 
-test('header shows hand number, blinds and the button player', () => {
+test('a bet with no known pot has no ratio', () => {
+  assert.equal(describeAction({ type: 'bet', amount: 50, addedAmount: 50, toAmount: 50, potTotalBefore: 0 }).betRatio, null);
+});
+
+test('handRankKey maps the server hand names and rejects the rest', () => {
+  assert.equal(handRankKey('两对'), 'two_pair');
+  assert.equal(handRankKey('同花顺'), 'straight_flush');
+  assert.equal(handRankKey(''), null);
+  assert.equal(handRankKey('未知'), null);
+  assert.equal(handRankKey(null), null);
+});
+
+test('blinds carry the player id, side and amount', () => {
+  const blinds = buildHandLog(makeHand()).entries.flatMap((entry) => (entry.kind === 'blind' ? [entry] : []));
+  assert.deepEqual(blinds.map((entry) => [entry.playerId, entry.blind, entry.amount]), [['p1', 'sb', 10], ['p2', 'bb', 20]]);
+});
+
+test('the header carries hand number, blinds and the button player', () => {
   const log = buildHandLog(makeHand());
-  assert.equal(formatHandHeader(log.header), '第 12 手 · 盲注 10/20 · 庄位 Simon');
-  assert.equal(formatHandHeader({ ...log.header, buttonName: null }), '第 12 手 · 盲注 10/20');
+  assert.deepEqual(log.header, { handNumber: 12, smallBlind: 10, bigBlind: 20, buttonName: 'Simon' });
 });
 
 test('preflop section starts with blinds then actions in sequence order', () => {
@@ -92,9 +107,9 @@ test('preflop section starts with blinds then actions in sequence order', () => 
   const kinds = buildHandLog(hand).entries.map((entry) => entry.kind);
   assert.deepEqual(kinds, ['street', 'blind', 'blind', 'action', 'action']);
   const actions = buildHandLog(hand).entries.filter((entry): entry is HandLogActionEntry => entry.kind === 'action');
-  assert.deepEqual(actions.map((entry) => `${entry.playerName} ${entry.verb} ${entry.amount ?? ''}`.trim()), [
-    'Simon 弃牌',
-    'TAG Bot 1 加注到 60',
+  assert.deepEqual(actions.map((entry) => `${entry.playerName} ${entry.type} ${entry.amount ?? ''}`.trim()), [
+    'Simon fold',
+    'TAG Bot 1 raise_to 60',
   ]);
 });
 
@@ -131,11 +146,6 @@ test('summarizeResult merges payouts per player, biggest first', () => {
     ['p2', 50, '一对'],
   ]);
   assert.deepEqual(lines[0]?.cards, ['Kh', 'Kd']);
-});
-
-test('formatResultLine omits the hand name for uncontested pots', () => {
-  assert.equal(formatResultLine({ playerName: 'TAG Bot 1', amount: 1240, handRankName: '两对' }), 'TAG Bot 1 赢得 1,240 · 两对');
-  assert.equal(formatResultLine({ playerName: 'TAG Bot 1', amount: 40, handRankName: null }), 'TAG Bot 1 赢得 40');
 });
 
 test('results are only attached when a result is given', () => {
