@@ -1,0 +1,208 @@
+import type { Translation } from '../types.ts';
+
+/** Home + waiting room. Owned by the lobby agent. */
+const en = {
+  // Home
+  'home.title': "Practice Hold'em against AI opponents",
+  'home.nameLabel': 'Your name',
+  'home.namePlaceholder': 'e.g. Alex',
+  'home.nameRequired': 'Enter a name to sit down.',
+  'home.practice': 'Practice now',
+  'home.practicePending': 'Setting up your table…',
+  'home.practiceCaption': 'You and 5 bots: Fish, TAG, LAG. Blinds 10/20, 1,000 chips each.',
+  'home.create': 'Create a private table',
+  'home.createPending': 'Creating…',
+  'home.join': 'Join with code',
+  'home.joinPlaceholder': 'A3K9Q2',
+  'home.joinSubmit': 'Join',
+  'home.joinPending': 'Joining…',
+  'home.joinHint': 'The {length}-character code from a friend',
+  'home.joinError': 'A code is {length} letters or digits.',
+  'home.errorNetwork': "Couldn't reach the server. Check your connection and try again.",
+  'home.sceneLabel': 'A hand of Hold’em on a felt table',
+
+  // Waiting room: chrome
+  'room.backAria': 'Back to home',
+  'room.title': 'Waiting room',
+  'room.hint': 'Tap an open seat to add a bot.',
+  'room.tableLabel': 'Table preview',
+  'room.seated': '{count} of {max} seated',
+  'room.seatedLabel': 'seated',
+  'room.roomCode': 'Room {code}',
+
+  // Waiting room: seats
+  'room.seat.add': 'Add bot',
+  'room.seat.addAria': 'Seat {seat}: add a bot',
+  'room.seat.empty': 'Open',
+  'room.seat.emptyAria': 'Seat {seat}: open',
+  'room.seat.you': 'You',
+  'room.seat.ready': 'Ready',
+  'room.seat.notReady': 'Not ready',
+  'room.seat.remove': 'Remove {name}',
+  'room.seat.menuTitle': 'Seat {seat}: choose an opponent',
+
+  // Bot personalities
+  'room.bot.fish.name': 'Fish',
+  'room.bot.fish.style': 'Loose-passive',
+  'room.bot.fish.desc': 'Plays too many hands and mostly calls. Pays off your strong hands.',
+  'room.bot.tag.name': 'TAG',
+  'room.bot.tag.style': 'Tight-aggressive',
+  'room.bot.tag.desc': 'Plays few hands and bets them hard. Respect its raises.',
+  'room.bot.lag.name': 'LAG',
+  'room.bot.lag.style': 'Loose-aggressive',
+  'room.bot.lag.desc': 'Plays many hands with constant pressure. Hard to read.',
+
+  // Waiting room: invite
+  'room.invite.title': 'Invite code',
+  'room.invite.hint': 'Friends enter it under "Join with code" on the home page.',
+  'room.invite.copyFailed': 'Copy failed',
+
+  // Waiting room: controls and status
+  'room.ready': 'Ready',
+  'room.readyDone': 'Ready',
+  'room.start': 'Start game',
+  'room.enter': 'Enter table',
+  'room.spectate': 'Watch the table',
+  'room.eliminated': 'Eliminated',
+  'room.status.connecting': 'Connecting to the table…',
+  'room.status.needPlayers': 'Add at least one bot to start.',
+  'room.status.needReady': 'Press Ready, then Start game.',
+  'room.status.waitOthers': 'Waiting for the other players to be ready.',
+  'room.status.canStart': 'Everyone is ready. Start when you like.',
+  'room.status.playing': 'A hand is in progress.',
+  'room.status.eliminated': 'You are out. Watch the table or go home to start a new one.',
+  'room.status.finished': 'This table is finished. Go home to start a new one.',
+
+  // Practice setup
+  'room.practice.seating': 'Seating opponents: {count} of {total}',
+  'room.practice.readying': 'Getting ready…',
+  'room.practice.dealing': 'Dealing the first hand…',
+  'room.practice.failedTitle': "Couldn't set up your practice table.",
+  'room.practice.retry': 'Try again',
+  'room.practice.manual': 'Pick bots myself',
+
+  // Errors (toasts and recovery copy)
+  'room.error.invalidPayload': 'That request was not valid. Check your input and try again.',
+  'room.error.unauthorized': 'Your session expired. Go back home and try again.',
+  'room.error.roomNotFound': 'That room does not exist. Check the code.',
+  'room.error.roomAlreadyExists': 'That room code is taken. Create the table again.',
+  'room.error.rateLimited': 'Too many requests. Wait a moment and try again.',
+  'room.error.nameTaken': 'That name is already taken in this room. Pick another one.',
+  'room.error.timeout': "The server didn't answer in time. Check your connection and try again.",
+  'room.error.join': "Couldn't join the room.",
+  'room.error.create': "Couldn't create the room.",
+  'room.error.addBot': "Couldn't add the bot.",
+  'room.error.ready': "Couldn't mark you ready.",
+  'room.error.start': "Couldn't start the game.",
+  'room.error.session': "Couldn't start your session. Refresh and try again.",
+  'room.error.playersNotReady': 'Every player needs to be ready.',
+  'room.error.notEnoughPlayers': 'At least 2 players are needed.',
+  'room.error.handInProgress': 'The current hand has not finished yet.',
+  'room.error.starterOut': 'You are out. Watch the table or go home.',
+  'room.error.tableFinished': 'This table is finished. Go home to start a new one.',
+  'room.error.notMember': 'You are not in this room. Re-enter it.',
+};
+
+const zh: Translation<typeof en> = {
+  // Home
+  'home.title': '和 AI 对手练习德州扑克',
+  'home.nameLabel': '你的名字',
+  'home.namePlaceholder': '例如：Alex',
+  'home.nameRequired': '请先输入名字再入座。',
+  'home.practice': '立即开练',
+  'home.practicePending': '正在布置牌桌…',
+  'home.practiceCaption': '你和 5 个机器人：Fish、TAG、LAG。盲注 10/20，每人 1,000 筹码。',
+  'home.create': '创建私人牌桌',
+  'home.createPending': '创建中…',
+  'home.join': '用房间码加入',
+  'home.joinPlaceholder': 'A3K9Q2',
+  'home.joinSubmit': '加入',
+  'home.joinPending': '加入中…',
+  'home.joinHint': '朋友发来的 {length} 位房间码',
+  'home.joinError': '房间码为 {length} 位字母或数字。',
+  'home.errorNetwork': '无法连接服务器，请检查网络后重试。',
+  'home.sceneLabel': '毡面牌桌上的一手德州扑克',
+
+  // Waiting room: chrome
+  'room.backAria': '返回首页',
+  'room.title': '等待室',
+  'room.hint': '点空位添加机器人。',
+  'room.tableLabel': '牌桌预览',
+  'room.seated': '已入座 {count} / {max}',
+  'room.seatedLabel': '已入座',
+  'room.roomCode': '房间 {code}',
+
+  // Waiting room: seats
+  'room.seat.add': '添加机器人',
+  'room.seat.addAria': '{seat} 号位：添加机器人',
+  'room.seat.empty': '空位',
+  'room.seat.emptyAria': '{seat} 号位：空位',
+  'room.seat.you': '你',
+  'room.seat.ready': '已准备',
+  'room.seat.notReady': '未准备',
+  'room.seat.remove': '移除 {name}',
+  'room.seat.menuTitle': '{seat} 号位：选择对手',
+
+  // Bot personalities
+  'room.bot.fish.name': 'Fish',
+  'room.bot.fish.style': '松被动',
+  'room.bot.fish.desc': '入池太多，爱跟注。你的强牌容易收到钱。',
+  'room.bot.tag.name': 'TAG',
+  'room.bot.tag.style': '紧凶',
+  'room.bot.tag.desc': '只玩好牌，下注有力。它加注时要小心。',
+  'room.bot.lag.name': 'LAG',
+  'room.bot.lag.style': '松凶',
+  'room.bot.lag.desc': '入池多，持续施压，很难读牌。',
+
+  // Waiting room: invite
+  'room.invite.title': '邀请码',
+  'room.invite.hint': '朋友在首页的“用房间码加入”里输入即可。',
+  'room.invite.copyFailed': '复制失败',
+
+  // Waiting room: controls and status
+  'room.ready': '我已准备',
+  'room.readyDone': '已准备',
+  'room.start': '开始游戏',
+  'room.enter': '进入牌桌',
+  'room.spectate': '进入牌桌观战',
+  'room.eliminated': '已淘汰',
+  'room.status.connecting': '正在连接牌桌…',
+  'room.status.needPlayers': '至少添加 1 个机器人才能开局。',
+  'room.status.needReady': '先点“我已准备”，再点“开始游戏”。',
+  'room.status.waitOthers': '等待其他玩家准备。',
+  'room.status.canStart': '全部就绪，随时可以开始。',
+  'room.status.playing': '牌局进行中。',
+  'room.status.eliminated': '你已淘汰，可进入牌桌观战，或返回首页重新开局。',
+  'room.status.finished': '本场已结束，请返回首页重新开局。',
+
+  // Practice setup
+  'room.practice.seating': '正在安排对手：{count} / {total}',
+  'room.practice.readying': '正在准备…',
+  'room.practice.dealing': '正在发第一手牌…',
+  'room.practice.failedTitle': '没能布置好练习牌桌。',
+  'room.practice.retry': '重试',
+  'room.practice.manual': '自己选机器人',
+
+  // Errors (toasts and recovery copy)
+  'room.error.invalidPayload': '请求无效，请检查输入后重试。',
+  'room.error.unauthorized': '登录状态已失效，请返回首页重试。',
+  'room.error.roomNotFound': '房间不存在，请检查房间码。',
+  'room.error.roomAlreadyExists': '房间码已被占用，请重新创建。',
+  'room.error.rateLimited': '操作太频繁，请稍后重试。',
+  'room.error.nameTaken': '该名字在此房间已被占用，请换一个。',
+  'room.error.timeout': '服务器没有及时响应，请检查网络后重试。',
+  'room.error.join': '加入房间失败。',
+  'room.error.create': '创建房间失败。',
+  'room.error.addBot': '添加机器人失败。',
+  'room.error.ready': '准备失败。',
+  'room.error.start': '开始游戏失败。',
+  'room.error.session': '会话初始化失败，请刷新后重试。',
+  'room.error.playersNotReady': '需要所有玩家准备完毕。',
+  'room.error.notEnoughPlayers': '至少需要 2 名玩家。',
+  'room.error.handInProgress': '当前手牌尚未结束。',
+  'room.error.starterOut': '你已淘汰，请进入牌桌观战或返回首页。',
+  'room.error.tableFinished': '本场已结束，请返回首页重新开局。',
+  'room.error.notMember': '你不在该房间内，请重新进入。',
+};
+
+export const lobby = { en, zh };
