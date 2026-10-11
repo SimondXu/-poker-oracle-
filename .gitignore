@@ -29,3 +29,7 @@ apps/web/next-env.d.ts
 
 # Claude memory (tool artifacts, not project code)
 memory/
+
+# impeccable local artifacts (screenshots, decision-page state)
+apps/web/.impeccable/review/
+apps/web/.impeccable/questions/

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>AiPoker Table - Broadcast Feature Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--n0:#0b0d12;--n1:#11141b;--n2:#181c25;--n3:#232936;--n4:#3a4252;--n5:#8a93a6;--n6:#c3c9d6;--y:#ffcc33;--r:#e5484d}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden;background:var(--n0);color:#fff;font:400 14px/1.4 Manrope,"PingFang SC",sans-serif}
+.n,.seat b,.st,.bet b,.card,.tab,.lbl,.btn,.chip,.pot,.v{font-family:"Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
+.top{position:absolute;inset:0 0 auto 0;height:52px;background:var(--n1);border-bottom:1px solid var(--n3);display:flex;align-items:center;padding:0 20px;gap:12px}
+.logo{font:700 26px/1 "Barlow Condensed";letter-spacing:.06em;margin-right:16px}.logo i{font-style:normal;color:var(--y)}
+.pill{height:28px;padding:0 12px;display:flex;align-items:center;gap:8px;background:var(--n2);border:1px solid var(--n3);font:600 15px "Barlow Condensed";letter-spacing:.08em;color:var(--n6);text-transform:uppercase}
+.pill em{font-style:normal;color:var(--n5)}.pill b{color:#fff;font-weight:700;font-size:17px}
+.lang{margin-left:auto;display:flex;border:1px solid var(--n4)}.lang span{padding:4px 12px;font:600 14px "Barlow Condensed";color:var(--n5)}.lang .on{background:#fff;color:var(--n0)}
+.rail{position:absolute;left:0;top:52px;width:56px;height:848px;background:#0d1016;border-right:1px solid var(--n3);display:flex;flex-direction:column;align-items:center;padding-top:14px;gap:6px}
+.rail div{width:56px;height:46px;display:grid;place-items:center;color:var(--n5);position:relative}.rail .on{color:#fff;background:var(--n2)}.rail .on:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--y)}
+.rail svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7}
+.tbl{position:absolute;left:56px;top:52px;width:1064px;height:848px;background:var(--n0)}
+.felt{position:absolute;left:40px;top:20px;width:984px;height:660px;border-radius:330px;background:radial-gradient(ellipse at 50% 46%,#1f4a2c 0,#16351f 55%,#112a19 100%);border:10px solid #090b0f;box-shadow:0 0 0 1px var(--n3),inset 0 0 0 2px rgba(255,255,255,.05)}
+.pot{position:absolute;left:472px;top:216px;width:120px;height:34px;background:#07080b;border:1px solid var(--n3);display:flex;align-items:baseline;justify-content:center;gap:8px;padding-top:3px}
+.pot span{font-size:13px;font-weight:600;letter-spacing:.14em;color:var(--n5)}.pot b{font-size:26px;font-weight:700;line-height:1}
+.board{position:absolute;left:362px;top:262px;display:flex;gap:10px}
+.card{width:60px;height:84px;background:#fff;border-radius:5px;color:#14171c;font-weight:700;font-size:38px;line-height:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.card:after{font-size:30px}.s:after{content:"\2660\FE0E"}.h{color:#d92d3a}.h:after{content:"\2665\FE0E"}.d{color:#1f6fe0}.d:after{content:"\2666\FE0E"}.c{color:#1a8a3c}.c:after{content:"\2663\FE0E"}
+.card.e{background:none;border:1px dashed rgba(255,255,255,.2)}.card.e:after{content:none}
+.seat{position:absolute;width:190px;height:54px;background:#07080b;border:1px solid var(--n3);display:flex;align-items:center;gap:8px;padding:0 12px 0 18px}
+.seat:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--e)}
+.seat b{display:block;font-size:19px;font-weight:700;letter-spacing:.05em;line-height:1.05;text-transform:uppercase}.seat i{font:600 12px "Barlow Condensed";letter-spacing:.14em;color:var(--e);font-style:normal}
+.st{margin-left:auto;font-size:30px;font-weight:700;line-height:1}
+.bks{position:absolute;right:14px;top:-17px;display:flex;gap:3px}.bks s{width:20px;height:26px;border:1px solid #5b6684;border-radius:3px;background:repeating-linear-gradient(45deg,#2b3550 0 3px,#222a40 3px 6px)}
+.fold{opacity:.5}.fold .st{font-size:24px}.tag{position:absolute;top:-10px;right:12px;padding:1px 8px;font:700 12px "Barlow Condensed";letter-spacing:.12em;background:var(--n4);color:#fff}
+.bet{position:absolute;display:flex;align-items:center;gap:7px;height:26px;background:#07080b;border:1px solid var(--n3);padding:0 10px 0 4px}
+.bet u{width:18px;height:18px;border-radius:50%;background:var(--y);border:3px dashed #07080b;outline:1px solid var(--y)}.bet b{font-size:19px;color:var(--y);line-height:1}.bet.rs{border-color:var(--r)}.bet.rs span{font:700 11px "Barlow Condensed";letter-spacing:.12em;color:var(--r)}
+.btn-d{position:absolute;left:346px;top:116px;width:26px;height:26px;border-radius:50%;background:#fff;color:var(--n0);font:700 15px/26px "Barlow Condensed";text-align:center}
+.hero{position:absolute;left:352px;top:516px;width:360px}.hc{display:flex;justify-content:center;gap:8px}
+.hc .card{width:80px;height:110px;font-size:54px}.hc .card:after{font-size:44px}
+.eq{margin-top:8px;height:22px;display:flex;font:700 15px/22px "Barlow Condensed";letter-spacing:.06em}.eq div:first-child{width:71%;background:var(--y);color:var(--n0);padding-left:8px}.eq div:last-child{flex:1;background:var(--n3);color:var(--n6);text-align:right;padding-right:8px}
+.hero .seat{position:relative;width:360px;height:66px;margin-top:8px;align-items:flex-start;padding-top:6px;flex-wrap:wrap;gap:0 8px;border-color:#fff}.hero .seat:before{background:#fff}
+.hero .seat .st{font-size:34px}.strip{position:absolute;left:5px;right:0;bottom:3px;height:20px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--n3);font:600 13px "Barlow Condensed";letter-spacing:.12em;text-transform:uppercase;color:var(--n6)}.strip b{font-size:15px;color:var(--y);letter-spacing:.06em}.strip em{margin-left:auto;font-style:normal;color:var(--n5)}
+.timer{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--n3)}.timer:after{content:"";display:block;width:62%;height:3px;background:var(--r)}
+.hero .tag{background:var(--r);top:-11px}
+.act{position:absolute;right:16px;bottom:12px;width:520px;height:98px;background:var(--n1);border:1px solid var(--n3);padding:10px;display:flex;flex-direction:column;gap:8px}
+.row{display:flex;gap:8px}.btn{height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--n4);color:var(--n6);background:var(--n2)}
+.btn.call{flex:1;background:#fff;color:var(--n0);border-color:#fff}.btn.rz{flex:1.4;background:var(--r);border-color:var(--r);color:#fff}.btn.f{width:96px}
+.chip{height:30px;padding:0 12px;display:flex;align-items:center;font-size:16px;font-weight:600;letter-spacing:.06em;color:var(--n6);background:var(--n2);border:1px solid var(--n3)}
+.inp{margin-left:auto;width:132px;height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:var(--n0);border:1px solid var(--y);font:700 20px "Barlow Condensed";color:var(--y)}.inp span{font-size:12px;color:var(--n5);letter-spacing:.1em}
+.side{position:absolute;left:1120px;top:52px;width:320px;height:848px;background:var(--n1);border-left:1px solid var(--n3)}
+.tabs{display:flex;height:46px;border-bottom:1px solid var(--n3)}.tab{flex:1;display:grid;place-items:center;font-size:17px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--n5);border-bottom:3px solid transparent}.tab.on{color:#fff;border-color:var(--y)}
+.pane{padding:16px}.stats{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px}
+.stat{background:var(--n2);border:1px solid var(--n3);padding:8px 10px}.lbl{font-size:12px;font-weight:600;letter-spacing:.14em;color:var(--n5);text-transform:uppercase}.v{font-size:38px;font-weight:700;line-height:1.05}
+.cmp{margin:14px 0 4px;position:relative;height:8px;background:var(--n3)}.cmp div{width:71%;height:8px;background:var(--y)}.cmp s{position:absolute;left:22%;top:-5px;width:2px;height:18px;background:#fff}
+.cap{font-size:12.5px;color:var(--n5);margin-bottom:16px}
+.sug{background:var(--n2);border:1px solid var(--n3);border-left:4px solid var(--r);padding:12px 14px}.sug .v{font-size:36px;margin:2px 0 4px}.sug p{font-size:14px;line-height:1.5;color:var(--n6)}
+.read{margin-top:18px}.read p{display:flex;gap:10px;font-size:13px;line-height:1.45;color:var(--n6);padding:9px 0;border-bottom:1px solid var(--n3)}.read p:before{content:"";flex:none;width:4px;margin-top:2px;background:var(--e)}.read b{color:#fff;font-weight:700}
+.ask{position:absolute;left:16px;right:16px;bottom:16px;height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 6px 0 12px;background:var(--n0);border:1px solid var(--n4);color:var(--n5);font-size:13px}.ask span{height:28px;padding:0 12px;display:grid;place-items:center;background:var(--y);color:var(--n0);font:700 15px "Barlow Condensed";letter-spacing:.08em}
+</style></head><body>
+<header class="top"><div class="logo">AI<i>POKER</i></div><div class="pill"><em>Room</em><b>XPDMVK</b></div><div class="pill"><b>NLHE</b><b>10/20</b></div><div class="pill"><em>Hand</em><b>#14</b></div><div class="lang"><span class="on">EN</span><span>中文</span></div></header>
+<nav class="rail"><div class="on"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="6"/></svg></div><div><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div><div><svg viewBox="0 0 24 24"><path d="M4 5h7a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4zM20 5h-7"/></svg></div><div style="margin-top:auto;margin-bottom:14px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div></nav>
+<main class="tbl">
+<div class="felt"></div>
+<div class="pot"><span>POT</span><b>260</b></div>
+<div class="board"><div class="card c">K</div><div class="card d">9</div><div class="card c">4</div><div class="card e"></div><div class="card e"></div></div>
+<div class="seat fold" style="--e:#38c9a8;left:437px;top:6px"><span class="tag">FOLDED</span><div><b>Gus</b><i>FISH</i></div><span class="st">990</span></div>
+<div class="seat" style="--e:#d86bff;left:150px;top:110px"><span class="bks"><s></s><s></s></span><div><b>Marlow</b><i>TAG</i></div><span class="st">1,415</span></div>
+<div class="btn-d">D</div>
+<div class="seat" style="--e:#4aa3ff;left:724px;top:110px"><span class="bks"><s></s><s></s></span><div><b>Nadia</b><i>TAG</i></div><span class="st">1,020</span></div>
+<div class="seat" style="--e:#ff8a3d;left:30px;top:380px"><span class="bks"><s></s><s></s></span><div><b>Viper</b><i>LAG</i></div><span class="st">860</span></div>
+<div class="seat" style="--e:#ff8a3d;left:844px;top:380px"><span class="bks"><s></s><s></s></span><div><b>Rook</b><i>LAG</i></div><span class="st">455</span></div>
+<div class="bet" style="left:322px;top:196px"><u></u><b>60</b></div>
+<div class="bet" style="left:672px;top:196px"><u></u><b>60</b></div>
+<div class="bet rs" style="left:716px;top:392px"><u></u><b>120</b><span>RAISE</span></div>
+<div class="hero">
+<div class="hc"><div class="card s">A</div><div class="card h">K</div></div>
+<div class="eq"><div>71% WIN</div><div>29%</div></div>
+<div class="seat" style="--e:#fff"><span class="tag">TO ACT &middot; 0:14</span><div><b>Simon</b><i>BTN &middot; YOU</i></div><span class="st">1,240</span>
+<div class="strip">Hand <b>Top pair &middot; 71%</b><em>Hero only</em></div><div class="timer"></div></div>
+</div>
+<div class="act"><div class="row"><div class="btn f">Fold</div><div class="btn call">Call 120</div><div class="btn rz">Raise to 360</div></div>
+<div class="row"><div class="chip">1/3</div><div class="chip">1/2</div><div class="chip">3/4</div><div class="chip">Pot</div><div class="chip">All-in</div><div class="inp">360<span>CHIPS</span></div></div></div>
+</main>
+<aside class="side"><div class="tabs"><div class="tab">Log</div><div class="tab on">Coach</div><div class="tab">Opponents</div></div>
+<div class="pane"><div class="stats"><div class="stat"><div class="lbl">Equity</div><div class="v" style="color:var(--y)">71%</div></div><div class="stat"><div class="lbl">Pot odds</div><div class="v">22%</div></div><div class="stat"><div class="lbl">Position</div><div class="v">BTN</div></div></div>
+<div class="cmp"><div></div><s></s></div><p class="cap">Equity clears pot odds by 49 points. Continuing is clearly profitable.</p>
+<div class="sug"><div class="lbl">Coach suggests</div><div class="v">Raise to 360</div><p>Top pair top kicker &mdash; value + protection vs two draws.</p></div>
+<div class="read"><div class="lbl" style="margin-bottom:2px">Read on the table</div>
+<p style="--e:#ff8a3d"><span><b>Rook (LAG)</b> raised to 120. Wide range, can fold to a re-raise.</span></p>
+<p style="--e:#4aa3ff"><span><b>Marlow</b> and <b>Nadia</b> (TAG) have 60 in and face the raise.</span></p>
+<p style="--e:#1a8a3c"><span><b>K&clubs; 9&diams; 4&clubs;</b> two clubs on board, so flush draws are live.</span></p></div></div>
+<div class="ask">Ask the coach why&hellip;<span>ASK</span></div></aside>
+</body></html>
