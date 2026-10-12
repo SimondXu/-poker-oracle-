@@ -340,3 +340,11 @@ test('passive fallback is a legal call when neither check nor fold is available'
 
   assert.equal(action.type, 'call');
 });
+
+test('heads-up preflop plays a wider range than the six-max baseline for the same seat', () => {
+  // Q4o: folded by the six-max small-blind baseline, a standard heads-up button open.
+  const sixMax = getPreflopMix('tag', 50, 'unopened', 'sb', ['Qh', '4c'], 6);
+  const headsUp = getPreflopMix('tag', 50, 'unopened', 'btn', ['Qh', '4c'], 2);
+  assert.ok(sixMax.fold > 0.5, `six-max SB should mostly fold Q4o (fold ${sixMax.fold})`);
+  assert.ok(headsUp.fold < 0.5, `heads-up button should mostly play Q4o (fold ${headsUp.fold})`);
+});

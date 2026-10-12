@@ -828,6 +828,19 @@ function handHasRanks(key: string, ranks: string[]): boolean {
   return ranks.every((rank) => key.includes(rank));
 }
 
+const HAND_CLASS_ORDER: readonly HandClass[] = ['trash', 'marginal', 'speculative', 'playable', 'strong', 'premium'];
+
+/**
+ * The mixes are six-max ranges. Heads-up both players play far wider (a button opens most hands,
+ * the big blind defends most), so each hand is played like a hand two classes stronger.
+ */
+const HEADS_UP_CLASS_STEPS = 2;
+
+function widenHandClassForHeadsUp(handClass: HandClass): HandClass {
+  const index = HAND_CLASS_ORDER.indexOf(handClass);
+  return HAND_CLASS_ORDER[Math.min(index + HEADS_UP_CLASS_STEPS, HAND_CLASS_ORDER.length - 1)] ?? handClass;
+}
+
 function classifyHand(key: string): HandClass {
   if (key.length === 2) {
     const pairValue = rankValue(key[0] as Rank);
@@ -975,9 +988,12 @@ export function getPreflopMix(
 ): Mix {
   const stackBucket = getStackBucket(effectiveStackBb);
   const scenario = normalizePreflopScenario(bettingState);
-  const preflopPosition = getPreflopTablePosition(position, activePlayerCount);
+  // Heads-up the button opens like a button, not like a six-max small blind.
+  const preflopPosition = activePlayerCount === 2 ? position : getPreflopTablePosition(position, activePlayerCount);
   const canonicalKey = canonicalizeHoleCards(holeCards);
-  const handClass = classifyHand(canonicalKey);
+  const handClass = activePlayerCount === 2
+    ? widenHandClassForHeadsUp(classifyHand(canonicalKey))
+    : classifyHand(canonicalKey);
   const baseMix = PRELOP_MIXES[scenario][personality][stackBucket][preflopPosition][handClass];
   const detailAdjusted = adjustPreflopMixForHandDetail(baseMix, {
     detail: getHandDetail(canonicalKey),
