@@ -102,5 +102,5 @@ export interface PlayerActionInput {
   amount?: number;
 }
 
-export type InitializeHandError = 'not_enough_players' | 'invalid_blind_structure';
+export type InitializeHandError = 'not_enough_players' | 'invalid_blind_structure' | 'too_many_players';
 export type ApplyActionError = 'hand_not_actionable' | 'not_current_actor' | 'invalid_action';

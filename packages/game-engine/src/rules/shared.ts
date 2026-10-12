@@ -74,6 +74,11 @@ export function getPendingActorIds(players: HandInitPlayerState[]): string[] {
     .map((player) => player.id);
 }
 
+export function isRunoutRequired(players: HandInitPlayerState[], currentBetToMatch: number): boolean {
+  const actors = players.filter((player) => isPlayerEligibleToAct(player));
+  return actors.length <= 1 && actors.every((player) => player.streetCommitted >= currentBetToMatch);
+}
+
 export function getActiveInHandPlayers(players: HandInitPlayerState[]): HandInitPlayerState[] {
   return players.filter((player) => player.status !== 'folded');
 }

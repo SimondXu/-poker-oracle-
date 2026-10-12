@@ -18,6 +18,7 @@ import {
   getPendingActorIds,
   getPlayerById,
   isPlayerEligibleToAct,
+  isRunoutRequired,
   resetPendingActors
 } from './shared.ts';
 
@@ -38,6 +39,11 @@ function baseInvalidActions(): ValidActions {
   };
 }
 
+function isRaiseReopened(state: HandState, player: HandInitPlayerState): boolean {
+  const deltaSinceLastAction = state.betting.currentBetToMatch - player.matchedBetToMatchAtLastAction;
+  return !player.hasActedThisStreet || deltaSinceLastAction >= state.betting.lastFullRaiseSize;
+}
+
 function evaluateRaiseWindow(state: HandState, player: HandInitPlayerState): {
   canRaise: boolean;
   minRaiseTo: number;
@@ -55,11 +61,8 @@ function evaluateRaiseWindow(state: HandState, player: HandInitPlayerState): {
     };
   }
 
-  const deltaSinceLastAction = currentBetToMatch - player.matchedBetToMatchAtLastAction;
-  const isReopened = !player.hasActedThisStreet || deltaSinceLastAction >= state.betting.lastFullRaiseSize;
-
   return {
-    canRaise: isReopened,
+    canRaise: isRaiseReopened(state, player),
     minRaiseTo,
     maxRaiseTo
   };
@@ -83,7 +86,7 @@ export function getValidActions(state: HandState, playerId: string): ValidAction
     canRaise: raiseWindow.canRaise,
     minRaiseTo: raiseWindow.minRaiseTo,
     maxRaiseTo: raiseWindow.maxRaiseTo,
-    canAllIn: player.stack > 0
+    canAllIn: player.stack > 0 && (raiseWindow.canRaise || player.stack <= toCall)
   };
 }
 
@@ -100,8 +103,8 @@ function finalizeActionResult(
   }
 
   const nextActorSeat = determineNextActorSeat(players, actorSeat, pendingActorIds);
-  if (nextActorSeat === null) {
-    const advancedStreet = advanceStreet(previous, players);
+  if (nextActorSeat === null || isRunoutRequired(players, betting.currentBetToMatch)) {
+    const advancedStreet = advanceStreet({ ...previous, betting }, players);
     if (advancedStreet) {
       return {
         ...advancedStreet,
@@ -131,11 +134,32 @@ function finalizeActionResult(
   };
 }
 
+/**
+ * The part of the biggest commitment that nobody matched is not a pot: it goes back to the
+ * player who put it in (e.g. a raise everyone folded to, or an all-in bigger than every call).
+ */
+function returnUncalledBet(players: HandInitPlayerState[]): void {
+  const [top, second] = [...players].sort((a, b) => b.handCommitted - a.handCommitted);
+  if (!top || !second) {
+    return;
+  }
+
+  const uncalled = top.handCommitted - second.handCommitted;
+  if (uncalled <= 0) {
+    return;
+  }
+
+  top.handCommitted -= uncalled;
+  top.streetCommitted = Math.max(0, top.streetCommitted - uncalled);
+  top.stack += uncalled;
+}
+
 function buildHandEndState(
   previous: HandState,
   players: HandInitPlayerState[],
   betting: HandState['betting']
 ): HandState {
+  returnUncalledBet(players);
   const pots = buildSidePots(players);
   const payouts = settleShowdownPots(players, pots, previous.communityCards, previous.buttonMarkerSeat);
 
@@ -183,7 +207,7 @@ function getNextBettingStreet(
   return null;
 }
 
-function advanceStreet(previous: HandState, players: HandInitPlayerState[]): HandState | null {
+export function advanceStreet(previous: HandState, players: HandInitPlayerState[]): HandState | null {
   if (previous.phase === 'betting_river') {
     return buildHandEndState(previous, players, previous.betting);
   }
@@ -230,7 +254,7 @@ function advanceStreet(previous: HandState, players: HandInitPlayerState[]): Han
     }
   };
 
-  if (currentActorSeat !== null) {
+  if (currentActorSeat !== null && !isRunoutRequired(players, nextState.betting.currentBetToMatch)) {
     return nextState;
   }
 
@@ -267,7 +291,7 @@ function applyRaiseTo(
   const maxRaiseTo = actor.streetCommitted + actor.stack;
   const minRaiseTo = currentBetToMatch + state.betting.lastFullRaiseSize;
 
-  if (toAmount <= currentBetToMatch || toAmount > maxRaiseTo) {
+  if (toAmount <= currentBetToMatch || toAmount > maxRaiseTo || !isRaiseReopened(state, actor)) {
     return err('invalid_action');
   }
 
@@ -406,10 +430,10 @@ export function applyAction(
   }
 
   if (action.type === 'raise_to') {
-    if (!Number.isInteger(action.amount)) {
+    if (action.amount === undefined || !Number.isInteger(action.amount)) {
       return err('invalid_action');
     }
-    const toAmount = action.amount ?? 0;
+    const toAmount = action.amount;
 
     const raised = applyRaiseTo(state, players, actor, toAmount);
     if (!raised.ok) {

@@ -733,9 +733,10 @@ test('hand_end builds pot with folded contributions and surviving eligible playe
   if (!fold2.ok) return;
 
   assert.equal(fold2.value.phase, 'hand_end');
+  // p0's raise was only called up to the big blind (20); the uncalled 40 goes back to p0 and is not a pot.
   assert.deepEqual(fold2.value.pots, [
     {
-      amount: 90,
+      amount: 50,
       eligiblePlayerIds: ['p0']
     }
   ]);
@@ -743,7 +744,7 @@ test('hand_end builds pot with folded contributions and surviving eligible playe
     {
       potIndex: 0,
       playerId: 'p0',
-      amount: 90
+      amount: 50
     }
   ]);
 
@@ -753,4 +754,373 @@ test('hand_end builds pot with folded contributions and surviving eligible playe
   assert.equal(p0?.stack, 1030);
   assert.equal(p1?.stack, 990);
   assert.equal(p2?.stack, 980);
+});
+
+type TestHandState = Extract<ReturnType<typeof initializeHand>, { ok: true }>['value'];
+
+function startHand(
+  stacks: number[],
+  options: { buttonMarkerSeat?: number; smallBlind?: number; bigBlind?: number; seed?: number } = {},
+): TestHandState {
+  const result = initializeHand({
+    players: stacks.map((stack, index) => ({ id: `p${index}`, seatIndex: index, stack })),
+    buttonMarkerSeat: options.buttonMarkerSeat ?? 0,
+    smallBlind: options.smallBlind ?? 50,
+    bigBlind: options.bigBlind ?? 100,
+    rng: sequenceRng(options.seed ?? 1),
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error('initializeHand failed');
+  return result.value;
+}
+
+function act(
+  state: TestHandState,
+  playerId: string,
+  type: Parameters<typeof applyActionBase>[1]['type'],
+  amount?: number,
+): TestHandState {
+  const result = applyAction(state, { playerId, type, amount });
+  assert.equal(result.ok, true, `${playerId} ${type} should be legal`);
+  if (!result.ok) throw new Error('applyAction failed');
+  return result.value;
+}
+
+function assertChipsConserved(state: TestHandState, initialTotal: number): void {
+  const committed = state.players.reduce((sum, player) => sum + player.handCommitted, 0);
+  const paid = state.payouts.reduce((sum, payout) => sum + payout.amount, 0);
+  const stacks = state.players.reduce((sum, player) => sum + player.stack, 0);
+  assert.equal(paid, committed);
+  assert.equal(stacks, initialTotal);
+}
+
+test('incomplete all-in raise does not reopen betting: raise_to and over-call all_in are rejected', () => {
+  let state = startHand([1000, 250, 1000]);
+  state = act(state, 'p0', 'raise_to', 200);
+  state = act(state, 'p1', 'all_in');
+  state = act(state, 'p2', 'call');
+
+  assert.equal(state.currentActorSeat, 0);
+  const valid = getValidActions(state, 'p0');
+  assert.equal(valid.canRaise, false);
+  assert.equal(valid.canCall, true);
+  assert.equal(valid.canAllIn, false);
+
+  assert.deepEqual(applyAction(state, { playerId: 'p0', type: 'raise_to', amount: 400 }), {
+    ok: false,
+    error: 'invalid_action',
+  });
+  assert.deepEqual(applyAction(state, { playerId: 'p0', type: 'all_in' }), {
+    ok: false,
+    error: 'invalid_action',
+  });
+  assert.equal(applyAction(state, { playerId: 'p0', type: 'call' }).ok, true);
+  assert.equal(applyAction(state, { playerId: 'p0', type: 'fold' }).ok, true);
+});
+
+test('all_in at or below the call amount stays legal when the raise is not reopened', () => {
+  let state = startHand([240, 250, 1000]);
+  state = act(state, 'p0', 'raise_to', 200);
+  state = act(state, 'p1', 'all_in');
+  state = act(state, 'p2', 'call');
+
+  const valid = getValidActions(state, 'p0');
+  assert.equal(valid.canRaise, false);
+  assert.equal(valid.canAllIn, true);
+
+  const finished = act(state, 'p0', 'all_in');
+  assert.equal(finished.phase, 'hand_end');
+  assertChipsConserved(finished, 1490);
+});
+
+test('initializeHand runs out the board when nobody can act after blinds', () => {
+  const state = startHand([40, 80]);
+
+  assert.equal(state.phase, 'hand_end');
+  assert.equal(state.currentActorSeat, null);
+  assert.equal(state.communityCards.length, 5);
+  assertChipsConserved(state, 120);
+});
+
+test('initializeHand runs out the board when the only active player has nothing to call', () => {
+  const state = startHand([1000, 30], { buttonMarkerSeat: 1 });
+
+  assert.equal(state.phase, 'hand_end');
+  assert.equal(state.communityCards.length, 5);
+  assertChipsConserved(state, 1030);
+});
+
+test('lone actor facing an all-in call has nothing to respond to: board runs out to hand_end', () => {
+  let state = startHand([1000, 300]);
+  state = act(state, 'p0', 'raise_to', 300);
+  state = act(state, 'p1', 'call');
+
+  assert.equal(state.phase, 'hand_end');
+  assert.equal(state.currentActorSeat, null);
+  assert.equal(state.communityCards.length, 5);
+  assertChipsConserved(state, 1300);
+});
+
+test('lone actor who over-bet a short all-in call gets the excess back at hand_end', () => {
+  let state = startHand([1000, 300]);
+  state = act(state, 'p0', 'raise_to', 500);
+  state = act(state, 'p1', 'call');
+
+  assert.equal(state.phase, 'hand_end');
+  // The uncalled 200 is returned to p0 rather than paid out as a single-eligible pot.
+  assert.deepEqual(state.pots.map((pot) => pot.amount), [600]);
+  assert.equal(state.players.find((player) => player.id === 'p0')?.handCommitted, 300);
+  assertChipsConserved(state, 1300);
+});
+
+test('street advance with a single active player vs all-in runs out the board', () => {
+  let state = startHand([1000, 200, 1000]);
+  state = act(state, 'p0', 'raise_to', 200);
+  state = act(state, 'p1', 'call');
+  state = act(state, 'p2', 'fold');
+
+  assert.equal(state.phase, 'hand_end');
+  assert.equal(state.communityCards.length, 5);
+  assertChipsConserved(state, 2200);
+});
+
+test('lone actor who still faces a bet is asked to call or fold', () => {
+  let state = startHand([1000, 200, 1000]);
+  state = act(state, 'p0', 'fold');
+  state = act(state, 'p1', 'all_in');
+
+  assert.equal(state.phase, 'betting_preflop');
+  assert.equal(state.currentActorSeat, 2);
+  const valid = getValidActions(state, 'p2');
+  assert.equal(valid.canCall, true);
+  assert.equal(valid.callAmount, 100);
+
+  const called = act(state, 'p2', 'call');
+  assert.equal(called.phase, 'hand_end');
+  assert.equal(called.communityCards.length, 5);
+  assertChipsConserved(called, 2200);
+});
+
+test('short big blind still sets the full big blind as the bet to match', () => {
+  const state = startHand([1000, 1000, 30]);
+
+  assert.equal(state.betting.currentBetToMatch, 100);
+  assert.equal(state.betting.lastFullRaiseSize, 100);
+  const bb = state.players.find((player) => player.id === 'p2');
+  assert.equal(bb?.status, 'all_in');
+  assert.equal(bb?.handCommitted, 30);
+
+  assert.equal(state.currentActorSeat, 0);
+  const valid = getValidActions(state, 'p0');
+  assert.equal(valid.callAmount, 100);
+  assert.equal(valid.minRaiseTo, 200);
+});
+
+test('short big blind hand keeps chips conserved through side pots', () => {
+  let state = startHand([1000, 1000, 30]);
+  state = act(state, 'p0', 'call');
+  state = act(state, 'p1', 'call');
+  state = act(state, 'p1', 'check');
+  state = act(state, 'p0', 'check');
+  state = act(state, 'p1', 'check');
+  state = act(state, 'p0', 'check');
+  state = act(state, 'p1', 'check');
+  state = act(state, 'p0', 'check');
+
+  assert.equal(state.phase, 'hand_end');
+  assert.equal(state.pots[0]?.amount, 90);
+  assertChipsConserved(state, 2030);
+});
+
+test('initializeHand rejects more players than the deck can deal', () => {
+  const makePlayers = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ id: `p${index}`, seatIndex: index, stack: 1000 }));
+
+  const tooMany = initializeHand({
+    players: makePlayers(24),
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(5),
+  });
+  assert.deepEqual(tooMany, { ok: false, error: 'too_many_players' });
+
+  const maxPlayers = initializeHand({
+    players: makePlayers(23),
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(5),
+  });
+  assert.equal(maxPlayers.ok, true);
+  if (!maxPlayers.ok) return;
+  for (const player of maxPlayers.value.players) {
+    assert.equal(player.holeCards.length, 2);
+  }
+});
+
+test('evaluateBestSevenCards ranks wheel straight and 6-high straight; 6-high wins showdown', () => {
+  const wheel = evaluateBestSevenCards(['Ad', '2h', '3c', '4d', '5s', '9h', 'Kc']);
+  const sixHigh = evaluateBestSevenCards(['2c', '6d', '3c', '4d', '5s', '9h', 'Kc']);
+  assert.deepEqual(wheel.rank, [4, 5]);
+  assert.deepEqual(sixHigh.rank, [4, 6]);
+
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['Ad', '2h']),
+    showdownCommittedPlayer('b', 1, 100, ['2c', '6d']),
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 200, eligiblePlayerIds: ['a', 'b'] }],
+    ['3c', '4d', '5s', '9h', 'Kc'],
+    1,
+  );
+  assert.deepEqual(payouts, [{ potIndex: 0, playerId: 'b', amount: 200 }]);
+});
+
+test('wheel straight flush ranks as five-high and loses to a six-high straight flush', () => {
+  const wheelFlush = evaluateBestSevenCards(['As', 'Kd', '2s', '3s', '4s', '5s', '9h']);
+  assert.deepEqual(wheelFlush.rank, [8, 5]);
+  assert.deepEqual(wheelFlush.bestCards.slice().sort(), ['2s', '3s', '4s', '5s', 'As']);
+
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['As', 'Kd']),
+    showdownCommittedPlayer('b', 1, 100, ['6s', 'Kc']),
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 200, eligiblePlayerIds: ['a', 'b'] }],
+    ['2s', '3s', '4s', '5s', '9h'],
+    0,
+  );
+  assert.deepEqual(payouts, [{ potIndex: 0, playerId: 'b', amount: 200 }]);
+});
+
+test('flush beats straight at showdown', () => {
+  const board = ['4h', '5h', '9h', 'Kd', '8c'] as const;
+  const flush = evaluateBestSevenCards(['Ah', '2h', ...board]);
+  const straight = evaluateBestSevenCards(['6c', '7d', ...board]);
+  assert.equal(flush.rank[0], 5);
+  assert.deepEqual(straight.rank, [4, 9]);
+
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['6c', '7d']),
+    showdownCommittedPlayer('b', 1, 100, ['Ah', '2h']),
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 200, eligiblePlayerIds: ['a', 'b'] }],
+    [...board],
+    0,
+  );
+  assert.deepEqual(payouts, [{ potIndex: 0, playerId: 'b', amount: 200 }]);
+});
+
+test('two pair kicker decides the pot when both play the same two pair', () => {
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['Qc', 'Jd']),
+    showdownCommittedPlayer('b', 1, 100, ['Ac', '3d']),
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 200, eligiblePlayerIds: ['a', 'b'] }],
+    ['Ks', 'Kd', '7c', '7h', '2d'],
+    0,
+  );
+  assert.deepEqual(payouts, [{ potIndex: 0, playerId: 'b', amount: 200 }]);
+});
+
+test('board plays: royal flush on board splits the pot evenly', () => {
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['2c', '3d']),
+    showdownCommittedPlayer('b', 1, 100, ['4c', '5d']),
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 200, eligiblePlayerIds: ['a', 'b'] }],
+    ['As', 'Ks', 'Qs', 'Js', 'Ts'],
+    0,
+  );
+  assert.deepEqual(payouts, [
+    { potIndex: 0, playerId: 'b', amount: 100 },
+    { potIndex: 0, playerId: 'a', amount: 100 },
+  ]);
+});
+
+test('three-way split gives odd chips to the first winners left of the button', () => {
+  const players = [
+    showdownCommittedPlayer('a', 0, 100, ['2c', '3d']),
+    showdownCommittedPlayer('b', 1, 100, ['4c', '5d']),
+    showdownCommittedPlayer('c', 2, 100, ['6c', '7d']),
+  ];
+  const payouts = settleShowdownPots(
+    players,
+    [{ amount: 101, eligiblePlayerIds: ['a', 'b', 'c'] }],
+    ['As', 'Ks', 'Qs', 'Js', 'Ts'],
+    1,
+  );
+
+  assert.deepEqual(payouts, [
+    { potIndex: 0, playerId: 'c', amount: 34 },
+    { potIndex: 0, playerId: 'a', amount: 34 },
+    { potIndex: 0, playerId: 'b', amount: 33 },
+  ]);
+  assert.equal(payouts.reduce((sum, payout) => sum + payout.amount, 0), 101);
+});
+
+test('three-way side pot with one short all-in pays each pot to its best eligible hand', () => {
+  const players = [
+    { ...showdownCommittedPlayer('a', 0, 100, ['Ac', 'Ad']), status: 'all_in' as const },
+    showdownCommittedPlayer('b', 1, 300, ['Kc', 'Kd']),
+    showdownCommittedPlayer('c', 2, 300, ['Qc', 'Qd']),
+  ];
+  const pots = buildSidePots(players);
+  assert.deepEqual(pots, [
+    { amount: 300, eligiblePlayerIds: ['a', 'b', 'c'] },
+    { amount: 400, eligiblePlayerIds: ['b', 'c'] },
+  ]);
+
+  const payouts = settleShowdownPots(players, pots, ['2s', '5d', '8c', '9h', 'Jd'], 0);
+  assert.deepEqual(payouts, [
+    { potIndex: 0, playerId: 'a', amount: 300 },
+    { potIndex: 1, playerId: 'b', amount: 400 },
+  ]);
+  const stacks = players.reduce((sum, player) => sum + player.stack, 0);
+  assert.equal(stacks, 700);
+});
+
+test('hand_end returns an uncalled all-in excess instead of paying it out as a pot', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'big', seatIndex: 0, stack: 1000 },
+      { id: 'short', seatIndex: 1, stack: 300 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(42)
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const shove = applyAction(initialized.value, { playerId: 'big', type: 'all_in' });
+  assert.equal(shove.ok, true);
+  if (!shove.ok) return;
+
+  const call = applyAction(shove.value, { playerId: 'short', type: 'call' });
+  assert.equal(call.ok, true);
+  if (!call.ok) return;
+
+  const end = call.value;
+  assert.equal(end.phase, 'hand_end');
+  assert.deepEqual(end.pots, [{ amount: 600, eligiblePlayerIds: ['big', 'short'] }]);
+  assert.equal(end.potTotal, 600);
+  assert.ok(end.payouts.every((payout) => payout.amount === 600), 'only the contested 600 is paid out');
+
+  const big = end.players.find((player) => player.id === 'big');
+  const short = end.players.find((player) => player.id === 'short');
+  assert.equal(big?.handCommitted, 300);
+  assert.equal((big?.stack ?? 0) + (short?.stack ?? 0), 1300);
+  assert.ok((big?.stack ?? 0) >= 700, 'the uncalled 700 is back in the big stack');
 });

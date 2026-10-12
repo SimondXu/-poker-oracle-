@@ -1,4 +1,5 @@
-import type { EngineResult, HandPhase, HandState, InitializeHandError, InitializeHandInput } from '../state/types.ts';
+import type { EngineResult, HandState, InitializeHandError, InitializeHandInput } from '../state/types.ts';
+import { advanceStreet } from './actions.ts';
 import { createDeck } from './deck.ts';
 import { err, ok } from './result.ts';
 import {
@@ -6,8 +7,12 @@ import {
   determineNextActorSeat,
   findNextOccupiedSeat,
   getPendingActorIds,
+  isRunoutRequired,
   toSettledPlayer
 } from './shared.ts';
+
+const MAX_DEAL_CARDS = 52;
+const BOARD_CARDS = 5;
 
 function orderedDealingSeats(seats: number[], firstSeat: number): number[] {
   const ordered = [...seats].sort((a, b) => a - b);
@@ -27,6 +32,10 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
 
   if (input.smallBlind <= 0 || input.bigBlind < input.smallBlind) {
     return err('invalid_blind_structure');
+  }
+
+  if (players.length * 2 + BOARD_CARDS > MAX_DEAL_CARDS) {
+    return err('too_many_players');
   }
 
   let sbSeat = findNextOccupiedSeat(players, input.buttonMarkerSeat);
@@ -68,9 +77,9 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
     }
   }
 
-  const sbPlayer = settledPlayers.find((player) => player.seatIndex === sbSeat) ?? null;
   const bbPlayer = settledPlayers.find((player) => player.seatIndex === bbSeat) ?? null;
-  const currentBetToMatch = Math.max(sbPlayer?.streetCommitted ?? 0, bbPlayer?.streetCommitted ?? 0);
+  // A short big blind still sets the full bet to match; side pots absorb the shortfall.
+  const currentBetToMatch = input.bigBlind;
 
   for (const player of settledPlayers) {
     player.matchedBetToMatchAtLastAction = currentBetToMatch;
@@ -78,10 +87,9 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
 
   const pendingActorIds = getPendingActorIds(settledPlayers);
   const currentActorSeat = determineNextActorSeat(settledPlayers, bbSeat, pendingActorIds);
-  const phase: HandPhase = currentActorSeat === null ? 'street_complete' : 'betting_preflop';
 
-  return ok({
-    phase,
+  const initialState: HandState = {
+    phase: 'betting_preflop',
     blinds: {
       smallBlind: input.smallBlind,
       bigBlind: input.bigBlind
@@ -103,5 +111,11 @@ export function initializeHand(input: InitializeHandInput): EngineResult<HandSta
       lastFullRaiseSize: currentBetToMatch,
       lastAggressorId: bbPlayer?.id ?? null
     }
-  });
+  };
+
+  if (isRunoutRequired(settledPlayers, currentBetToMatch)) {
+    return ok(advanceStreet(initialState, settledPlayers) ?? initialState);
+  }
+
+  return ok(initialState);
 }
