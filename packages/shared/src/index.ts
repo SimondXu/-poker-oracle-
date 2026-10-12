@@ -211,6 +211,24 @@ export interface BotOpponentView {
   id: string;
   position: BotPosition;
   actions: BotOpponentAction[];
+  // What this player has done over earlier hands at the table, when anyone has been tracking it.
+  stats?: BotPlayerStats;
+}
+
+/** Running counts of one player's tendencies, accumulated hand by hand. */
+export interface BotPlayerStats {
+  hands: number;
+  // Hands where they put chips in preflop without being forced to (VPIP).
+  preflopVoluntary: number;
+  // Hands with a voluntary preflop raise, and the subset where the raise was far over a standard size.
+  preflopRaises: number;
+  preflopOversizedRaises: number;
+  // Decisions after the flop, and how many of them were bets or raises.
+  postflopActions: number;
+  postflopAggressive: number;
+  // Postflop decisions facing a bet or raise, and how many of them were folds.
+  postflopFacingBets: number;
+  postflopFoldsToBets: number;
 }
 
 export type BotValidActions = BotDecisionContext;

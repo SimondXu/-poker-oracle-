@@ -9,6 +9,7 @@ import {
   getAggressiveActionsForPhase,
   getBotPreflopFoldStreak,
   isFirstPreflopDecisionForPlayer,
+  recordFinishedHandStats,
   resetBotPreflopFoldStreaks,
   resolveButtonMarkerSeatForNextHand,
   trackBotPreflopEntryDecision,
@@ -726,6 +727,7 @@ function createSimulationRoom(input: {
     lastBroadcastActionCount: 0,
     lastButtonMarkerSeat: null,
     hostPlayerId: null,
+    playerStats: new Map(),
   };
 }
 
@@ -824,6 +826,7 @@ function playSimulatedHand(input: {
     recordBotNetResult(overallTracker, player.id, netBb);
   }
 
+  recordFinishedHandStats(room);
   if (room.hand) {
     recordBotHandResultStats(tracker, room.hand);
     recordBotHandResultStats(overallTracker, room.hand);

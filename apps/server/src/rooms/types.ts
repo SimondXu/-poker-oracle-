@@ -1,4 +1,4 @@
-import type { BotConfig } from '@aipoker/shared';
+import type { BotConfig, BotPlayerStats } from '@aipoker/shared';
 import type { HandState } from '@aipoker/game-engine';
 
 export interface RoomMembership {
@@ -32,4 +32,6 @@ export interface RuntimeRoom {
   lastButtonMarkerSeat: number | null;
   // Seated human who can remove bots and pick the first-hand button; null until a human sits.
   hostPlayerId: string | null;
+  // Everyone's tendencies over the hands played here; the bots' opponent model reads them.
+  playerStats: Map<string, BotPlayerStats>;
 }

@@ -4,7 +4,9 @@ import {
   hasPreflopLimpers,
   type BotDecisionContext,
   type BotDecisionPhase,
+  type BotOpponentAction,
   type BotOpponentView,
+  type BotPlayerStats,
   type BotPosition,
   type Card,
 } from '@aipoker/shared';
@@ -115,19 +117,21 @@ function getEffectiveStack(hand: DecisionHand, actorId: string): number {
   return opponentTotals.length === 0 ? actorTotal : Math.max(...opponentTotals);
 }
 
-/** Replays the hand once to record, for each live opponent, every voluntary action and what it faced. */
-function buildOpponentViews(
-  hand: DecisionHand,
-  actorId: string,
-  positionMap: Map<number, BotPosition>,
-): BotOpponentView[] {
-  const views = new Map<string, BotOpponentView>();
-  for (const player of hand.players) {
-    if (player.id !== actorId && player.status !== 'folded' && isSeated(player)) {
-      views.set(player.id, { id: player.id, position: positionMap.get(player.seatIndex) ?? 'utg', actions: [] });
-    }
-  }
+/** A raise bigger than this many pots is read as coming from a narrower range than a standard one. */
+export const OVERSIZED_RAISE_SIZE_OF_POT = 2;
 
+interface ReplayedAction {
+  playerId: string;
+  phase: BotDecisionPhase;
+  type: string;
+  isRaise: boolean;
+  facing: BotOpponentAction['facing'];
+  sizeOfPot: number;
+}
+
+/** Walks the hand's actions once, tracking the price on each street so every action knows what it faced. */
+function replayActions(hand: DecisionHand): ReplayedAction[] {
+  const replayed: ReplayedAction[] = [];
   let street = '';
   let currentMax = 0;
   let raises = 0;
@@ -141,13 +145,13 @@ function buildOpponentViews(
     }
 
     const isRaise = (action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax;
-    const view = views.get(action.playerId);
     const phase = mapHandPhase(action.phase);
-    if (view && phase && action.type !== 'fold') {
-      view.actions.push({
+    if (phase) {
+      replayed.push({
+        playerId: action.playerId,
         phase,
-        // An all-in that doesn't raise the price is just a call.
-        type: isRaise ? (action.type as 'raise_to' | 'all_in') : action.type === 'check' ? 'check' : 'call',
+        type: action.type,
+        isRaise,
         facing: deriveBotBettingState(raises, limpers > 0),
         sizeOfPot: isRaise ? (action.toAmount - currentMax) / Math.max(action.potTotalBefore, hand.bigBlind) : 0,
       });
@@ -160,8 +164,74 @@ function buildOpponentViews(
       limpers += 1;
     }
   }
+  return replayed;
+}
+
+/** Records, for each live opponent, every voluntary action and what it faced. */
+function buildOpponentViews(
+  hand: DecisionHand,
+  actorId: string,
+  positionMap: Map<number, BotPosition>,
+  statsById: ReadonlyMap<string, BotPlayerStats> | undefined,
+): BotOpponentView[] {
+  const views = new Map<string, BotOpponentView>();
+  for (const player of hand.players) {
+    if (player.id !== actorId && player.status !== 'folded' && isSeated(player)) {
+      const stats = statsById?.get(player.id);
+      views.set(player.id, {
+        id: player.id,
+        position: positionMap.get(player.seatIndex) ?? 'utg',
+        actions: [],
+        ...(stats ? { stats } : {}),
+      });
+    }
+  }
+
+  for (const action of replayActions(hand)) {
+    const view = views.get(action.playerId);
+    if (!view || action.type === 'fold') {
+      continue;
+    }
+    view.actions.push({
+      phase: action.phase,
+      // An all-in that doesn't raise the price is just a call.
+      type: action.isRaise ? (action.type as 'raise_to' | 'all_in') : action.type === 'check' ? 'check' : 'call',
+      facing: action.facing,
+      sizeOfPot: action.sizeOfPot,
+    });
+  }
 
   return [...views.values()];
+}
+
+/** Adds one finished hand to every seated player's running tendencies. */
+export function recordHandStats(statsById: Map<string, BotPlayerStats>, hand: DecisionHand): void {
+  const replayed = replayActions(hand);
+  for (const player of hand.players.filter(isSeated)) {
+    const stats = statsById.get(player.id) ?? {
+      hands: 0,
+      preflopVoluntary: 0,
+      preflopRaises: 0,
+      preflopOversizedRaises: 0,
+      postflopActions: 0,
+      postflopAggressive: 0,
+      postflopFacingBets: 0,
+      postflopFoldsToBets: 0,
+    };
+    const own = replayed.filter((action) => action.playerId === player.id);
+    const preflopRaises = own.filter((action) => action.phase === 'preflop' && action.isRaise);
+    const postflop = own.filter((action) => action.phase !== 'preflop');
+    const facingBets = postflop.filter((action) => action.facing !== 'unopened');
+    stats.hands += 1;
+    stats.preflopVoluntary += own.some((action) => action.phase === 'preflop' && (action.isRaise || action.type === 'call')) ? 1 : 0;
+    stats.preflopRaises += preflopRaises.length > 0 ? 1 : 0;
+    stats.preflopOversizedRaises += preflopRaises.some((action) => action.sizeOfPot > OVERSIZED_RAISE_SIZE_OF_POT) ? 1 : 0;
+    stats.postflopActions += postflop.length;
+    stats.postflopAggressive += postflop.filter((action) => action.isRaise).length;
+    stats.postflopFacingBets += facingBets.length;
+    stats.postflopFoldsToBets += facingBets.filter((action) => action.type === 'fold').length;
+    statsById.set(player.id, stats);
+  }
 }
 
 /** One decision context for bots (server) and the coach (client), so the two can't drift apart. */
@@ -169,6 +239,7 @@ export function buildDecisionContext(
   hand: DecisionHand,
   actorId: string,
   valid: DecisionValidActions,
+  statsById?: ReadonlyMap<string, BotPlayerStats>,
 ): BotDecisionContext | null {
   const actor = hand.players.find((player) => player.id === actorId);
   const phase = mapHandPhase(hand.phase);
@@ -217,6 +288,6 @@ export function buildDecisionContext(
     ),
     isPreflopAggressor: preflopAggressiveActions.at(-1)?.playerId === actor.id,
     isLastStreetAggressor: previousStreetAggressiveActions.at(-1)?.playerId === actor.id,
-    opponents: buildOpponentViews(hand, actor.id, positionMap),
+    opponents: buildOpponentViews(hand, actor.id, positionMap, statsById),
   };
 }

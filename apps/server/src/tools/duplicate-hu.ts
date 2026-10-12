@@ -1,7 +1,7 @@
 import { applyAction, initializeHand, type HandState } from '@aipoker/game-engine';
 import type { BotAction, BotDecisionContext, Card } from '@aipoker/shared';
 
-import { buildBotDecisionContext } from '../game-loop/bot-support.ts';
+import { buildBotDecisionContext, recordFinishedHandStats } from '../game-loop/bot-support.ts';
 import type { RuntimePlayer, RuntimeRoom } from '../rooms/types.ts';
 import { POLICIES, type Policy, type PolicyName } from './eval-policies.ts';
 import { addToSample, createSample, mixSeed, mulberry32, summarizeSample, type WinRateSummary } from './eval-utils.ts';
@@ -37,9 +37,9 @@ export interface HalfDealResult {
 const DEFAULT_SEED = 20260307;
 const SMALL_BLIND_RATIO = 2;
 
-function createHeadsUpRoom(): RuntimeRoom {
+function createHeadsUpRoom(idsBySeat: readonly [string, string], playerStats: RuntimeRoom['playerStats']): RuntimeRoom {
   const players = new Map<string, RuntimePlayer>(
-    [0, 1].map((seatIndex) => [`seat-${seatIndex}`, { id: `seat-${seatIndex}`, name: `Seat ${seatIndex}`, seatIndex, stack: 0, isBot: true }])
+    idsBySeat.map((id, seatIndex) => [id, { id, name: `Seat ${seatIndex}`, seatIndex, stack: 0, isBot: true }])
   );
 
   return {
@@ -58,6 +58,7 @@ function createHeadsUpRoom(): RuntimeRoom {
     lastBroadcastActionCount: 0,
     lastButtonMarkerSeat: null,
     hostPlayerId: null,
+    playerStats,
   };
 }
 
@@ -71,17 +72,22 @@ export function playHalfDeal(input: {
   decisionSalt: number;
   stackBb: number;
   bigBlind: number;
+  /** Player ids by seat; give each policy the same id in both halves so its stats follow it. */
+  idsBySeat?: readonly [string, string];
+  /** Tendencies carried from earlier hands of the match, updated with this one. */
+  playerStats?: RuntimeRoom['playerStats'];
   onDecision?: (context: BotDecisionContext, action: BotAction) => void;
 }): HalfDealResult {
   const { policiesBySeat, bigBlind } = input;
+  const idsBySeat = input.idsBySeat ?? ['seat-0', 'seat-1'];
   const smallBlind = Math.max(1, Math.floor(bigBlind / SMALL_BLIND_RATIO));
   const stack = Math.round(bigBlind * input.stackBb);
-  const room = createHeadsUpRoom();
+  const room = createHeadsUpRoom(idsBySeat, input.playerStats ?? new Map());
   room.smallBlind = smallBlind;
   room.bigBlind = bigBlind;
 
   const initialized = initializeHand({
-    players: [0, 1].map((seatIndex) => ({ id: `seat-${seatIndex}`, seatIndex, stack })),
+    players: idsBySeat.map((id, seatIndex) => ({ id, seatIndex, stack })),
     buttonMarkerSeat: 0,
     smallBlind,
     bigBlind,
@@ -119,6 +125,7 @@ export function playHalfDeal(input: {
     }
     room.hand = result.value;
   }
+  recordFinishedHandStats(room);
 
   const net = (seat: number) => ((room.hand?.players.find((player) => player.seatIndex === seat)?.stack ?? stack) - stack) / bigBlind;
   return { netBbBySeat: [net(0), net(1)], deal };
@@ -132,13 +139,14 @@ export function playDealPair(input: {
   index: number;
   stackBb: number;
   bigBlind: number;
+  playerStats?: RuntimeRoom['playerStats'];
 }): number {
   const dealSeed = mixSeed(input.seed, input.index);
-  const shared = { dealSeed, stackBb: input.stackBb, bigBlind: input.bigBlind };
+  const shared = { dealSeed, stackBb: input.stackBb, bigBlind: input.bigBlind, playerStats: input.playerStats ?? new Map() };
   const policyA = POLICIES[input.a];
   const policyB = POLICIES[input.b];
-  const aOnButton = playHalfDeal({ ...shared, policiesBySeat: [policyA, policyB], decisionSalt: 1 });
-  const aOnBigBlind = playHalfDeal({ ...shared, policiesBySeat: [policyB, policyA], decisionSalt: 2 });
+  const aOnButton = playHalfDeal({ ...shared, policiesBySeat: [policyA, policyB], idsBySeat: ['a', 'b'], decisionSalt: 1 });
+  const aOnBigBlind = playHalfDeal({ ...shared, policiesBySeat: [policyB, policyA], idsBySeat: ['b', 'a'], decisionSalt: 2 });
   return aOnButton.netBbBySeat[0] + aOnBigBlind.netBbBySeat[1];
 }
 
@@ -148,9 +156,11 @@ export function runDuplicateHu(options: DuplicateHuOptions): DuplicateHuReport {
   const stackBb = options.stackBb ?? 100;
   const bigBlind = options.bigBlind ?? 20;
   const pairs = createSample();
+  // One match: each side's tendencies build up over the deals, as they would at a real table.
+  const playerStats: RuntimeRoom['playerStats'] = new Map();
 
   for (let index = 0; index < deals; index += 1) {
-    addToSample(pairs, playDealPair({ a: options.a, b: options.b, seed, index, stackBb, bigBlind }));
+    addToSample(pairs, playDealPair({ a: options.a, b: options.b, seed, index, stackBb, bigBlind, playerStats }));
   }
 
   return {

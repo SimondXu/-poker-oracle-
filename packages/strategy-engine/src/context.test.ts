@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildDecisionContext, type DecisionHand } from './index.ts';
+import type { BotPlayerStats } from '@aipoker/shared';
+
+import { buildDecisionContext, recordHandStats, type DecisionHand } from './index.ts';
 
 const VALID = {
   canFold: true,
@@ -101,6 +103,31 @@ test('opponent views record what each live opponent did and what they faced', ()
   };
 
   const views = buildDecisionContext(hand, 'hero', VALID)?.opponents;
+
+  const stats = new Map<string, BotPlayerStats>();
+  recordHandStats(stats, hand);
+  recordHandStats(stats, { ...hand, actions: [{ playerId: 'sb', phase: 'betting_preflop', type: 'all_in', toAmount: 1_000, potTotalBefore: 30 }] });
+  assert.deepEqual(stats.get('sb'), {
+    hands: 2,
+    preflopVoluntary: 2,
+    preflopRaises: 2,
+    preflopOversizedRaises: 1,
+    postflopActions: 1,
+    postflopAggressive: 1,
+    postflopFacingBets: 0,
+    postflopFoldsToBets: 0,
+  });
+  assert.deepEqual(stats.get('bb'), {
+    hands: 2,
+    preflopVoluntary: 1,
+    preflopRaises: 0,
+    preflopOversizedRaises: 0,
+    postflopActions: 1,
+    postflopAggressive: 0,
+    postflopFacingBets: 1,
+    postflopFoldsToBets: 0,
+  });
+  assert.equal(stats.get('btn')?.hands, 2);
 
   assert.deepEqual(views?.map((view) => view.id), ['sb', 'bb']);
   assert.deepEqual(views?.[0]?.actions, [

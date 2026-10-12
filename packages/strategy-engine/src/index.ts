@@ -7,4 +7,4 @@ export { analyzePostflop } from './postflop-analysis.ts';
 export { analyzeTrainingSpot } from './training.ts';
 export { chooseBotAction } from './decide.ts';
 export type { DecisionHand, DecisionValidActions } from './context.ts';
-export { buildDecisionContext, getAggressiveActions } from './context.ts';
+export { buildDecisionContext, getAggressiveActions, recordHandStats } from './context.ts';

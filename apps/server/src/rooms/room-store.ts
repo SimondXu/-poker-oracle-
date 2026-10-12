@@ -49,7 +49,8 @@ export function getOrCreateRoom(
     lastActionSeqByPlayer: new Map(),
     lastBroadcastActionCount: 0,
     lastButtonMarkerSeat: null,
-    hostPlayerId: null
+    hostPlayerId: null,
+    playerStats: new Map()
   };
   rooms.set(roomId, room);
   return room;

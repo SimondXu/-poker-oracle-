@@ -1,6 +1,6 @@
 import { getValidActions, type HandActionRecord, type HandPhase, type HandState } from '@aipoker/game-engine';
 import type { BotAction, BotDecisionContext } from '@aipoker/shared';
-import { buildDecisionContext } from '@aipoker/strategy-engine';
+import { buildDecisionContext, recordHandStats, type DecisionHand } from '@aipoker/strategy-engine';
 
 import type { RuntimeRoom } from '../rooms/types.ts';
 
@@ -141,14 +141,21 @@ export function buildBotDecisionContext(room: RuntimeRoom, actorId: string): Bot
     return null;
   }
 
-  const valid = getValidActions(hand, actor.id);
-  return buildDecisionContext(
-    {
-      ...hand,
-      smallBlind: hand.blinds.smallBlind,
-      bigBlind: hand.blinds.bigBlind,
-    },
-    actor.id,
-    valid,
-  );
+  return buildDecisionContext(toDecisionHand(hand), actor.id, getValidActions(hand, actor.id), room.playerStats);
+}
+
+function toDecisionHand(hand: HandState): DecisionHand {
+  return { ...hand, smallBlind: hand.blinds.smallBlind, bigBlind: hand.blinds.bigBlind };
+}
+
+const HANDS_IN_PLAYER_STATS = new WeakSet<HandState>();
+
+/** Counts a finished hand toward every player's tendencies, once however often it is called. */
+export function recordFinishedHandStats(room: RuntimeRoom): void {
+  const hand = room.hand;
+  if (!hand || hand.phase !== 'hand_end' || HANDS_IN_PLAYER_STATS.has(hand)) {
+    return;
+  }
+  HANDS_IN_PLAYER_STATS.add(hand);
+  recordHandStats(room.playerStats, toDecisionHand(hand));
 }
