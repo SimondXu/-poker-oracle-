@@ -181,7 +181,7 @@ export interface AgentLlmToolCall {
   args: Record<string, unknown>;
 }
 
-export type AgentLlmResponse =
+export type AgentLlmResponse = (
   | {
       type: 'action_plan';
       actionPlan: AgentActionPlan;
@@ -189,7 +189,11 @@ export type AgentLlmResponse =
   | {
       type: 'tool_call';
       toolCall: AgentLlmToolCall;
-    };
+    }
+) & {
+  // Billed cost of this call in USD, when the provider reports it.
+  costUsd?: number;
+};
 
 export interface AgentLlmRequest {
   messages: ChatMessage[];
@@ -199,8 +203,12 @@ export interface AgentLlmRequest {
   mode: AgentRunMode;
 }
 
+export interface AgentLlmCallOptions {
+  signal?: AbortSignal;
+}
+
 export interface AgentLlmClient {
-  complete: (request: AgentLlmRequest) => Promise<AgentLlmResponse>;
+  complete: (request: AgentLlmRequest, options?: AgentLlmCallOptions) => Promise<AgentLlmResponse>;
 }
 
 export type AgentTraceSpanName =

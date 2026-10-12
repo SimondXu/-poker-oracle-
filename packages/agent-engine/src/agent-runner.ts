@@ -37,6 +37,7 @@ export interface RunAgentDecisionInput {
   maxToolRounds: number;
   llmClient: AgentLlmClient;
   toolRuntime: AgentToolRuntime;
+  signal?: AbortSignal;
 }
 
 export async function runAgentDecision(input: RunAgentDecisionInput): Promise<AgentRunResult> {
@@ -79,16 +80,24 @@ export async function runAgentDecision(input: RunAgentDecisionInput): Promise<Ag
   let toolRounds = 0;
 
   while (true) {
+    // A cancelled turn must not start another (billed) round.
+    if (input.signal?.aborted) {
+      return buildFallbackResult(input.context, selectedSkill.id, traceCollector, 'llm_error');
+    }
+
     const llmSpan = traceCollector.start('llm_call', { attempt: toolRounds + 1 });
     let response;
     try {
-      response = await input.llmClient.complete({
-        messages,
-        tools: prompt.tools,
-        responseFormat: prompt.responseFormat,
-        runtimeConfig: input.runtimeConfig,
-        mode: input.mode,
-      });
+      response = await input.llmClient.complete(
+        {
+          messages,
+          tools: prompt.tools,
+          responseFormat: prompt.responseFormat,
+          runtimeConfig: input.runtimeConfig,
+          mode: input.mode,
+        },
+        input.signal ? { signal: input.signal } : undefined,
+      );
       llmSpan.end();
     } catch {
       llmSpan.end({ error: 'llm_error' });
