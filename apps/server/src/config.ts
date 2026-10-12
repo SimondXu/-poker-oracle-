@@ -14,6 +14,7 @@ const booleanFromEnvSchema = z.preprocess((value) => {
 }, z.boolean().optional());
 
 const serverConfigSchema = z.object({
+  NODE_ENV: z.string().trim().optional(),
   HOST: z.string().trim().min(1).optional(),
   PORT: z.coerce.number().int().min(1).max(65535).optional(),
   CORS_ORIGIN: z.string().trim().min(1).optional(),
@@ -77,6 +78,12 @@ export function parseServerConfig(env: Record<string, string | undefined>): Serv
     return { ok: false, error: 'invalid_server_config' };
   }
 
+  // The dev fallback secret is public, so production must provide its own.
+  const isProduction = parsed.data.NODE_ENV === 'production';
+  if (isProduction && !parsed.data.AUTH_SECRET) {
+    return { ok: false, error: 'invalid_server_config' };
+  }
+
   return {
     ok: true,
     value: {
@@ -87,8 +94,8 @@ export function parseServerConfig(env: Record<string, string | undefined>): Serv
       authCookieName: parsed.data.AUTH_COOKIE_NAME ?? 'aipoker_session',
       authTtlSeconds: parsed.data.AUTH_TTL_SECONDS ?? 60 * 60 * 24 * 30,
       httpRateLimitPerMinute: parsed.data.HTTP_RATE_LIMIT_PER_MINUTE ?? 100,
-      secureCookies: parsed.data.SECURE_COOKIES ?? false,
-      authStrict: parsed.data.AUTH_STRICT ?? false,
+      secureCookies: parsed.data.SECURE_COOKIES ?? isProduction,
+      authStrict: parsed.data.AUTH_STRICT ?? true,
       openRouterApiKey: parsed.data.OPENROUTER_API_KEY ?? null,
       openRouterBaseUrl: parsed.data.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
       openRouterHttpReferer: parsed.data.OPENROUTER_HTTP_REFERER ?? null,

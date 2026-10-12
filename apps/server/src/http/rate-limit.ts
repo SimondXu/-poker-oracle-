@@ -9,10 +9,27 @@ export interface RateLimitResult {
   resetAtMs: number;
 }
 
+export type FixedWindowRateLimiter = ReturnType<typeof createFixedWindowRateLimiter>;
+
 export function createFixedWindowRateLimiter(windowMs = 60_000) {
   const buckets = new Map<string, RateLimitBucket>();
+  let lastSweepMs = 0;
 
-  return (key: string, nowMs: number, maxRequests: number): RateLimitResult => {
+  // Drop expired buckets at most once per window so one-off keys cannot grow the map forever.
+  function sweepExpired(nowMs: number): void {
+    if (nowMs - lastSweepMs < windowMs) {
+      return;
+    }
+    lastSweepMs = nowMs;
+    for (const [key, bucket] of buckets) {
+      if (nowMs - bucket.windowStartMs >= windowMs) {
+        buckets.delete(key);
+      }
+    }
+  }
+
+  const limit = (key: string, nowMs: number, maxRequests: number): RateLimitResult => {
+    sweepExpired(nowMs);
     const existing = buckets.get(key);
     if (!existing || nowMs - existing.windowStartMs >= windowMs) {
       buckets.set(key, {
@@ -41,4 +58,6 @@ export function createFixedWindowRateLimiter(windowMs = 60_000) {
       resetAtMs: existing.windowStartMs + windowMs
     };
   };
+
+  return Object.assign(limit, { size: () => buckets.size });
 }

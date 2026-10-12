@@ -83,7 +83,14 @@ export function verifyGuestSessionToken(input: {
     return null;
   }
 
-  if (payload.v !== 1 || payload.guest !== true || typeof payload.sub !== 'string' || typeof payload.name !== 'string') {
+  if (
+    payload.v !== 1
+    || payload.guest !== true
+    || typeof payload.sub !== 'string'
+    || typeof payload.name !== 'string'
+    || typeof payload.iat !== 'number'
+    || typeof payload.exp !== 'number'
+  ) {
     return null;
   }
 

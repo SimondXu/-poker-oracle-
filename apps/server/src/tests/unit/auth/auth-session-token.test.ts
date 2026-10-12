@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import test from 'node:test';
 
 import { createGuestSessionToken, verifyGuestSessionToken } from '../../../auth/session-token.ts';
@@ -59,4 +60,14 @@ test('verifyGuestSessionToken rejects expired token', () => {
   });
 
   assert.equal(session, null);
+});
+
+test('verifyGuestSessionToken rejects a signed payload whose exp is not a number', () => {
+  const secret = '0123456789abcdef0123456789abcdef';
+  const payloadPart = Buffer.from(
+    JSON.stringify({ v: 1, sub: 'user-9', name: 'Eve', guest: true, iat: 1, exp: 'never' })
+  ).toString('base64url');
+  const signaturePart = createHmac('sha256', secret).update(payloadPart).digest('base64url');
+
+  assert.equal(verifyGuestSessionToken({ token: `${payloadPart}.${signaturePart}`, nowMs: 2_000, secret }), null);
 });

@@ -4,7 +4,6 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 
 import { DEFAULT_AUTH_COOKIE_NAME } from './auth/cookies.ts';
-import { verifyGuestSessionToken } from './auth/session-token.ts';
 import { registerAuthRoutes } from './http/auth-routes.ts';
 import { createFixedWindowRateLimiter } from './http/rate-limit.ts';
 
@@ -67,16 +66,8 @@ export function createServer(deps: ServerDependencies): FastifyInstance {
       return;
     }
 
-    const sessionToken = request.cookies[authCookieName];
-    const session = sessionToken
-      ? verifyGuestSessionToken({
-          token: sessionToken,
-          nowMs: deps.nowMs(),
-          secret: authSecret
-        })
-      : null;
-    const identityKey = session ? `user:${session.userId}` : `ip:${request.ip}`;
-    const rateLimitResult = rateLimit(identityKey, deps.nowMs(), httpRateLimitPerMinute);
+    // Keyed by IP: guest sessions are free to mint, so a per-user key would not bound anything.
+    const rateLimitResult = rateLimit(`ip:${request.ip}`, deps.nowMs(), httpRateLimitPerMinute);
     if (rateLimitResult.allowed) {
       return;
     }

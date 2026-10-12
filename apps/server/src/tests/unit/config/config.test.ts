@@ -18,7 +18,7 @@ test('parseServerConfig uses defaults when env is empty', () => {
     authTtlSeconds: 2592000,
     httpRateLimitPerMinute: 100,
     secureCookies: false,
-    authStrict: false,
+    authStrict: true,
     openRouterApiKey: null,
     openRouterBaseUrl: 'https://openrouter.ai/api/v1',
     openRouterHttpReferer: null,
@@ -55,6 +55,35 @@ test('parseServerConfig parses boolean-like security flags', () => {
 
   assert.equal(result.value.secureCookies, true);
   assert.equal(result.value.authStrict, true);
+});
+
+test('parseServerConfig allows opting out of strict auth', () => {
+  const result = parseServerConfig({ AUTH_STRICT: 'false' });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.authStrict, false);
+});
+
+test('parseServerConfig rejects production without AUTH_SECRET', () => {
+  assert.deepEqual(parseServerConfig({ NODE_ENV: 'production' }), {
+    ok: false,
+    error: 'invalid_server_config'
+  });
+});
+
+test('parseServerConfig defaults secure cookies on in production', () => {
+  const result = parseServerConfig({
+    NODE_ENV: 'production',
+    AUTH_SECRET: 'a-production-secret-value'
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.secureCookies, true);
+  assert.equal(result.value.authSecret, 'a-production-secret-value');
 });
 
 test('parseServerConfig parses custom HTTP rate limit', () => {
