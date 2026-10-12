@@ -42,6 +42,7 @@ function createRoom(input: { handNumber: number; players: RoomPlayerSeed[] }): R
     lastActionSeqByPlayer: new Map(),
     lastBroadcastActionCount: 0,
     lastButtonMarkerSeat: null,
+    hostPlayerId: null,
   };
 }
 

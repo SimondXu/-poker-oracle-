@@ -48,7 +48,8 @@ export function getOrCreateRoom(
     hand: null,
     lastActionSeqByPlayer: new Map(),
     lastBroadcastActionCount: 0,
-    lastButtonMarkerSeat: null
+    lastButtonMarkerSeat: null,
+    hostPlayerId: null
   };
   rooms.set(roomId, room);
   return room;
@@ -69,6 +70,16 @@ export function syncRoomPlayersFromHand(room: RuntimeRoom): void {
       room.spectatingPlayerIds.delete(handPlayer.id);
     }
   }
+}
+
+// Keeps the current host while they are seated; otherwise hosting passes to the longest-seated human.
+export function syncRoomHost(room: RuntimeRoom): void {
+  const currentHost = room.hostPlayerId ? room.players.get(room.hostPlayerId) : undefined;
+  if (currentHost && !currentHost.isBot) {
+    return;
+  }
+
+  room.hostPlayerId = [...room.players.values()].find((player) => !player.isBot)?.id ?? null;
 }
 
 // Bots never keep a room alive on their own; it is deleted once no human is seated.

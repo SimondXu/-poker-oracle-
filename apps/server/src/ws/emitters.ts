@@ -137,6 +137,7 @@ export function emitRoomState(io: Server, room: RuntimeRoom): void {
     readyCount: room.readyPlayerIds.size,
     isPlaying: room.hand !== null && room.hand.phase !== 'hand_end',
     table: getTableLifecycleSnapshot(room),
+    hostPlayerId: room.hostPlayerId,
   });
 }
 

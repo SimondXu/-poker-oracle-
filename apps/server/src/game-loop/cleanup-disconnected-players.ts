@@ -1,6 +1,6 @@
 import type { Server } from 'socket.io';
 
-import { hasHumanPlayers } from '../rooms/room-store.ts';
+import { hasHumanPlayers, syncRoomHost } from '../rooms/room-store.ts';
 import type { RuntimeRoom } from '../rooms/types.ts';
 import { emitRoomState } from '../ws/emitters.ts';
 
@@ -21,6 +21,7 @@ export function cleanupDisconnectedPlayersAfterHandEnd(
   }
 
   room.pendingDisconnectPlayerIds.clear();
+  syncRoomHost(room);
 
   if (!hasHumanPlayers(room)) {
     deleteRoom(room.id);

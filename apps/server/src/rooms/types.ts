@@ -30,4 +30,6 @@ export interface RuntimeRoom {
   lastActionSeqByPlayer: Map<string, number>;
   lastBroadcastActionCount: number;
   lastButtonMarkerSeat: number | null;
+  // Seated human who can remove bots and pick the first-hand button; null until a human sits.
+  hostPlayerId: string | null;
 }

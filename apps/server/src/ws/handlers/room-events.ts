@@ -8,7 +8,7 @@ import {
   scheduleEmptyRoomTimeout,
   type EmptyRoomTimeouts,
 } from '../../game-loop/empty-room-timeout.ts';
-import { getOrCreateRoom, hasHumanPlayers, pickSeatIndex } from '../../rooms/room-store.ts';
+import { getOrCreateRoom, hasHumanPlayers, pickSeatIndex, syncRoomHost } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameStateToSocket, emitRoomState } from '../emitters.ts';
 import {
@@ -112,6 +112,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     room.readyPlayerIds.delete(playerId);
     room.pendingDisconnectPlayerIds.delete(playerId);
     room.spectatingPlayerIds.delete(playerId);
+    syncRoomHost(room);
   }
 
   function isRateLimited(action: string, maxPerWindow: number): boolean {
@@ -308,6 +309,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     }
 
     room.players.set(resolvedPlayerId, nextPlayer);
+    syncRoomHost(room);
     room.pendingDisconnectPlayerIds.delete(resolvedPlayerId);
     if (nextPlayer.stack > 0) {
       room.spectatingPlayerIds.delete(resolvedPlayerId);
@@ -382,6 +384,11 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     const room = rooms.get(parsed.data.roomId);
     if (!room) {
       ack({ ok: false, error: 'room_not_found' });
+      return;
+    }
+
+    if (membership.playerId !== room.hostPlayerId) {
+      ack({ ok: false, error: 'not_room_host' });
       return;
     }
 

@@ -348,6 +348,7 @@ export interface RoomStateEvent {
   readyCount: number;
   isPlaying: boolean;
   table: TableLifecycleSnapshot;
+  hostPlayerId: string | null;
 }
 
 export type RoomState = RoomStateEvent;

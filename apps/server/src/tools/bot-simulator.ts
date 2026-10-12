@@ -709,6 +709,7 @@ function createSimulationRoom(input: {
     lastActionSeqByPlayer: new Map(),
     lastBroadcastActionCount: 0,
     lastButtonMarkerSeat: null,
+    hostPlayerId: null,
   };
 }
 

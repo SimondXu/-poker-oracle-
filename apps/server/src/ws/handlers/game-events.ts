@@ -443,7 +443,12 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
           seatIndex: player.seatIndex,
           stack: player.stack
         })),
-        buttonMarkerSeat: resolveButtonMarkerSeatForNextHand(room, parsed.data.buttonMarkerSeat, botRuntime.rng),
+        // Only the host may pick the first-hand button; anyone else gets the random pick.
+        buttonMarkerSeat: resolveButtonMarkerSeatForNextHand(
+          room,
+          membership.playerId === room.hostPlayerId ? parsed.data.buttonMarkerSeat : undefined,
+          botRuntime.rng,
+        ),
         smallBlind: room.smallBlind,
         bigBlind: room.bigBlind,
         rng: botRuntime.rng
