@@ -11,7 +11,7 @@ import {
   simulateBotStats,
   startTrackedHand,
   summarizeBotStats,
-} from '../../../game-loop/bot-simulator.ts';
+} from '../../../tools/bot-simulator.ts';
 
 function makePlayer(id: string, seatIndex: number): HandInitPlayerState {
   return {

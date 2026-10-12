@@ -1,4 +1,4 @@
-import { getValidActions, type HandActionRecord, type HandPhase } from '@aipoker/game-engine';
+import { getValidActions, type HandActionRecord, type HandPhase, type HandState } from '@aipoker/game-engine';
 import {
   buildBotPositionMap,
   deriveBotBettingState,
@@ -99,35 +99,35 @@ function mapHandPhase(phase: HandPhase): BotDecisionPhase | null {
   }
 }
 
-function getAggressiveActionsForStreet(
-  room: RuntimeRoom,
-  phase: HandPhase
-): Array<HandActionRecord & { seatIndex: number }> {
-  const hand = room.hand;
-  if (!hand) {
-    return [];
-  }
-
+export function getAggressiveActionsForPhase(hand: HandState, phase: HandPhase): HandActionRecord[] {
   let currentMax = phase === 'betting_preflop' ? hand.blinds.bigBlind : 0;
-  const aggressiveActions: Array<HandActionRecord & { seatIndex: number }> = [];
+  const aggressiveActions: HandActionRecord[] = [];
 
   for (const action of hand.actions) {
     if (action.phase !== phase) {
       continue;
     }
-
-    const seatIndex = room.players.get(action.playerId)?.seatIndex;
-    if (seatIndex === undefined) {
-      continue;
-    }
-
     if ((action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax) {
-      aggressiveActions.push({ ...action, seatIndex });
+      aggressiveActions.push(action);
       currentMax = action.toAmount;
     }
   }
 
   return aggressiveActions;
+}
+
+function getAggressiveActionsForStreet(
+  room: RuntimeRoom,
+  phase: HandPhase
+): Array<HandActionRecord & { seatIndex: number }> {
+  if (!room.hand) {
+    return [];
+  }
+
+  return getAggressiveActionsForPhase(room.hand, phase).flatMap((action) => {
+    const seatIndex = room.players.get(action.playerId)?.seatIndex;
+    return seatIndex === undefined ? [] : [{ ...action, seatIndex }];
+  });
 }
 
 function getPreviousBettingPhase(phase: HandPhase): HandPhase | null {

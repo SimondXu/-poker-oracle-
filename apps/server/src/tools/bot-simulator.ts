@@ -5,12 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
   buildBotDecisionContext,
+  getAggressiveActionsForPhase,
   getBotPreflopFoldStreak,
   isFirstPreflopDecisionForPlayer,
   resetBotPreflopFoldStreaks,
   resolveButtonMarkerSeatForNextHand,
   trackBotPreflopEntryDecision,
-} from './bot-support.ts';
+} from '../game-loop/bot-support.ts';
 import { syncRoomPlayersFromHand } from '../rooms/room-store.ts';
 import type { RuntimePlayer, RuntimeRoom } from '../rooms/types.ts';
 
@@ -360,23 +361,6 @@ function recordFlopDecisionStats(
       metrics.foldToCbet.count += 1;
     }
   }
-}
-
-function getAggressiveActionsForPhase(hand: HandState, phase: HandActionRecord['phase']): HandActionRecord[] {
-  let currentMax = phase === 'betting_preflop' ? hand.blinds.bigBlind : 0;
-  const aggressiveActions: HandActionRecord[] = [];
-
-  for (const action of hand.actions) {
-    if (action.phase !== phase) {
-      continue;
-    }
-    if ((action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax) {
-      aggressiveActions.push(action);
-      currentMax = action.toAmount;
-    }
-  }
-
-  return aggressiveActions;
 }
 
 function isFacingFlopCbet(hand: HandState, playerId: string): boolean {
