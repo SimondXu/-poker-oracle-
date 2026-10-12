@@ -3,7 +3,7 @@ import { createAgentTurnCoordinator, type AgentLlmClient } from '@aipoker/agent-
 import { Server } from 'socket.io';
 
 import { DEFAULT_AUTH_COOKIE_NAME, parseCookies } from '../auth/cookies.ts';
-import { verifyGuestSessionToken } from '../auth/session-token.ts';
+import { createSessionRevocations, resolveGuestSession, type SessionRevocations } from '../auth/session-revocations.ts';
 import { createFixedWindowRateLimiter } from '../http/rate-limit.ts';
 import { clearRoomActionTimeout, type RoomActionTimeouts } from '../game-loop/action-timeout.ts';
 import { clearRoomNextHandTimeout, type RoomNextHandTimeouts } from '../game-loop/auto-next-hand.ts';
@@ -23,6 +23,7 @@ interface AttachRealtimeOptions {
   authSecret?: string;
   authCookieName?: string;
   authStrict?: boolean;
+  sessionRevocations?: SessionRevocations;
   corsOrigin?: string;
   emptyRoomTtlMs?: number;
   nowMs?: () => number;
@@ -54,6 +55,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const authSecret = options.authSecret ?? 'dev-guest-secret-change-me';
   const authCookieName = options.authCookieName ?? DEFAULT_AUTH_COOKIE_NAME;
   const authStrict = options.authStrict ?? false;
+  const sessionRevocations = options.sessionRevocations ?? createSessionRevocations();
   const emptyRoomTtlMs = options.emptyRoomTtlMs ?? 60_000;
   const nowMs = options.nowMs ?? (() => Date.now());
   const botRuntime: BotRuntimeDeps = {
@@ -98,14 +100,12 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
 
   io.use((socket, next) => {
     const cookies = parseCookies(socket.handshake.headers.cookie);
-    const sessionToken = cookies.get(authCookieName);
-    const authSession = sessionToken
-      ? verifyGuestSessionToken({
-          token: sessionToken,
-          nowMs: nowMs(),
-          secret: authSecret
-        })
-      : null;
+    const authSession = resolveGuestSession({
+      token: cookies.get(authCookieName),
+      nowMs: nowMs(),
+      secret: authSecret,
+      revocations: sessionRevocations
+    });
 
     socket.data.authSession = authSession;
     socket.data.authStrict = authStrict;

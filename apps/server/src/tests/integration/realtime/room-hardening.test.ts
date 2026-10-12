@@ -4,6 +4,7 @@ import test, { type TestContext } from 'node:test';
 
 import { io as createClient } from 'socket.io-client';
 
+import { createSessionRevocations } from '../../../auth/session-revocations.ts';
 import { createServer } from '../../../index.ts';
 import { attachRealtime } from '../../../realtime.ts';
 
@@ -193,4 +194,33 @@ test('hand_end does not reveal hole cards of players who folded or of an unconte
       assert.deepEqual(player.holeCards, [], `folded player ${player.id} cards must stay hidden`);
     }
   }
+});
+
+test('a socket presenting a logged-out session cookie is treated as unauthenticated', async (t) => {
+  const sessionRevocations = createSessionRevocations();
+  const app = createServer({ nowMs: () => 42, sessionRevocations });
+  const io = attachRealtime(app, { authStrict: true, nowMs: () => 42, sessionRevocations });
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const url = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+
+  const login = await fetch(`${url}/api/auth/guest`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'Alice' }),
+  });
+  const cookie = (login.headers.get('set-cookie') ?? '').split(';', 1)[0] ?? '';
+  await fetch(`${url}/api/auth/logout`, { method: 'POST', headers: { cookie } });
+
+  const socket = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false, extraHeaders: { Cookie: cookie } });
+  t.after(() => {
+    socket.close();
+  });
+  await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+
+  const createAck = await emitWithAck(socket, 'room:create', { roomId: 'HRDAAJ', smallBlind: 10, bigBlind: 20 });
+  assert.deepEqual(createAck, { ok: false, error: 'unauthorized' });
 });

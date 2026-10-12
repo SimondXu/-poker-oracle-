@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Server } from 'socket.io';
 
+import { createSessionRevocations } from './auth/session-revocations.ts';
 import { parseServerConfig, type ServerConfig } from './config.ts';
 import { createServer } from './index.ts';
 import { attachRealtime } from './realtime.ts';
@@ -86,6 +87,7 @@ function installSignalHandlers(started: StartedServer): void {
 
 export async function startServer(options: StartServerOptions = {}): Promise<StartedServer> {
   const serverConfig = resolveServerConfig(options);
+  const sessionRevocations = createSessionRevocations();
   const app = createServer({
     nowMs: options.nowMs ?? (() => Date.now()),
     corsOrigin: serverConfig.corsOrigin,
@@ -93,12 +95,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     authCookieName: serverConfig.authCookieName,
     authTtlSeconds: serverConfig.authTtlSeconds,
     httpRateLimitPerMinute: serverConfig.httpRateLimitPerMinute,
-    secureCookies: serverConfig.secureCookies
+    secureCookies: serverConfig.secureCookies,
+    sessionRevocations
   });
   const realtimeOptions = {
     authSecret: serverConfig.authSecret,
     authCookieName: serverConfig.authCookieName,
     authStrict: serverConfig.authStrict,
+    sessionRevocations,
     corsOrigin: serverConfig.corsOrigin,
     llmAgent: {
       enabled: serverConfig.llmAgentEnabled,

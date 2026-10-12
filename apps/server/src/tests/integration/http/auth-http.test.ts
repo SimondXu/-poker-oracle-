@@ -84,3 +84,21 @@ test('POST /api/auth/logout clears auth cookie', async (t) => {
   assert.equal(typeof setCookie, 'string');
   assert.equal(setCookie.includes('Max-Age=0'), true);
 });
+
+test('POST /api/auth/logout revokes the session token server-side', async (t) => {
+  const app = createServer({ nowMs: () => 5000 });
+
+  t.after(async () => {
+    await app.close();
+  });
+
+  const login = await app.inject({ method: 'POST', url: '/api/auth/guest', payload: { username: 'Alice' } });
+  const cookie = cookiePair(String(login.headers['set-cookie']));
+
+  const logout = await app.inject({ method: 'POST', url: '/api/auth/logout', headers: { cookie } });
+  assert.equal(logout.statusCode, 200);
+
+  // A copy of the old cookie (e.g. stolen before logout) must no longer authenticate.
+  const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
+  assert.equal(me.statusCode, 401);
+});

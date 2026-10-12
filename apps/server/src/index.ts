@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 
 import { DEFAULT_AUTH_COOKIE_NAME } from './auth/cookies.ts';
+import { createSessionRevocations, type SessionRevocations } from './auth/session-revocations.ts';
 import { registerAuthRoutes } from './http/auth-routes.ts';
 import { createFixedWindowRateLimiter } from './http/rate-limit.ts';
 
@@ -29,6 +30,8 @@ export interface ServerDependencies {
   corsOrigin?: string;
   secureCookies?: boolean;
   httpRateLimitPerMinute?: number;
+  // Share one instance with attachRealtime so a logout also locks the session out of sockets.
+  sessionRevocations?: SessionRevocations;
 }
 
 export function createServer(deps: ServerDependencies): FastifyInstance {
@@ -85,7 +88,8 @@ export function createServer(deps: ServerDependencies): FastifyInstance {
     authSecret,
     authCookieName,
     authTtlSeconds,
-    secureCookies
+    secureCookies,
+    sessionRevocations: deps.sessionRevocations ?? createSessionRevocations()
   });
 
   return server;

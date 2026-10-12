@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { createGuestSessionToken, verifyGuestSessionToken } from '../auth/session-token.ts';
+import { resolveGuestSession, type SessionRevocations } from '../auth/session-revocations.ts';
+import { createGuestSessionToken } from '../auth/session-token.ts';
 
 const guestAuthPayloadSchema = z
   .object({
@@ -17,6 +18,7 @@ interface RegisterAuthRoutesOptions {
   authCookieName: string;
   authTtlSeconds: number;
   secureCookies: boolean;
+  sessionRevocations: SessionRevocations;
 }
 
 function buildGuestUsername(userId: string): string {
@@ -30,14 +32,12 @@ export function registerAuthRoutes(server: FastifyInstance, options: RegisterAut
       return reply.code(400).send({ ok: false, error: 'invalid_payload' });
     }
 
-    const existingToken = request.cookies[options.authCookieName];
-    const existingSession = existingToken
-      ? verifyGuestSessionToken({
-          token: existingToken,
-          nowMs: options.nowMs(),
-          secret: options.authSecret
-        })
-      : null;
+    const existingSession = resolveGuestSession({
+      token: request.cookies[options.authCookieName],
+      nowMs: options.nowMs(),
+      secret: options.authSecret,
+      revocations: options.sessionRevocations
+    });
 
     const userId = existingSession?.userId ?? randomUUID();
     const username = parsed.data.username ?? existingSession?.username ?? buildGuestUsername(userId);
@@ -69,15 +69,11 @@ export function registerAuthRoutes(server: FastifyInstance, options: RegisterAut
   });
 
   server.get('/api/auth/me', async (request, reply) => {
-    const token = request.cookies[options.authCookieName];
-    if (!token) {
-      return reply.code(401).send({ ok: false, error: 'unauthorized' });
-    }
-
-    const session = verifyGuestSessionToken({
-      token,
+    const session = resolveGuestSession({
+      token: request.cookies[options.authCookieName],
       nowMs: options.nowMs(),
-      secret: options.authSecret
+      secret: options.authSecret,
+      revocations: options.sessionRevocations
     });
     if (!session) {
       return reply.code(401).send({ ok: false, error: 'unauthorized' });
@@ -93,7 +89,18 @@ export function registerAuthRoutes(server: FastifyInstance, options: RegisterAut
     });
   });
 
-  server.post('/api/auth/logout', async (_request, reply) => {
+  server.post('/api/auth/logout', async (request, reply) => {
+    const token = request.cookies[options.authCookieName];
+    const session = resolveGuestSession({
+      token,
+      nowMs: options.nowMs(),
+      secret: options.authSecret,
+      revocations: options.sessionRevocations
+    });
+    if (token && session) {
+      options.sessionRevocations.revoke(token, session.expiresAt, options.nowMs());
+    }
+
     reply.clearCookie(options.authCookieName, {
       path: '/'
     });
