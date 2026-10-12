@@ -527,6 +527,8 @@ export interface CoachAdvice {
   equity?: number;
   equityStdErr?: number;
   equityVs?: 'range' | 'random';
+  /** How many opponents the equity is against: preflop, those who put chips in; postflop, everyone still in. */
+  equityAgainst?: number;
   /** Preflop: share of starting hands this hand is in the top of (0.08 = top 8%). */
   handPercentile?: number;
   /** Only when there is a price to call; requiredEquity = clamp01(potOdds + callBuffer). */

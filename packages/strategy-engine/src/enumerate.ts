@@ -63,10 +63,14 @@ export function enumerateDecision(
     };
 
     const chooser: Chooser = {
-      chance: (p) => choose([
-        { value: true, p: clamp01(p) },
-        { value: false, p: 1 - clamp01(p) },
-      ]),
+      chance: (p) => {
+        // A bot's rng() < NaN is never true.
+        const yes = Number.isNaN(p) ? 0 : clamp01(p);
+        return choose([
+          { value: true, p: yes },
+          { value: false, p: 1 - yes },
+        ]);
+      },
       pick: (mix) => {
         const probabilities = intentProbabilities(mix);
         return choose(INTENTS.map((value, i) => ({ value, p: probabilities[i]! })));

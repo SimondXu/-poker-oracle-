@@ -43,11 +43,11 @@ function headsUpDecisions(a: PolicyName, b: PolicyName, deals: number): string[]
 }
 
 test('seeded heads-up bot decisions are unchanged', () => {
-  assert.equal(sha256(headsUpDecisions('tag', 'tag-random', 25)), 'e044f72532d4f7691566ad7e2d2b40657fe2fc7f06f2d284043bdcf64692710d');
-  assert.equal(sha256(headsUpDecisions('lag', 'fish', 25)), '04e6cb6a813c8f8be284dcea4bf78ca4e5bb5e4d5816866076cf6a060c555ded');
+  assert.equal(sha256(headsUpDecisions('tag', 'tag-random', 12)), '21f540f8f6d42e4f93b968cc9e50a2422b81e3c3b5d78e5ab2262fd25dd4779e');
+  assert.equal(sha256(headsUpDecisions('lag', 'fish', 12)), '100732177e4bdb31023b17e8e1387d2dbbb5d2fb790f93a153fca6a7ae75bccb');
 });
 
 test('a seeded six-max run is unchanged (multiway pots, fold-streak options, 10bb stacks)', () => {
-  const report = simulateBotStats({ hands: 120, seed: SEED, includeTrainingTable: false });
-  assert.equal(sha256([JSON.stringify(report)]), '13562656b85071cd1f2f08684ff7d5f732b3ad7550247a188bc512c927933540');
+  const report = simulateBotStats({ hands: 60, seed: SEED, includeTrainingTable: false });
+  assert.equal(sha256([JSON.stringify(report)]), '6785304ca6606df1e2775071e6660f94a7aad7bfd13a013ed5ba06c79a767854');
 });

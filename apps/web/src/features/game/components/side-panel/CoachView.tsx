@@ -181,7 +181,7 @@ function Suggestion({ advice, nameOf }: { advice: CoachAdvice; nameOf: (id: stri
                 <span className="font-index font-semibold text-text-2">{frequencyLabel(option.frequency)}</span>
               </div>
               {option.reasons.map((reason) => (
-                <p key={reason.code} className="mt-0.5 text-text-3">
+                <p key={JSON.stringify(reason)} className="mt-0.5 text-text-3">
                   {reasonText(reason, t, nameOf)}
                 </p>
               ))}
@@ -194,7 +194,7 @@ function Suggestion({ advice, nameOf }: { advice: CoachAdvice; nameOf: (id: stri
       {advice.reasons.length > 0 && (
         <ul className="mt-3 max-w-[38ch] space-y-1 border-t border-line pt-3">
           {advice.reasons.map((reason) => (
-            <li key={reason.code} className="text-body text-text-2">
+            <li key={JSON.stringify(reason)} className="text-body text-text-2">
               {reasonText(reason, t, nameOf)}
             </li>
           ))}
@@ -215,9 +215,11 @@ function StrengthBlock({ data, opponents }: { data: CoachData; opponents: number
   const fill = strengthFill(data) ?? 0;
 
   const versusRange = advice?.equityVs === 'range';
+  // Preflop the equity is against only the players who put chips in, not everyone still to act.
+  const against = advice?.equityAgainst ?? opponents;
   const label = equity !== undefined
-    ? opponents && opponents > 1
-      ? t(versusRange ? 'panel.coach.equity.range.many' : 'panel.coach.equity.many', { count: opponents })
+    ? against && against > 1
+      ? t(versusRange ? 'panel.coach.equity.range.many' : 'panel.coach.equity.many', { count: against })
       : t(versusRange ? 'panel.coach.equity.range.one' : 'panel.coach.equity.one')
     : t('panel.coach.strength');
   const value = equity !== undefined

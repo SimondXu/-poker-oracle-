@@ -5,8 +5,11 @@ import { buildCoachAdvice, type DecisionHand } from '@aipoker/strategy-engine';
 import type { RuntimeRoom } from '../../rooms/types.ts';
 import { buildViewerHand } from './viewer-hand.ts';
 
-/** Advice slower than this is logged, so its cost on the event loop can be watched. */
-const SLOW_ADVICE_MS = 100;
+/**
+ * Advice slower than this is logged, so its cost on the event loop can be watched. Twice the
+ * measured multiway p95 (about 150 ms at 512 iterations), so routine multiway spots stay quiet.
+ */
+const SLOW_ADVICE_MS = 300;
 
 /**
  * The hand as the hero was sent it, in the strategy engine's shape. Other players' hole cards are

@@ -233,9 +233,14 @@ function preflopPrice(context: BotDecisionContext, personality: BotPersonality, 
   return equity === null ? null : { equity, required: clamp01(computePotOdds(context) + PERSONALITY_PROFILES[personality].callBuffer) };
 }
 
+/** The players who put chips in voluntarily: preflop equity is measured against their ranges only. */
+export function contestingOpponents(context: BotDecisionContext): NonNullable<BotDecisionContext['opponents']> {
+  return context.opponents?.filter((opponent) => opponent.actions.some((action) => action.type !== 'check')) ?? [];
+}
+
 export function preflopEquityVsCallers(context: BotDecisionContext, rng: BotRng, iterations = PREFLOP_PRICE_ITERATIONS): number | null {
-  const contesting = context.opponents?.filter((opponent) => opponent.actions.some((action) => action.type !== 'check'));
-  if (!contesting || contesting.length === 0) {
+  const contesting = contestingOpponents(context);
+  if (contesting.length === 0) {
     return null;
   }
   return simulateRangeEquity(

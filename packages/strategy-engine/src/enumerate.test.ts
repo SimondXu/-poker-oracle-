@@ -179,3 +179,11 @@ test('every spot above is a real mix, so the comparison is not trivial', () => {
     assert.ok(enumerateDecision(spot.context, 'tag', spot.equities).length >= 2, spot.name);
   }
 });
+
+test('a NaN chance is never taken, as rng() < NaN is never true for a bot', () => {
+  const facingBet = SPOTS.find((spot) => spot.name.startsWith('facing a flop bet'))!;
+  const outcomes = enumerateDecision(facingBet.context, 'tag', fixedEquities({ equity: Number.NaN }));
+  const total = outcomes.reduce((sum, outcome) => sum + outcome.probability, 0);
+  assert.ok(outcomes.every((outcome) => Number.isFinite(outcome.probability)), JSON.stringify(outcomes));
+  assert.ok(Math.abs(total - 1) < 1e-9);
+});

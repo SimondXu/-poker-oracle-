@@ -12,7 +12,7 @@ import {
 import { computePotOdds } from './actions.ts';
 import { clamp01, createStableAnalysisRng } from './cards.ts';
 import { buildDecisionContext, type DecisionHand, type DecisionValidActions } from './context.ts';
-import { once, preflopEquityVsCallers, type Equities } from './decide.ts';
+import { contestingOpponents, once, preflopEquityVsCallers, type Equities } from './decide.ts';
 import { enumerateDecision, type DecisionOutcome } from './enumerate.ts';
 import { PERSONALITY_PROFILES } from './personality.ts';
 import { analyzePostflop } from './postflop-analysis.ts';
@@ -97,7 +97,12 @@ export function adviseFromEquities(context: BotDecisionContext, equities: Equiti
   const exact = context.phase === 'river' && context.opponentCount === 1;
   const estimate = equity === undefined
     ? null
-    : { equity, equityStdErr: exact ? 0 : Math.sqrt((equity * (1 - equity)) / COACH_ITERATIONS), equityVs: analysis?.equityVs ?? 'range' };
+    : {
+        equity,
+        equityStdErr: exact ? 0 : Math.sqrt((equity * (1 - equity)) / COACH_ITERATIONS),
+        equityVs: analysis?.equityVs ?? 'range',
+        equityAgainst: isPreflop ? contestingOpponents(context).length : context.opponentCount,
+      };
 
   const shifted = (shift: number) => toOptions(context, enumerateDecision(context, 'tag', {
     postflop: () => {
