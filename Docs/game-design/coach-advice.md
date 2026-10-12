@@ -197,6 +197,8 @@ Only facts that a branch in `decide.ts` actually uses get a code. Each code is r
 | `bluff_share` | `frequency` | the air bet chance, `decide.ts:245` |
 | `cbet` | `frequency` | the fallback c-bet chance, `decide.ts:221` |
 | `no_initiative` | none | check without initiative, `decide.ts:240` |
+| `checked_to_in_position` | none | no initiative but checked to in position, so draws and air may bet (`decideUnopenedPostflop`) |
+| `position_range` | `position, scenario, share, buttonShare` | preflop, added by `coach.ts`, not a `decide.ts` branch: the share of all 1326 starting hands the TAG chart doesn't fold from this seat in this scenario, beside the button's (null on the button). It is computed from the same `getPreflopMix` table the bots play and cached per stack bucket, scenario, seat and heads-up flag |
 | `sticky_opponent` | `playerId, foldToBet, facingBets` | `opponentFolds` false, `decide.ts:206` |
 
 - **Stat params are the smoothed estimates the policy used.** `foldToBet` is the Beta-smoothed rate from `estimateTendencies` (`range.ts:83`), and the denominator is `postflopFacingBets`, not hands.

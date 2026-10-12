@@ -324,6 +324,9 @@ function decideUnopenedPostflop(
     chooser.note({ code: 'no_initiative', params: {} });
     return resolvePassiveAction(context);
   }
+  if (!hasInitiative) {
+    chooser.note({ code: 'checked_to_in_position', params: {} });
+  }
   if (read.isDraw) {
     chooser.note({ code: 'draw', params: { draw: analysis.features.flushDraw ? 'flush' : 'oesd' } });
     return chooser.chance(drawBetFrequency) ? bet() : resolvePassiveAction(context);

@@ -209,6 +209,9 @@ const EVERY_REASON: CoachReason[] = [
   { code: 'bluff_share', params: { frequency: 0.18 } },
   { code: 'cbet', params: { frequency: 0.6 } },
   { code: 'no_initiative', params: {} },
+  { code: 'checked_to_in_position', params: {} },
+  { code: 'position_range', params: { position: 'utg', scenario: 'unopened', share: 0.14, buttonShare: 0.48 } },
+  { code: 'position_range', params: { position: 'btn', scenario: 'unopened', share: 0.48, buttonShare: null } },
   { code: 'sticky_opponent', params: { playerId: 'p3', foldToBet: 0.14, facingBets: 9 } },
 ];
 
@@ -226,4 +229,7 @@ test('every reason code reads as a sentence in both languages, with every value 
     'TAG chart: a playable hand facing an open from BTN, 47 BB deep.',
   );
   assert.equal(reasonText(EVERY_REASON.at(-1)!, zh, nameOf), 'Viper 面对下注只弃牌 14%（共 9 次），所以不诈唬。');
+  const fromUtg = EVERY_REASON.find((reason) => reason.code === 'position_range' && reason.params.position === 'utg')!;
+  assert.equal(reasonText(fromUtg, en, nameOf), 'From UTG, the TAG chart plays 14% of hands with no one in yet; on the button, 48%.');
+  assert.equal(reasonText(fromUtg, zh, nameOf), '在 UTG，TAG 起手牌表无人入池时会玩 14% 的牌；按钮位是 48%。');
 });

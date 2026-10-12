@@ -478,6 +478,8 @@ export function classifyAction(
 /** Why the policy plays the spot as it does; each code is recorded at the decide.ts branch that uses the fact. */
 export type CoachReason =
   | { code: 'preflop_chart'; params: { handClass: HandClass; scenario: BotBettingState; position: BotPosition; effStackBb: number } }
+  /** Share of all starting hands the chart plays from this seat in this scenario, and from the button (null on the button). */
+  | { code: 'position_range'; params: { position: BotPosition; scenario: BotBettingState; share: number; buttonShare: number | null } }
   | { code: 'price_ok'; params: { equity: number; required: number } }
   | { code: 'price_short'; params: { equity: number; required: number } }
   | { code: 'jam'; params: { trigger: 'short_stack' | 'low_spr' | 'near_lock'; effStackBb: number; spr: number } }
@@ -487,6 +489,7 @@ export type CoachReason =
   | { code: 'bluff_share'; params: { frequency: number } }
   | { code: 'cbet'; params: { frequency: number } }
   | { code: 'no_initiative'; params: Record<string, never> }
+  | { code: 'checked_to_in_position'; params: Record<string, never> }
   | { code: 'sticky_opponent'; params: { playerId: string; foldToBet: number; facingBets: number } };
 
 export interface CoachOption {

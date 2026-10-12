@@ -1,7 +1,9 @@
 import {
   COACH_POLICY_VERSION,
   classifyAction,
+  type BotBettingState,
   type BotDecisionContext,
+  type BotPosition,
   type BotPlayerStats,
   type CoachAdvice,
   type CoachOption,
@@ -14,7 +16,9 @@ import { once, preflopEquityVsCallers, type Equities } from './decide.ts';
 import { enumerateDecision, type DecisionOutcome } from './enumerate.ts';
 import { PERSONALITY_PROFILES } from './personality.ts';
 import { analyzePostflop } from './postflop-analysis.ts';
-import { evaluatePreflopPercentile } from './preflop-hands.ts';
+import { evaluatePreflopPercentile, getStackBucket, normalizePreflopScenario } from './preflop-hands.ts';
+import { getPreflopMix } from './preflop-mixes.ts';
+import { ALL_COMBOS } from './range.ts';
 
 /** Per street; mean standard error about 0.0115 (see Docs/game-design/coach-advice.md, step 1e). */
 const COACH_ITERATIONS = 512;
@@ -34,6 +38,8 @@ const REASON_PRIORITY: ReadonlyArray<CoachReason['code']> = [
   'cbet',
   'no_initiative',
   'preflop_chart',
+  'position_range',
+  'checked_to_in_position',
 ];
 
 export interface CoachJoinKeys {
@@ -136,7 +142,43 @@ export function adviseFromEquities(context: BotDecisionContext, equities: Equiti
     position: context.position,
     scenario: context.bettingState,
     opponents: context.opponentCount,
-    reasons: rank([...common].map((key) => JSON.parse(key) as CoachReason)),
+    reasons: rank([
+      ...[...common].map((key) => JSON.parse(key) as CoachReason),
+      ...(isPreflop ? [positionRange(context)] : []),
+    ]),
+  };
+}
+
+const playShareCache = new Map<string, number>();
+
+/**
+ * Share of all 1326 starting hands the TAG chart doesn't fold from this seat in this scenario:
+ * the same table the bots play, summed over every combo.
+ */
+export function preflopPlayShare(context: Pick<BotDecisionContext, 'effectiveStackBb' | 'activePlayerCount'>, scenario: BotBettingState, position: BotPosition): number {
+  const key = [getStackBucket(context.effectiveStackBb), normalizePreflopScenario(scenario), position, context.activePlayerCount === 2].join('|');
+  let share = playShareCache.get(key);
+  if (share === undefined) {
+    const played = ALL_COMBOS.reduce((sum, combo) => {
+      const mix = getPreflopMix('tag', context.effectiveStackBb, scenario, position, combo, context.activePlayerCount);
+      return sum + (1 - clamp01(mix.fold));
+    }, 0);
+    share = played / ALL_COMBOS.length;
+    playShareCache.set(key, share);
+  }
+  return share;
+}
+
+/** How wide the chart plays from the hero's seat, beside the button's width in the same spot. */
+function positionRange(context: BotDecisionContext): CoachReason {
+  return {
+    code: 'position_range',
+    params: {
+      position: context.position,
+      scenario: context.bettingState,
+      share: preflopPlayShare(context, context.bettingState, context.position),
+      buttonShare: context.position === 'btn' ? null : preflopPlayShare(context, context.bettingState, 'btn'),
+    },
   };
 }
 

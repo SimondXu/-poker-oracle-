@@ -4,7 +4,7 @@ import test from 'node:test';
 import { COACH_POLICY_VERSION, type BotDecisionContext, type CoachAdvice } from '@aipoker/shared';
 
 import { computePotOdds } from './actions.ts';
-import { adviseFromEquities, buildCoachAdvice } from './coach.ts';
+import { adviseFromEquities, buildCoachAdvice, preflopPlayShare } from './coach.ts';
 import type { DecisionHand, DecisionValidActions } from './context.ts';
 import type { Equities } from './decide.ts';
 import { PERSONALITY_PROFILES } from './personality.ts';
@@ -193,4 +193,57 @@ test('an all-in for no more than the call is offered as a call', () => {
   assert.equal(advice.equityVs, 'range');
   assert.ok(advice.handPercentile !== undefined);
   assert.equal(advice.spr, undefined, 'SPR is shown from the flop on');
+});
+
+test('position: the chart plays more hands the later the seat, and preflop advice says how wide this seat plays', () => {
+  const sixMax = { effectiveStackBb: 100, activePlayerCount: 6 };
+  const shares = (['utg', 'hj', 'co', 'btn'] as const).map((position) => preflopPlayShare(sixMax, 'unopened', position));
+  assert.ok(shares.every((share, i) => share > 0 && share < 1 && (i === 0 || share > shares[i - 1]!)), shares.join(' '));
+
+  const utgOpen: BotDecisionContext = {
+    ...FACING_BET,
+    phase: 'preflop',
+    communityCards: [],
+    position: 'utg',
+    activePlayerCount: 6,
+    opponentCount: 5,
+    effectiveStackBb: 100,
+    bettingState: 'unopened',
+    holeCards: ['Kd', '9c'],
+  };
+  const range = adviseFromEquities(utgOpen, fixedEquities(null), KEYS).reasons.find((reason) => reason.code === 'position_range');
+  assert.ok(range?.code === 'position_range');
+  assert.equal(range.params.share, shares[0]);
+  assert.equal(range.params.buttonShare, shares[3]);
+
+  const onButton = adviseFromEquities({ ...utgOpen, position: 'btn' }, fixedEquities(null), KEYS).reasons.find((reason) => reason.code === 'position_range');
+  assert.ok(onButton?.code === 'position_range');
+  assert.equal(onButton.params.buttonShare, null);
+});
+
+test('position: checked to in position without the initiative, the policy says why it may bet', () => {
+  const checkedTo: BotDecisionContext = {
+    ...FACING_BET,
+    canFold: false,
+    canCheck: true,
+    canCall: false,
+    callAmount: 0,
+    currentBetToMatch: 0,
+    bettingState: 'unopened',
+    position: 'btn',
+    streetActionCount: 1,
+    opponents: [
+      {
+        id: 'villain',
+        position: 'bb',
+        actions: [
+          { phase: 'preflop', type: 'raise_to', facing: 'unopened', sizeOfPot: 1 },
+          { phase: 'flop', type: 'check', facing: 'unopened', sizeOfPot: 0 },
+        ],
+      },
+    ],
+    selfView: { id: 'hero', position: 'btn', actions: [{ phase: 'preflop', type: 'call', facing: 'facing_open', sizeOfPot: 0 }] },
+  };
+  const advice = adviseFromEquities(checkedTo, fixedEquities({ equity: 0.2 }), KEYS);
+  assert.ok(advice.reasons.some((reason) => reason.code === 'checked_to_in_position'), JSON.stringify(advice));
 });

@@ -123,7 +123,17 @@ const REASON_TEXT: { [C in CoachReason['code']]: (reason: ReasonOf<C>, t: TFunct
   draw: ({ params }, t) => t('panel.coach.why.draw', { draw: t(`panel.coach.draw.${params.draw}`) }),
   bluff_share: ({ params }, t) => t('panel.coach.why.bluff_share', { frequency: frequencyPercent(params.frequency) }),
   cbet: ({ params }, t) => t('panel.coach.why.cbet', { frequency: frequencyPercent(params.frequency) }),
+  position_range: ({ params }, t) =>
+    params.buttonShare === null
+      ? t('panel.coach.why.position_range_btn', { share: percent(params.share), scenario: t(`panel.coach.scenario.${params.scenario}`) })
+      : t('panel.coach.why.position_range', {
+          position: formatBotPositionLabel(params.position),
+          share: percent(params.share),
+          scenario: t(`panel.coach.scenario.${params.scenario}`),
+          button: percent(params.buttonShare),
+        }),
   no_initiative: (_reason, t) => t('panel.coach.why.no_initiative'),
+  checked_to_in_position: (_reason, t) => t('panel.coach.why.checked_to_in_position'),
   sticky_opponent: ({ params }, t, nameOf) =>
     t('panel.coach.why.sticky_opponent', { name: nameOf(params.playerId), percent: percent(params.foldToBet), count: params.facingBets }),
 };
