@@ -47,3 +47,29 @@ test('a call of an open raise is not counted as a limp', () => {
   assert.equal(context?.preflopLimpersCount, 0);
   assert.equal(context?.bettingState, 'facing_open');
 });
+
+test('stack depth and SPR count only chips still behind at the start of the street', () => {
+  const flopPlayer = (id: string, seatIndex: number, streetCommitted: number) => ({
+    ...player(id, seatIndex, 0),
+    stack: 700 - streetCommitted,
+    streetCommitted,
+    handCommitted: 300 + streetCommitted,
+  });
+  const hand: DecisionHand = {
+    phase: 'betting_flop',
+    smallBlind: 5,
+    bigBlind: 10,
+    buttonMarkerSeat: 0,
+    potTotal: 600 + 200 + 200,
+    players: [flopPlayer('villain', 0, 200), flopPlayer('hero', 1, 200)],
+    communityCards: ['Kh', '7d', '2c'],
+    actions: [],
+    betting: { currentBetToMatch: 200, lastFullRaiseSize: 200 },
+  };
+
+  const context = buildDecisionContext(hand, 'hero', VALID);
+
+  // 30bb went in preflop and a 20bb flop bet was called: 70bb were behind when the flop came, into a 60bb pot.
+  assert.equal(context?.effectiveStackBb, 70);
+  assert.equal(context?.spr, 700 / 600);
+});

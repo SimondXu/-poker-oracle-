@@ -98,16 +98,17 @@ function countPreflopLimpers(hand: DecisionHand): number {
   return limperCount;
 }
 
+/** Chips the actor and the deepest live opponent both still had behind when this street began. */
 function getEffectiveStack(hand: DecisionHand, actorId: string): number {
   const actor = hand.players.find((player) => player.id === actorId);
   if (!actor) {
     return 0;
   }
 
-  const actorTotal = actor.stack + actor.handCommitted;
+  const actorTotal = actor.stack + actor.streetCommitted;
   const opponentTotals = hand.players
     .filter((player) => player.id !== actorId && player.status !== 'folded' && isSeated(player))
-    .map((player) => Math.min(actorTotal, player.stack + player.handCommitted));
+    .map((player) => Math.min(actorTotal, player.stack + player.streetCommitted));
 
   return opponentTotals.length === 0 ? actorTotal : Math.max(...opponentTotals);
 }
@@ -135,7 +136,9 @@ export function buildDecisionContext(
   const positionMap = buildBotPositionMap(handPlayers.map((player) => player.seatIndex), hand.buttonMarkerSeat);
   const effectiveStack = getEffectiveStack(hand, actor.id);
   const effectiveStackBb = hand.bigBlind > 0 ? effectiveStack / hand.bigBlind : 0;
-  const potBaseForSpr = hand.potTotal > 0 ? hand.potTotal : hand.bigBlind;
+  // SPR compares the stack to the pot as the street began; preflop that pot is empty, so use the blinds in it.
+  const potAtStreetStart = hand.potTotal - hand.players.reduce((sum, player) => sum + player.streetCommitted, 0);
+  const potBaseForSpr = potAtStreetStart > 0 ? potAtStreetStart : hand.potTotal > 0 ? hand.potTotal : hand.bigBlind;
 
   return {
     ...valid,
