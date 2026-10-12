@@ -34,8 +34,10 @@ export function useHeroSummaryText(): (summary: HeroHandSummary) => string {
       const street = summary.foldedStreet ? t(`panel.summary.street.${summary.foldedStreet}`) : '';
       if (summary.outcome === 'won') {
         const hand = rankText(summary.handRank);
-        if (hand) return t('panel.summary.won_with', { amount, hand });
-        return t(summary.uncontested ? 'panel.summary.won_uncontested' : 'panel.summary.won', { amount });
+        // Name the gross win too, so it matches the "+X" on the seat.
+        const won = formatChips(summary.payout);
+        if (hand) return t('panel.summary.won_with', { amount, won, hand });
+        return t(summary.uncontested ? 'panel.summary.won_uncontested' : 'panel.summary.won', { amount, won });
       }
       if (summary.outcome === 'lost') {
         if (street) return t('panel.summary.lost_folded', { amount, street });

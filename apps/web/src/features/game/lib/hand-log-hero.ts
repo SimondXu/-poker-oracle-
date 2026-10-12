@@ -11,6 +11,8 @@ export interface HeroHandSummary {
   outcome: 'won' | 'lost' | 'even';
   /** Chips won (positive) or lost (negative) in this hand: payout minus what the hero put in. */
   net: number;
+  /** Chips the hero collected from the pot (the gross amount the seat shows), 0 when none. */
+  payout: number;
   /** Street of the hero's fold, if the hero folded. */
   foldedStreet: HandLogStreetName | null;
   /** Server hand name when the hero won at showdown (`handRankKey` translates it). */
@@ -38,6 +40,7 @@ export function summarizeHeroHand(
   return {
     outcome: net > 0 ? 'won' : net < 0 ? 'lost' : 'even',
     net,
+    payout,
     foldedStreet,
     handRank: line?.handRankName ?? null,
     uncontested: Boolean(line) && !line?.handRankName,

@@ -312,7 +312,9 @@ export function buildTableViewModel(input: TableViewModelInput): TableViewModel 
   const revealWinners = shouldShowWinnerIdentity(resultPhase);
   const winnerIds = revealWinners ? input.winnerIds : EMPTY_STRINGS;
   const winnerIdSet = new Set(winnerIds);
-  const isShowdownReveal = hand.phase === 'hand_end' && shouldRevealShowdownCards(resultPhase);
+  // Cards are shown only when two or more players reached the end; an uncontested winner keeps them hidden.
+  const reachedShowdown = hand.players.filter((player) => player.status === 'active' || player.status === 'all_in').length >= 2;
+  const isShowdownReveal = hand.phase === 'hand_end' && reachedShowdown && shouldRevealShowdownCards(resultPhase);
 
   const heroPlayer = hand.players.find((player) => player.id === currentUserId);
   const heroSeatIndex = heroPlayer?.seatIndex ?? null;

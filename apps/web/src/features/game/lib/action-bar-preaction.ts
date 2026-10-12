@@ -14,6 +14,8 @@ export interface HeroContext {
   streetCommitted: number;
   /** `handNumber:communityCardCount` — changes on a new hand and on every new street. */
   streetKey: string;
+  /** No board yet. */
+  isPreflop: boolean;
 }
 
 export function getStreetKey(hand: Pick<HandState, 'handNumber' | 'communityCards'>): string {
@@ -32,6 +34,7 @@ export function getHeroContext(
     stack: hero.stack,
     streetCommitted: hero.streetCommitted,
     streetKey: getStreetKey(hand),
+    isPreflop: hand.communityCards.length === 0,
   };
 }
 

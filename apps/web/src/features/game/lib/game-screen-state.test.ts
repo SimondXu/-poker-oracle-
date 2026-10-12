@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { HandState } from '@aipoker/shared';
 
 import { canAdvanceToNextHand, getGameFooterMode, getGameScreenState } from './game-screen-state.ts';
 
@@ -73,7 +74,7 @@ test('getGameScreenState derives rich hero-turn training data', () => {
 
   assert.equal(state.isMyTurn, true);
   assert.equal(state.pot, 30);
-  assert.equal(state.trainingData?.position, 'BTN');
+  assert.equal(state.trainingData?.position, 'SB'); // heads-up preflop: the button posts the small blind
   assert.equal(state.trainingData?.strength?.kind, 'top_percent');
   assert.equal(state.trainingData?.suggestion, 'raise');
   assert.ok((state.trainingData?.suggestionReason ?? '').length > 0);
@@ -271,6 +272,7 @@ test('getGameFooterMode distinguishes eliminated choice from next-hand controls'
       isEliminatedSpectating: false,
       isTableFinished: false,
       handPhase: 'hand_end',
+      handResultPhase: 'done',
     }),
     'eliminated-choice',
   );
@@ -286,12 +288,44 @@ test('getGameFooterMode distinguishes eliminated choice from next-hand controls'
       isEliminatedSpectating: false,
       isTableFinished: false,
       handPhase: 'hand_end',
+      handResultPhase: 'done',
     }),
     'next-hand',
   );
 });
 
-test('canAdvanceToNextHand waits until result presentation is fully done', () => {
+test('getGameFooterMode plays the hand result out before the elimination choice', () => {
+  const base = {
+    hasHand: true,
+    isMyTurn: false,
+    hasValidActions: false,
+    isEliminatedPendingChoice: true,
+    canCurrentUserStartNextHand: false,
+    isEliminatedSpectating: false,
+    isTableFinished: false,
+    handPhase: 'hand_end' as const,
+  };
+  assert.equal(getGameFooterMode({ ...base, isResultPresentationActive: true, handResultPhase: 'announcing' }), 'result-presentation');
+  assert.equal(getGameFooterMode({ ...base, isResultPresentationActive: true, handResultPhase: 'showing' }), 'result-presentation');
+  assert.equal(getGameFooterMode({ ...base, isResultPresentationActive: false, handResultPhase: 'done' }), 'eliminated-choice');
+});
+
+test('getGameFooterMode offers the next hand next to the banner once the winner is shown', () => {
+  const base = {
+    hasHand: true,
+    isMyTurn: false,
+    hasValidActions: false,
+    isEliminatedPendingChoice: false,
+    canCurrentUserStartNextHand: true,
+    isEliminatedSpectating: false,
+    isTableFinished: false,
+    handPhase: 'hand_end' as const,
+  };
+  assert.equal(getGameFooterMode({ ...base, isResultPresentationActive: true, handResultPhase: 'revealing' }), 'result-presentation');
+  assert.equal(getGameFooterMode({ ...base, isResultPresentationActive: true, handResultPhase: 'showing' }), 'next-hand');
+});
+
+test('canAdvanceToNextHand opens once the winner is shown', () => {
   assert.equal(
     canAdvanceToNextHand({
       handPhase: 'hand_end',
@@ -307,7 +341,7 @@ test('canAdvanceToNextHand waits until result presentation is fully done', () =>
       handResultPhase: 'showing',
       canCurrentUserStartNextHand: true,
     }),
-    false,
+    true,
   );
 
   assert.equal(
@@ -327,4 +361,21 @@ test('canAdvanceToNextHand waits until result presentation is fully done', () =>
     }),
     false,
   );
+});
+
+test('heads-up the button is labelled SB before the flop and BTN after it', () => {
+  const player = (id: string, seatIndex: number) => ({
+    id, name: id, seatIndex, stack: 990, streetCommitted: 10, handCommitted: 10, status: 'active' as const,
+    holeCards: [], isBot: false, hasActedThisStreet: false, matchedBetToMatchAtLastAction: 0,
+  });
+  const hand = (phase: 'betting_preflop' | 'betting_flop') => ({
+    id: 'hand-1', roomId: 'AAAABA', handNumber: 1, phase, maxSeats: 6, smallBlind: 10, bigBlind: 20,
+    buttonMarkerSeat: 0, sbSeat: 0, bbSeat: 1, players: [player('hero', 0), player('bot', 1)],
+    communityCards: phase === 'betting_flop' ? (['Ah', 'Kd', '2c'] as HandState['communityCards']) : [], pots: [],
+    betting: { currentBetToMatch: 20, lastFullRaiseSize: 20, lastAggressorId: null }, currentActorSeat: 0, actions: [],
+  });
+  const label = (phase: 'betting_preflop' | 'betting_flop') =>
+    getGameScreenState({ currentUserId: 'hero', eliminatedDecision: null, hand: hand(phase), handResult: null, validActions: null, championInfo: null }).positionLabel;
+  assert.equal(label('betting_preflop'), 'SB');
+  assert.equal(label('betting_flop'), 'BTN');
 });

@@ -24,6 +24,10 @@ export interface ActionBarProps {
   isBotsOnlyContinuation: boolean;
   championName: string | null;
   championStack: number | null;
+  /** Hero's chips when the table finished; `net` is null when the session start was not seen (page reloaded). */
+  heroResult: { stack: number; net: number | null } | null;
+  /** Coach analysis on the hero's turn; shown as one line below xl, where the panel is a closed sheet. */
+  coachHint: GameScreenState['trainingData'];
   handNumber: number | null;
   onAction: (type: ActionType, amount?: number) => void;
   onSpectate: () => void;

@@ -18,7 +18,7 @@ import {
   type CoachData,
 } from './coach-model';
 
-const SUGGESTION_CLASS: Record<NonNullable<CoachData['suggestion']>, string> = {
+export const SUGGESTION_CLASS: Record<NonNullable<CoachData['suggestion']>, string> = {
   raise: 'text-vermilion-hi',
   call: 'text-text',
   check: 'text-text',
@@ -154,7 +154,7 @@ function StrengthBlock({ data, opponents, quiet }: { data: CoachData; opponents:
         ? t('panel.coach.equity.many', { count: opponents })
         : t('panel.coach.equity.one')
     : t('panel.coach.strength');
-  const value = isEquity ? `${percent(strength.value)}%` : t('panel.coach.strength.top', { percent: percent(strength.value) });
+  const value = isEquity ? `${percent(strength.value)}%` : t('panel.coach.strength.top', { percent: percent(1 - strength.value) });
 
   const fillClass = need === undefined ? (quiet ? 'bg-ink-7' : 'bg-brass') : clears ? 'bg-positive' : 'bg-caution';
   const needLeft = need === undefined ? 0 : Math.min(0.92, Math.max(0.08, need));

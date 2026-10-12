@@ -44,6 +44,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
         {children}
         <Toaster
           position="top-right"
+          // Below the 48–56px headers, so a toast never covers the language toggle.
+          offset={{ top: 64 }}
+          mobileOffset={{ top: 56 }}
           theme="dark"
           toastOptions={{
             style: {

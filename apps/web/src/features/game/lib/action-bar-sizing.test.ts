@@ -66,16 +66,32 @@ test('presets clamp up to the minimum raise', () => {
   assert.equal(presets[0]?.amount, 60);
 });
 
-test('presets clamp down to the stack and flag all-in', () => {
+test('presets that clamp to the stack collapse into the single all-in', () => {
   const presets = buildSizingPresets({ pot: 900, callAmount: 0, heroStreetBet: 0, bounds: { min: 20, max: 300 }, canAllIn: true });
-  assert.deepEqual(presets.map((p) => p.amount), [300, 300, 300, 300, 300]);
-  assert.ok(presets.every((p) => p.isAllIn));
+  assert.deepEqual(presets.map((p) => [p.label, p.amount]), [['All-in', 300]]);
 });
 
-test('presets with a collapsed range (short stack) are all the max', () => {
+test('presets with a collapsed range (short stack) are just the all-in', () => {
   const bounds = getRaiseBounds({ minBetOrRaiseTo: 80, maxBetOrRaiseTo: 50 });
   const presets = buildSizingPresets({ pot: 100, callAmount: 30, heroStreetBet: 0, bounds, canAllIn: true });
-  assert.ok(presets.every((p) => p.amount === 50 && p.isAllIn));
+  assert.deepEqual(presets.map((p) => [p.id, p.amount, p.isAllIn]), [['all-in', 50, true]]);
+});
+
+test('presets never repeat an amount: two fractions clamped to the min raise show once', () => {
+  const presets = buildSizingPresets({ pot: 30, callAmount: 0, heroStreetBet: 0, bounds: { min: 40, max: 1000 }, canAllIn: true });
+  const amounts = presets.map((p) => p.amount);
+  assert.equal(new Set(amounts).size, amounts.length);
+  assert.equal(amounts[0], 40);
+});
+
+test('preflop presets are multiples of the bet to match, then pot and all-in', () => {
+  // Unopened in the small blind: the bet to match is the big blind (20).
+  const unopened = buildSizingPresets({ pot: 30, callAmount: 10, heroStreetBet: 10, bounds: { min: 40, max: 1000 }, canAllIn: true, isPreflop: true });
+  // Pot (60) equals 3x here, so it is left out.
+  assert.deepEqual(unopened.map((p) => [p.label, p.amount]), [['2.5x', 50], ['3x', 60], ['4x', 80], ['All-in', 1000]]);
+  // Facing a raise to 60: 3-bet sizes.
+  const facing = buildSizingPresets({ pot: 90, callAmount: 60, heroStreetBet: 0, bounds: { min: 100, max: 1000 }, canAllIn: true, isPreflop: true });
+  assert.deepEqual(facing.slice(0, 3).map((p) => p.amount), [150, 180, 240]);
 });
 
 test('parseAmountDraft: strips junk, clamps, empty is null', () => {
@@ -99,7 +115,8 @@ test('resolveRaiseAction: bet vs raise_to vs all_in', () => {
 test('canAllIn false (cannot raise, stack > call): no all-in preset, max is never sent as all_in', () => {
   const bounds = { min: 80, max: 500 };
   const presets = buildSizingPresets({ pot: 900, callAmount: 40, heroStreetBet: 0, bounds, canAllIn: false });
-  assert.deepEqual(presets.map((p) => p.label), ['1/3', '1/2', '3/4', 'Pot']);
+  // 1/2 and larger all clamp to the max, so it shows once; none is an all-in.
+  assert.deepEqual(presets.map((p) => [p.label, p.amount]), [['1/3', 353], ['1/2', 500]]);
   assert.ok(presets.every((p) => p.amount <= bounds.max && !p.isAllIn));
 
   const facing = { canBet: false, canAllIn: false, minBetOrRaiseTo: 80, maxBetOrRaiseTo: 500 };

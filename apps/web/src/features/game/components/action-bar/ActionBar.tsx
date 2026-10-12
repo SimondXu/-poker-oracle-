@@ -12,6 +12,7 @@ import {
 } from '../../lib/action-bar-preaction';
 import type { ActionBarProps } from '../slots';
 import { ActionControls } from './ActionControls';
+import { CoachHint } from './CoachHint';
 import {
   EliminatedChoiceBar,
   EliminatedSpectatingBar,
@@ -35,6 +36,8 @@ export function ActionBar({
   isBotsOnlyContinuation,
   championName,
   championStack,
+  heroResult,
+  coachHint,
   handNumber,
   onAction,
   onSpectate,
@@ -96,7 +99,12 @@ export function ActionBar({
             </p>
           );
         }
-        return <ActionControls validActions={validActions} pot={pot} hero={hero} onAction={onAction} />;
+        return (
+          <div className="flex flex-col gap-snug">
+            <CoachHint data={coachHint} />
+            <ActionControls validActions={validActions} pot={pot} hero={hero} onAction={onAction} />
+          </div>
+        );
       case 'waiting':
         return (
           <WaitingBar
@@ -122,6 +130,7 @@ export function ActionBar({
           <TableFinishedBar
             championName={championName}
             championStack={championStack}
+            heroResult={heroResult}
             handNumber={handNumber}
             onPlayAgain={onPlayAgain}
             onBackToLobby={onBackToLobby}

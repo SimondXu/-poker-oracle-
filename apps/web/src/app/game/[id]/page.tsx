@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { GameView } from '@/features/game/components/GameView';
 import { useGameScreenState } from '@/features/game/hooks/useGameScreenState';
 import { useGameSocket } from '@/features/game/hooks/useGameSocket';
+import { generateRoomCode } from '@/lib/room-code';
 import { useAuthStore } from '@/stores/authStore';
 
 interface GamePageProps {
@@ -31,13 +32,20 @@ export default function GamePage({ params }: GamePageProps) {
   });
 
   useEffect(() => {
-    if (!user) {
+    // The first client render uses the store's server snapshot (no user) even when the persisted
+    // user is already loaded, so check the live store before sending the visitor home.
+    if (!user && !useAuthStore.getState().user) {
       router.replace('/');
     }
   }, [router, user]);
 
   const handleReturnToLobby = useCallback(() => {
     router.push('/');
+  }, [router]);
+
+  // Same path as "Practice now" on the home page: a fresh table with five bots.
+  const handlePlayAgain = useCallback(() => {
+    router.push(`/room/${generateRoomCode()}?intent=create&mode=practice`);
   }, [router]);
 
   if (!user) {
@@ -51,6 +59,7 @@ export default function GamePage({ params }: GamePageProps) {
       screen={screen}
       onAction={sendAction}
       onReturnToLobby={handleReturnToLobby}
+      onPlayAgain={handlePlayAgain}
     />
   );
 }

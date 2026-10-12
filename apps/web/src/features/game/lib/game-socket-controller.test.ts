@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { HandState } from '@aipoker/shared';
 
-import { canRequestNextHand, mapHandResultToStore, startsNewHand } from './game-socket-controller.ts';
+import { canRequestNextHand, getStreetHoldHand, mapHandResultToStore, startsNewHand } from './game-socket-controller.ts';
 
 test('mapHandResultToStore aggregates payouts by player and keeps winner ids stable', () => {
   const mapped = mapHandResultToStore({
@@ -207,4 +207,72 @@ test('startsNewHand: preflop, a different hand, but not the same hand reaching h
   assert.equal(startsNewHand(sameHand, handShell({ phase: 'hand_end' })), false);
   // First state after (re)connect has nothing to clear.
   assert.equal(startsNewHand(null, handShell({ phase: 'hand_end' })), false);
+});
+
+function seat(id: string, seatIndex: number, overrides: Partial<HandState['players'][number]> = {}): HandState['players'][number] {
+  return {
+    id,
+    name: id,
+    seatIndex,
+    stack: 980,
+    streetCommitted: 20,
+    handCommitted: 20,
+    status: 'active',
+    holeCards: [],
+    isBot: true,
+    hasActedThisStreet: true,
+    matchedBetToMatchAtLastAction: 20,
+    ...overrides,
+  } as HandState['players'][number];
+}
+
+function action(playerId: string, type: 'call' | 'fold' | 'check' | 'raise_to', phase: HandState['phase'], addedAmount: number, sequenceNum: number) {
+  return {
+    playerId, playerName: playerId, seatIndex: 0, phase, type, amount: addedAmount, addedAmount,
+    toAmount: addedAmount, stackBefore: 1000, potTotalBefore: 0, sequenceNum, timestamp: 0,
+  } as HandState['actions'][number];
+}
+
+test('getStreetHoldHand: the call that closes preflop is shown on the old street before the flop', () => {
+  const raise = action('a', 'raise_to', 'betting_preflop', 60, 1);
+  const previous = handShell({
+    phase: 'betting_preflop',
+    currentActorSeat: 1,
+    actions: [raise],
+    players: [seat('a', 0, { stack: 940, streetCommitted: 60, handCommitted: 60 }), seat('b', 1)],
+  });
+  const closingCall = action('b', 'call', 'betting_preflop', 40, 2);
+  const next = handShell({
+    phase: 'betting_flop',
+    communityCards: ['Ah', 'Kd', '2c'],
+    actions: [raise, closingCall],
+    players: [seat('a', 0, { stack: 940, streetCommitted: 0, handCommitted: 60 }), seat('b', 1, { stack: 940, streetCommitted: 0, handCommitted: 60 })],
+  });
+
+  const held = getStreetHoldHand(previous, next);
+  assert.ok(held);
+  assert.equal(held.phase, 'betting_preflop');
+  assert.deepEqual(held.communityCards, []);
+  assert.equal(held.currentActorSeat, null);
+  assert.equal(held.actions.at(-1)?.playerId, 'b');
+  const caller = held.players.find((player) => player.id === 'b');
+  assert.equal(caller?.streetCommitted, 60);
+  assert.equal(caller?.stack, 940);
+});
+
+test('getStreetHoldHand: a fold that ends the hand is held too, and marks the folder', () => {
+  const previous = handShell({ phase: 'betting_flop', currentActorSeat: 1, players: [seat('a', 0), seat('b', 1)] });
+  const fold = action('b', 'fold', 'betting_flop', 0, 3);
+  const next = handShell({ phase: 'hand_end', actions: [fold], players: [seat('a', 0), seat('b', 1, { status: 'folded' })] });
+  assert.equal(getStreetHoldHand(previous, next)?.players.find((player) => player.id === 'b')?.status, 'folded');
+});
+
+test('getStreetHoldHand: no hold inside a street, across hands, or when updates were missed', () => {
+  const previous = handShell({ phase: 'betting_flop', players: [seat('a', 0), seat('b', 1)] });
+  const check = action('a', 'check', 'betting_flop', 0, 1);
+  assert.equal(getStreetHoldHand(previous, handShell({ phase: 'betting_flop', actions: [check] })), null);
+  assert.equal(getStreetHoldHand(previous, handShell({ id: 'AAAABA:5', handNumber: 5, phase: 'betting_preflop' })), null);
+  const two = [check, action('b', 'check', 'betting_flop', 0, 2)];
+  assert.equal(getStreetHoldHand(previous, handShell({ phase: 'betting_turn', actions: two.concat(action('a', 'check', 'betting_turn', 0, 3)) })), null);
+  assert.equal(getStreetHoldHand(null, handShell({ phase: 'betting_turn', actions: [check] })), null);
 });

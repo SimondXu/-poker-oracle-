@@ -15,14 +15,20 @@ export function ResultPresentationBar() {
   );
 }
 
+/** The result banner stays up next to the button; the next hand also starts on its own. */
 export function NextHandBar({ onStartNextHand }: { onStartNextHand: () => void }) {
   const t = useT();
   return (
-    <div className="flex flex-col gap-snug sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-      <p className="order-2 text-center text-body text-text-3 sm:order-1 sm:text-left">
-        {t('actionbar.next.hint')}
-      </p>
-      <ActionButton variant="raise" hint="Space" onClick={onStartNextHand} className="order-1 sm:order-2 sm:w-56">
+    <div className="flex items-center gap-snug sm:gap-4">
+      <p className="sr-only">{t('actionbar.next.hint')}</p>
+      <HandResultBanner compactOnPhone className="relative inset-x-0 bottom-0 z-auto min-w-0 flex-1" />
+      <ActionButton
+        variant="raise"
+        hint="Space"
+        onClick={onStartNextHand}
+        title={t('actionbar.next.hint')}
+        className="w-28 shrink-0 sm:w-56"
+      >
         {t('actionbar.next.button')}
       </ActionButton>
     </div>
@@ -84,12 +90,14 @@ export function EliminatedSpectatingBar({
 export function TableFinishedBar({
   championName,
   championStack,
+  heroResult,
   handNumber,
   onPlayAgain,
   onBackToLobby,
 }: {
   championName: string | null;
   championStack: number | null;
+  heroResult: { stack: number; net: number | null } | null;
   handNumber: number | null;
   onPlayAgain: () => void;
   onBackToLobby: () => void;
@@ -97,7 +105,11 @@ export function TableFinishedBar({
   const t = useT();
   const fmt = useFormatNumber();
   const handsPlayed =
-    typeof handNumber === 'number' && handNumber > 0 ? t('actionbar.finished.hands', { count: handNumber }) : null;
+    typeof handNumber === 'number' && handNumber > 0
+      ? handNumber === 1
+        ? t('actionbar.finished.hands_one')
+        : t('actionbar.finished.hands', { count: handNumber })
+      : null;
   return (
     <div className="flex flex-col gap-group md:flex-row md:items-center md:justify-between md:gap-4">
       <div className="min-w-0">
@@ -108,6 +120,16 @@ export function TableFinishedBar({
           {typeof championStack === 'number' && <span className="font-index"> · {fmt(championStack)}</span>}
           {handsPlayed && <span> · {handsPlayed}</span>}
         </p>
+        {heroResult && (
+          <p className="truncate text-body font-semibold text-text">
+            {heroResult.net === null
+              ? t('actionbar.finished.you', { stack: fmt(heroResult.stack) })
+              : t('actionbar.finished.youNet', {
+                  stack: fmt(heroResult.stack),
+                  net: `${heroResult.net > 0 ? '+' : heroResult.net < 0 ? '−' : ''}${fmt(Math.abs(heroResult.net))}`,
+                })}
+          </p>
+        )}
       </div>
       <div className="grid shrink-0 grid-cols-2 gap-2 md:w-80">
         <ActionButton variant="raise" onClick={onPlayAgain}>

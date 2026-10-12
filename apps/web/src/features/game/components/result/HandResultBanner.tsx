@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { selectHandResult, useGameStore, type HandResult } from '@/stores/gameStore';
 import { summarizeHeroHand } from '../../lib/hand-log-hero';
 import { summarizeResult } from '../../lib/hand-log-model';
+import { shouldShowWinnerAnnouncement } from '../../lib/table-animation';
 import { capitalize, useHeroSummaryText, useRankText } from '../side-panel/labels';
 import { MiniCards } from '../side-panel/MiniCards';
 
@@ -14,20 +15,21 @@ export interface HandResultBannerProps {
   /** Defaults to the store's hand result, so `<HandResultBanner />` is a complete mount. */
   result?: HandResult | null | undefined;
   className?: string | undefined;
+  /** Leave out the best-five cards below `sm` (when the banner shares the dock with a button). */
+  compactOnPhone?: boolean;
 }
 
 /**
  * Non-blocking hand result stamp: winner, amount, hand name, the best five
- * cards, and one line about the hero's own hand. Visible only while
- * `result.phase === 'showing'` (the window the old modal used), so it leaves on
- * the existing phase timers, and it never takes pointer events.
+ * cards, and one line about the hero's own hand. Visible from the winner reveal
+ * (`showing`) until the next hand starts, and it never takes pointer events.
  *
  * Placement: in the action dock (the shell mounts it there). It is in-flow,
  * fills its container up to 30rem, and is 72px tall, so the dock must give it
  * a 72px row at 360px width. The amount in the title is the gross pot won (the
  * same number the seat shows); the hero line is explicitly labelled net.
  */
-export function HandResultBanner({ result: resultProp, className }: HandResultBannerProps) {
+export function HandResultBanner({ result: resultProp, className, compactOnPhone = false }: HandResultBannerProps) {
   const t = useT();
   const rankText = useRankText();
   const heroText = useHeroSummaryText();
@@ -42,19 +44,18 @@ export function HandResultBanner({ result: resultProp, className }: HandResultBa
     [hand, result, heroId],
   );
 
-  if (!result || result.phase !== 'showing') return null;
+  if (!result || !shouldShowWinnerAnnouncement(result.phase)) return null;
   const [top] = lines;
   if (!top) return null;
 
   const rank = rankText(top.handRankName);
   const more = lines.length - 1;
   const champion = result.table.isTableFinished ? result.table.championPlayerName : null;
-  // The hero line already names the hand when the hero won with it.
-  const heroNamesRank = hero?.outcome === 'won' && Boolean(hero.handRank) && hero.handRank === top.handRankName && !champion;
-  const second = [rank && !heroNamesRank ? capitalize(rank) : null, more > 1 ? t('panel.banner.more', { count: more }) : more === 1 ? t('panel.banner.more_one') : null]
+  // The hand name lives on the second line; the hero line carries only the chips, so it fits beside a button.
+  const second = [rank ? capitalize(rank) : null, more > 1 ? t('panel.banner.more', { count: more }) : more === 1 ? t('panel.banner.more_one') : null]
     .filter(Boolean)
     .join(' · ');
-  const third = champion ? t('panel.banner.champion', { name: champion }) : hero ? heroText(hero) : null;
+  const third = champion ? t('panel.banner.champion', { name: champion }) : hero ? heroText({ ...hero, handRank: null }) : null;
 
   return (
     <div
@@ -69,7 +70,7 @@ export function HandResultBanner({ result: resultProp, className }: HandResultBa
       >
         {top.cards.length > 0 ? (
           <div className="flex shrink-0">
-            <MiniCards cards={top.cards} size="sm" className="flex-nowrap sm:hidden" />
+            <MiniCards cards={top.cards} size="sm" className={cn('flex-nowrap sm:hidden', compactOnPhone && 'max-sm:hidden')} />
             <MiniCards cards={top.cards} size="md" className="flex-nowrap max-sm:hidden" />
           </div>
         ) : (

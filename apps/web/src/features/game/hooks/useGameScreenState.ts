@@ -17,12 +17,10 @@ import {
   getGameScreenState,
   type EliminatedDecision,
 } from '../lib/game-screen-state';
-import { getHandResultPhaseTimeline } from '../lib/table-animation';
+import { NEXT_HAND_AUTO_START_MS } from '../lib/table-animation';
 
 type StartNextHand = (source?: 'manual' | 'auto' | 'hotkey') => boolean;
 type SpectateAfterElimination = () => Promise<boolean>;
-
-const HAND_RESULT_PHASE_TIMELINE = getHandResultPhaseTimeline();
 
 interface UseGameScreenStateOptions {
   currentUserId: string;
@@ -49,6 +47,8 @@ export function useGameScreenState({
   const connectionStatus = useGameStore((state) => state.connectionStatus);
   const setHandResultPhase = useGameStore((state) => state.setHandResultPhase);
   const [eliminatedDecision, setEliminatedDecision] = useState<EliminatedDecision>(null);
+  // Hero's chips at the first hand of the table, for the end-of-table result.
+  const [sessionStart, setSessionStart] = useState<{ roomId: string; stack: number } | null>(null);
 
   const screenState = useMemo(
     () =>
@@ -110,10 +110,12 @@ export function useGameScreenState({
   }, [hand?.phase, handResult?.phase, screenState.canCurrentUserStartNextHand, startNextHand]);
 
   useEffect(() => {
+    // Space / the button work as soon as the winner is shown; the automatic start waits for `done`.
     if (
+      handResult?.phase !== 'done' ||
       !canAdvanceToNextHand({
         handPhase: hand?.phase ?? null,
-        handResultPhase: handResult?.phase ?? null,
+        handResultPhase: handResult.phase,
         canCurrentUserStartNextHand: screenState.canCurrentUserStartNextHand,
       })
     ) {
@@ -122,7 +124,7 @@ export function useGameScreenState({
 
     const timer = setTimeout(() => {
       startNextHand('auto');
-    }, HAND_RESULT_PHASE_TIMELINE.nextHandAutoStartMs);
+    }, NEXT_HAND_AUTO_START_MS);
 
     return () => {
       clearTimeout(timer);
@@ -141,10 +143,12 @@ export function useGameScreenState({
         isEliminatedSpectating: screenState.isEliminatedSpectating,
         isTableFinished,
         handPhase: hand?.phase ?? null,
+        handResultPhase: handResult?.phase ?? null,
       }),
     [
       hand,
       hand?.phase,
+      handResult?.phase,
       isTableFinished,
       screenState.canCurrentUserStartNextHand,
       screenState.isEliminatedPendingChoice,
@@ -154,6 +158,19 @@ export function useGameScreenState({
       validActions,
     ],
   );
+
+  const heroInHand = hand?.players.find((player) => player.id === currentUserId);
+  const heroStartStack =
+    hand?.handNumber === 1 && heroInHand ? heroInHand.stack + heroInHand.handCommitted : null;
+  useEffect(() => {
+    if (hand && heroStartStack !== null) {
+      setSessionStart((current) => (current?.roomId === hand.roomId ? current : { roomId: hand.roomId, stack: heroStartStack }));
+    }
+  }, [hand, heroStartStack]);
+  const startStack = sessionStart?.roomId === hand?.roomId ? sessionStart?.stack ?? null : null;
+  const heroResult = heroInHand
+    ? { stack: heroInHand.stack, net: startStack !== null ? heroInHand.stack - startStack : null }
+    : null;
 
   const handleStartNextHand = useCallback(() => {
     if (!screenState.canCurrentUserStartNextHand) {
@@ -196,6 +213,7 @@ export function useGameScreenState({
     championInfo,
     footerMode,
     screenState,
+    heroResult,
     handleStartNextHand,
     handleDismissWinnerAnnouncement,
     handleSpectate,

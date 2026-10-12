@@ -158,9 +158,10 @@ const PORTRAIT_METRICS: SeatMetrics = {
   heroCardGap: 0.2,
   cardGap: 0.3,
   showFaceDownBacks: false,
+  // Phones render the stage em near 13px; keep bet amounts and the dealer "D" readable there.
   bet: { w: 4.4, h: 1.3 },
-  betText: 0.8,
-  button: 1.25,
+  betText: 0.9,
+  button: 1.35,
   tag: { w: 6.6, h: 1.6 },
   tagGap: 0.3,
   potText: 0.9,

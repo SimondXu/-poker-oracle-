@@ -25,6 +25,8 @@ interface ActionControlsProps {
 
 /** Re-enable input this long after sending, in case the server never answers. */
 const SEND_LOCK_MS = 800;
+/** A fold while checking is free needs a second press within this window. */
+const FOLD_CONFIRM_MS = 3000;
 
 /** Hero-to-act controls: [Fold] [Check | Call X] [Bet | Raise] plus the sizing row. */
 export function ActionControls({ validActions, pot, hero, onAction }: ActionControlsProps) {
@@ -37,14 +39,22 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
   const [draft, setDraft] = useState<string | null>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const sendLockedRef = useRef(false);
+  const [foldArmed, setFoldArmed] = useState(false);
 
   // A fresh set of valid actions (new street/turn) starts from a closed raise row.
   useEffect(() => {
     setRaiseOpen(false);
     setDraft(null);
     setAmount(bounds.min);
+    setFoldArmed(false);
     sendLockedRef.current = false;
   }, [bounds.min, bounds.max, validActions.callAmount]);
+
+  useEffect(() => {
+    if (!foldArmed) return;
+    const timer = window.setTimeout(() => setFoldArmed(false), FOLD_CONFIRM_MS);
+    return () => window.clearTimeout(timer);
+  }, [foldArmed]);
 
   const effectiveAmount = useMemo(
     () => (draft === null ? amount : (parseAmountDraft(draft, bounds) ?? amount)),
@@ -59,8 +69,9 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
         heroStreetBet: hero?.streetCommitted ?? 0,
         bounds,
         canAllIn: validActions.canAllIn,
+        isPreflop: hero?.isPreflop ?? false,
       }),
-    [bounds, hero?.streetCommitted, pot, validActions.callAmount, validActions.canAllIn],
+    [bounds, hero?.isPreflop, hero?.streetCommitted, pot, validActions.callAmount, validActions.canAllIn],
   );
 
   const send = useCallback(
@@ -118,8 +129,14 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
   }, [bounds, draft]);
 
   const fold = useCallback(() => {
-    if (validActions.canFold) send('fold');
-  }, [send, validActions.canFold]);
+    if (!validActions.canFold) return;
+    // Folding when a check costs nothing is almost always a misclick: ask once more.
+    if (validActions.canCheck && !foldArmed) {
+      setFoldArmed(true);
+      return;
+    }
+    send('fold');
+  }, [foldArmed, send, validActions.canCheck, validActions.canFold]);
 
   const checkOrCall = useCallback(() => {
     if (validActions.canCheck) send('check');
@@ -191,7 +208,7 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
           onClick={fold}
           data-layout-box="action-fold"
         >
-          {t('actionbar.action.fold')}
+          {foldArmed ? t('actionbar.action.foldConfirm') : t('actionbar.action.fold')}
         </ActionButton>
 
         {validActions.canCheck ? (

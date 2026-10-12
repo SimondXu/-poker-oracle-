@@ -9,6 +9,8 @@ export interface RoomPageState {
   isTableFinished: boolean;
   selfPlayer: RoomPlayer | null;
   canSelfStart: boolean;
+  /** The current player is the only human: Start readies them first, no separate Ready press. */
+  isSoloHuman: boolean;
   canStart: boolean;
 }
 
@@ -20,7 +22,8 @@ export function getRoomPageState(roomState: RoomState | null, playerId: string):
   const isTableFinished = roomState?.table.isTableFinished ?? false;
   const selfPlayer = roomState?.players.find((player) => player.id === playerId) ?? null;
   const canSelfStart = selfPlayer ? (!selfPlayer.isBot && selfPlayer.stack > 0) : true;
-  const canStart = allHumansReady
+  const isSoloHuman = humanPlayers.length === 1 && humanPlayers[0]?.id === playerId;
+  const canStart = (allHumansReady || isSoloHuman)
     && hasEnoughPlayers
     && !roomState?.isPlaying
     && canSelfStart
@@ -34,6 +37,7 @@ export function getRoomPageState(roomState: RoomState | null, playerId: string):
     isTableFinished,
     selfPlayer,
     canSelfStart,
+    isSoloHuman,
     canStart,
   };
 }

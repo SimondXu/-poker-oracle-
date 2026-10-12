@@ -131,7 +131,7 @@ export function canAdvanceToNextHand(input: {
   canCurrentUserStartNextHand: boolean;
 }): boolean {
   return input.handPhase === 'hand_end'
-    && input.handResultPhase === 'done'
+    && (input.handResultPhase === 'showing' || input.handResultPhase === 'done')
     && input.canCurrentUserStartNextHand;
 }
 
@@ -145,17 +145,19 @@ export function getGameFooterMode(input: {
   isEliminatedSpectating: boolean;
   isTableFinished: boolean;
   handPhase: HandState['phase'] | null;
+  handResultPhase: HandResult['phase'] | null;
 }): GameFooterMode {
   if (input.isMyTurn && input.hasValidActions) {
     return 'actions';
   }
 
-  if (input.isEliminatedPendingChoice) {
-    return 'eliminated-choice';
+  // The hand result plays out first; elimination and the end of the table come after it.
+  if (input.isResultPresentationActive) {
+    return input.handResultPhase === 'showing' && input.canCurrentUserStartNextHand ? 'next-hand' : 'result-presentation';
   }
 
-  if (input.isResultPresentationActive) {
-    return 'result-presentation';
+  if (input.isEliminatedPendingChoice) {
+    return 'eliminated-choice';
   }
 
   if (input.handPhase === 'hand_end' && input.canCurrentUserStartNextHand) {

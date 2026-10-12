@@ -65,13 +65,19 @@ export function coachReason(data: CoachData, t: TFunction): string | null {
 
   const { strength, suggestion } = data;
   if (strength.kind === 'top_percent') {
-    const lead = t('panel.coach.reason.pre', { percent: percent(strength.value), position: data.position ?? '—' });
+    // `value` is the top-percent rank (0.08 = top 8%); "beats 92%" reads the right way round for a learner.
+    const lead = t('panel.coach.reason.pre', { percent: percent(1 - strength.value), position: data.position ?? '—' });
     return `${lead} ${t(`panel.coach.reason.pre.${suggestion}`)}`;
   }
-  const lead =
-    data.winRequirement !== undefined && suggestion !== 'raise' && suggestion !== 'check'
-      ? t('panel.coach.reason.post_need', { percent: percent(strength.value), need: percent(data.winRequirement) })
-      : t('panel.coach.reason.post', { percent: percent(strength.value) });
+  const needsPrice = data.winRequirement !== undefined && suggestion !== 'raise' && suggestion !== 'check';
+  // The stats row shows raw pot odds; say why the requirement can sit a point or two above them.
+  const odds = data.potOdds !== undefined ? percent(data.potOdds) : null;
+  const need = data.winRequirement !== undefined ? percent(data.winRequirement) : null;
+  const lead = !needsPrice
+    ? t('panel.coach.reason.post', { percent: percent(strength.value) })
+    : odds !== null && odds !== need
+      ? t('panel.coach.reason.post_need_margin', { percent: percent(strength.value), need: need ?? 0, odds })
+      : t('panel.coach.reason.post_need', { percent: percent(strength.value), need: need ?? 0 });
   return `${lead} ${t(`panel.coach.reason.post.${suggestion}`)}`;
 }
 

@@ -97,7 +97,12 @@ test('the reason is composed from the analysis in either locale', () => {
   const zh = (key: Parameters<typeof translate>[1], vars?: Parameters<typeof translate>[2]) => translate('zh', key, vars);
   assert.equal(coachReason(call, zh), '当前权益约 45%，跟注所需约 30%。 已经覆盖继续投入的门槛。');
   const pre: CoachData = { strength: { kind: 'top_percent', value: 0.08 }, suggestion: 'raise', position: 'BTN' };
-  assert.equal(coachReason(pre, en), 'This hand is about Top 8% from BTN. Raising is the best training play here.');
+  assert.equal(coachReason(pre, en), 'This hand beats about 92% of starting hands, from BTN. Raising is the best training play here.');
+  const pricedCall = equity(0.17, { suggestion: 'fold', winRequirement: 0.29, potOdds: 0.28 });
+  assert.equal(
+    coachReason(pricedCall, en)?.startsWith('Equity is about 17%, and calling needs about 29% (pot odds 28% plus a small safety margin).'),
+    true,
+  );
   assert.equal(coachReason({ strength: { kind: 'equity', value: 0.5 } }, en), null);
 });
 

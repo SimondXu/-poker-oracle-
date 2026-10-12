@@ -37,6 +37,12 @@ export default function HomePage() {
 
   // Remember the last name. Loaded after mount so the server render and first client render match.
   useEffect(() => {
+    // A failed join comes back here with the code it tried.
+    const failedCode = new URLSearchParams(window.location.search).get('code');
+    if (failedCode) {
+      setCode(normalizeRoomCode(failedCode));
+      setCodeTouched(true);
+    }
     const remembered = readLastUsername() ?? user?.username ?? '';
     if (remembered && !nameTouchedRef.current) {
       setName(remembered);

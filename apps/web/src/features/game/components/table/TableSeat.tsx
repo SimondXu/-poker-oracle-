@@ -12,6 +12,7 @@ import {
   type SeatLayout,
   type TableGeometry,
 } from '@/features/game/lib/seat-layout';
+import { DEAL_STAGGER_SEC } from '@/features/game/lib/table-animation';
 import type { OccupiedSeatViewModel, SeatTimer, SeatViewModel } from '@/features/game/lib/table-view-model';
 import { cn, formatChips } from '@/lib/utils';
 import { getActionLabel, getCardName, getSeatAriaLabel } from './table-copy';
@@ -29,7 +30,6 @@ export interface TableSeatProps {
   hasActor: boolean;
 }
 
-const DEAL_STAGGER_SEC = 0.14;
 const BLIND_TAG_CLASS = 'shrink-0 text-seat-micro';
 const QUIET_LABEL_CLASS = 'label-index truncate text-seat-micro text-on-ivory-2';
 const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';

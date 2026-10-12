@@ -9,38 +9,61 @@ export type ResultAnimationPhase = 'announcing' | 'revealing' | 'showing' | 'don
 
 const MIN_SECOND_PASS_DELAY = 0.62;
 const SECOND_PASS_PER_PLAYER_DELAY = 0.08;
+/** Delay between seats in one pass of the hole-card deal, seconds. */
+export const DEAL_STAGGER_SEC = 0.14;
+const CARD_ANIMATION_MS = 200;
 
-const HAND_RESULT_PHASE_TIMELINE = {
-  revealingMs: 1400,
-  showingMs: 2300,
-  doneMs: 5200,
-  nextHandAutoStartMs: 2000,
-} as const;
+/**
+ * How long the action that closes a street (or the hand) stays on the table, with its chips,
+ * before the chips are swept and the next card is dealt.
+ */
+export const STREET_HOLD_MS = 900;
 
+const FLOP_STAGGER_MS = 160;
+const STREET_BEAT_MS = 780;
+/** Hole cards are face up for this long before the winner is named. */
+const SHOWDOWN_REVEAL_MS = 900;
+/** Winner, banner and pot award stay up this long before the result phase is done. */
+const RESULT_SHOWING_MS = 2500;
+/** After the result phase is done, the next hand starts on its own this much later. */
+export const NEXT_HAND_AUTO_START_MS = 2000;
+
+export interface HandResultPhaseTimeline {
+  /** `null` when nobody shows cards (everyone else folded). */
+  revealingMs: number | null;
+  showingMs: number;
+  doneMs: number;
+  nextHandAutoStartMs: number;
+}
+
+/**
+ * New board cards, one step per card. The closing action was already held for `STREET_HOLD_MS`,
+ * so the first new card lands at once; flop cards follow each other quickly and every later street
+ * of an all-in runout gets its own beat.
+ */
 export function buildCommunityRevealSteps(previousCount: number, nextCount: number): CommunityRevealStep[] {
-  if (nextCount <= previousCount) {
-    return [];
-  }
-
   const steps: CommunityRevealStep[] = [];
-  const flopStartDelayMs = previousCount === 0 ? 180 : 0;
-  const flopStaggerMs = 160;
-  const streetBeatMs = 780;
-
   let elapsedMs = 0;
   for (let count = previousCount + 1; count <= nextCount; count += 1) {
-    if (count <= 3) {
-      elapsedMs = flopStartDelayMs + (count - 1) * flopStaggerMs;
-    } else if (count === previousCount + 1) {
-      elapsedMs = streetBeatMs;
-    } else {
-      elapsedMs += streetBeatMs;
+    if (count > previousCount + 1) {
+      elapsedMs += count <= 3 ? FLOP_STAGGER_MS : STREET_BEAT_MS;
     }
-
     steps.push({ count, delayMs: elapsedMs });
   }
-
   return steps;
+}
+
+/** Time until the last new board card has landed (0 when the board does not grow). */
+export function getCommunityRunoutMs(previousCount: number, nextCount: number): number {
+  const last = buildCommunityRevealSteps(previousCount, nextCount).at(-1);
+  return last ? last.delayMs + CARD_ANIMATION_MS : 0;
+}
+
+/** Time until every hole card of a fresh hand has landed. */
+export function getDealDurationMs(playerCount: number): number {
+  if (playerCount <= 0) return 0;
+  const lastCardStartSec = (playerCount - 1) * DEAL_STAGGER_SEC + getHoleCardSecondPassDelay(playerCount);
+  return Math.round(lastCardStartSec * 1000) + CARD_ANIMATION_MS;
 }
 
 export function shouldRevealShowdownCards(resultPhase: ResultAnimationPhase): boolean {
@@ -51,8 +74,9 @@ export function shouldShowWinnerIdentity(resultPhase: ResultAnimationPhase): boo
   return resultPhase === 'showing' || resultPhase === 'done';
 }
 
+/** The result banner stays up from the winner reveal until the next hand. */
 export function shouldShowWinnerAnnouncement(resultPhase: ResultAnimationPhase): boolean {
-  return resultPhase === 'showing';
+  return resultPhase === 'showing' || resultPhase === 'done';
 }
 
 export function shouldAnimatePotAward(resultPhase: ResultAnimationPhase): boolean {
@@ -111,8 +135,20 @@ export function getHoleCardSecondPassDelay(activePlayerCount: number): number {
   );
 }
 
-export function getHandResultPhaseTimeline() {
-  return HAND_RESULT_PHASE_TIMELINE;
+/**
+ * Result phases, measured from the moment the result is applied (after the closing-action hold).
+ * A showdown waits for the board runout, shows the cards, then names the winner; an uncontested
+ * hand names the winner at once.
+ */
+export function getHandResultPhaseTimeline(input: { runoutMs: number; isShowdown: boolean }): HandResultPhaseTimeline {
+  const revealingMs = input.isShowdown ? input.runoutMs : null;
+  const showingMs = input.isShowdown ? input.runoutMs + SHOWDOWN_REVEAL_MS : input.runoutMs;
+  return {
+    revealingMs,
+    showingMs,
+    doneMs: showingMs + RESULT_SHOWING_MS,
+    nextHandAutoStartMs: NEXT_HAND_AUTO_START_MS,
+  };
 }
 
 export function shouldDimLosingSeat(input: {

@@ -8,7 +8,17 @@ const POT_FRACTION_PRESETS = [
   { id: 'pot', label: 'Pot', fraction: 1 },
 ] as const;
 
-export type SizingPresetId = (typeof POT_FRACTION_PRESETS)[number]['id'] | 'all-in';
+/** Preflop sizes are multiples of the bet to match (the big blind when unopened). */
+const PREFLOP_MULTIPLE_PRESETS = [
+  { id: 'x2.5', label: '2.5x', multiple: 2.5 },
+  { id: 'x3', label: '3x', multiple: 3 },
+  { id: 'x4', label: '4x', multiple: 4 },
+] as const;
+
+export type SizingPresetId =
+  | (typeof POT_FRACTION_PRESETS)[number]['id']
+  | (typeof PREFLOP_MULTIPLE_PRESETS)[number]['id']
+  | 'all-in';
 
 export interface SizingPreset {
   id: SizingPresetId;
@@ -36,6 +46,8 @@ export interface SizingContext {
    * longer raise, e.g. the betting was not reopened); the All-in preset is then left out.
    */
   canAllIn: boolean;
+  /** Preflop presets size off the bet to match instead of the pot. */
+  isPreflop?: boolean;
 }
 
 /**
@@ -68,10 +80,23 @@ export function potFractionRaiseTo(
 
 export function buildSizingPresets(context: SizingContext): SizingPreset[] {
   const { bounds, canAllIn } = context;
-  const presets: SizingPreset[] = POT_FRACTION_PRESETS.map((preset) => {
-    const amount = clampRaiseTo(potFractionRaiseTo(preset.fraction, context), bounds);
-    return { id: preset.id, label: preset.label, amount, isAllIn: canAllIn && amount >= bounds.max };
-  });
+  const betToMatch = context.heroStreetBet + context.callAmount;
+  const sized: Array<{ id: SizingPresetId; label: string; raiseTo: number }> = context.isPreflop
+    ? [
+        ...PREFLOP_MULTIPLE_PRESETS.map((preset) => ({ id: preset.id, label: preset.label, raiseTo: preset.multiple * betToMatch })),
+        { id: 'pot', label: 'Pot', raiseTo: potFractionRaiseTo(1, context) },
+      ]
+    : POT_FRACTION_PRESETS.map((preset) => ({ id: preset.id, label: preset.label, raiseTo: potFractionRaiseTo(preset.fraction, context) }));
+
+  const presets: SizingPreset[] = [];
+  const seen = new Set<number>(canAllIn ? [bounds.max] : []);
+  // Clamping can land several sizes on the same amount (min raise, or the whole stack); show it once.
+  for (const preset of sized) {
+    const amount = clampRaiseTo(preset.raiseTo, bounds);
+    if (seen.has(amount)) continue;
+    seen.add(amount);
+    presets.push({ id: preset.id, label: preset.label, amount, isAllIn: false });
+  }
   if (canAllIn) {
     presets.push({ id: 'all-in', label: 'All-in', amount: bounds.max, isAllIn: true });
   }

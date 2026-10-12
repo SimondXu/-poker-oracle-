@@ -64,13 +64,13 @@ const payout = (playerId: string, amount: number, handRankName = '') => ({ playe
 test('a fold on the turn that cost chips is a loss tagged with the street', () => {
   const hand = makeHand([player('hero', 0, 120, 'folded'), player('bot', 1, 240)], [fold('hero', 'betting_turn')]);
   const summary = summarizeHeroHand(hand, { potTotal: 360, payouts: [payout('bot', 360)] }, 'hero');
-  assert.deepEqual(summary, { outcome: 'lost', net: -120, foldedStreet: 'turn', handRank: null, uncontested: false });
+  assert.deepEqual(summary, { outcome: 'lost', net: -120, payout: 0, foldedStreet: 'turn', handRank: null, uncontested: false });
 });
 
 test('a showdown win reports net chips and the hand name', () => {
   const hand = makeHand([player('hero', 0, 130), player('bot', 1, 130)]);
   const summary = summarizeHeroHand(hand, { potTotal: 260, payouts: [payout('hero', 260, '一对')] }, 'hero');
-  assert.deepEqual(summary, { outcome: 'won', net: 130, foldedStreet: null, handRank: '一对', uncontested: false });
+  assert.deepEqual(summary, { outcome: 'won', net: 130, payout: 260, foldedStreet: null, handRank: '一对', uncontested: false });
 });
 
 test('winning because everyone folded is uncontested', () => {

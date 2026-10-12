@@ -20,6 +20,7 @@ export interface GameViewProps {
   screen: GameScreen;
   onAction: (type: ActionType, amount?: number) => void;
   onReturnToLobby: () => void;
+  onPlayAgain: () => void;
 }
 
 /**
@@ -34,7 +35,7 @@ export interface GameViewProps {
  * Below xl the side panel is a sheet inside the stage region (right drawer on md,
  * bottom sheet below md), so it can never cover the dock.
  */
-export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLobby }: GameViewProps) {
+export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLobby, onPlayAgain }: GameViewProps) {
   const t = useT();
   const {
     hand,
@@ -50,6 +51,7 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
     championInfo,
     footerMode,
     screenState,
+    heroResult,
     handleStartNextHand,
     handleSpectate,
   } = screen;
@@ -78,6 +80,17 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
     query.addEventListener('change', onChange);
     return () => query.removeEventListener('change', onChange);
   }, []);
+
+  // Leaving from the top bar or rail mid-hand gives up the seat; make that a deliberate choice.
+  const isHeroInHand = Boolean(
+    hand &&
+      hand.phase !== 'hand_end' &&
+      hand.players.some((player) => player.id === currentUserId && (player.status === 'active' || player.status === 'all_in')),
+  );
+  const handleBack = useCallback(() => {
+    if (isHeroInHand && !window.confirm(t('common.game.leaveConfirm'))) return;
+    onReturnToLobby();
+  }, [isHeroInHand, onReturnToLobby, t]);
 
   const viewModel = useTableViewModel({
     hand,
@@ -113,7 +126,7 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
         handNumber={hand?.handNumber ?? null}
         smallBlind={hand?.smallBlind ?? null}
         bigBlind={hand?.bigBlind ?? null}
-        onBack={onReturnToLobby}
+        onBack={handleBack}
         onToggleHUD={toggleTrainingHUD}
         onTogglePanel={togglePanel}
         isPanelOpen={isPanelSheetOpen}
@@ -125,7 +138,7 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
         isTrainingHUDVisible={isTrainingHUDVisible}
         onTogglePanel={togglePanel}
         onToggleHUD={toggleTrainingHUD}
-        onBack={onReturnToLobby}
+        onBack={handleBack}
       />
 
       <main className="col-start-1 row-start-2 flex min-h-0 min-w-0 flex-col md:col-start-2">
@@ -186,11 +199,13 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
           isBotsOnlyContinuation={isBotsOnlyContinuation}
           championName={championInfo?.name ?? null}
           championStack={screenState.championStack}
+          heroResult={heroResult}
+          coachHint={screenState.trainingData}
           handNumber={hand?.handNumber ?? null}
           onAction={onAction}
           onSpectate={handleSpectate}
           onStartNextHand={handleStartNextHand}
-          onPlayAgain={onReturnToLobby}
+          onPlayAgain={onPlayAgain}
           onBackToLobby={onReturnToLobby}
         />
       </main>

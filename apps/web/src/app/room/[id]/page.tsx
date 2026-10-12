@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { LocaleToggle } from '@/components/LocaleToggle';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -13,6 +14,7 @@ import { RoomTable } from '@/features/room/components/RoomTable';
 import { Wordmark } from '@/features/room/components/Wordmark';
 import { usePracticeSetup } from '@/features/room/hooks/usePracticeSetup';
 import { useRoomSocket, type RoomJoinIntent } from '@/features/room/hooks/useRoomSocket';
+import { getRoomErrorKey } from '@/features/room/lib/room-errors';
 import { getRoomPageState } from '@/features/room/lib/room-page-state';
 import {
   getRoomAutoNavigationTarget,
@@ -39,7 +41,9 @@ export default function RoomPage({ params }: RoomPageProps) {
   const [practiceAbandoned, setPracticeAbandoned] = useState(false);
 
   useEffect(() => {
-    if (!user) {
+    // The first client render uses the store's server snapshot (no user) even when the persisted
+    // user is already loaded, so check the live store before sending the visitor home.
+    if (!user && !useAuthStore.getState().user) {
       router.replace('/');
     }
   }, [user, router]);
@@ -50,10 +54,11 @@ export default function RoomPage({ params }: RoomPageProps) {
   const handleJoinFailed = useCallback(
     (error?: string) => {
       if (shouldRedirectRoomJoinFailure(error)) {
-        router.replace('/');
+        // Keep the code the visitor typed in the home form, so a typo can be fixed in place.
+        router.replace(`/?code=${encodeURIComponent(roomId)}`);
       }
     },
-    [router],
+    [roomId, router],
   );
 
   const {
@@ -119,9 +124,18 @@ export default function RoomPage({ params }: RoomPageProps) {
   });
   const isPracticeActive = practiceRequested && !practiceAbandoned;
 
+  const needsReadyBeforeStart = pageState.isSoloHuman && !pageState.selfPlayer?.isReady;
   const handleStartGame = useCallback(() => {
-    startGame(navigateToGame);
-  }, [navigateToGame, startGame]);
+    if (!needsReadyBeforeStart) {
+      startGame(navigateToGame);
+      return;
+    }
+    // Alone with bots: Start means "I'm ready", so ready up on the player's behalf first.
+    void requestReady().then((res) => {
+      if (res.ok) startGame(navigateToGame);
+      else toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.ready')));
+    });
+  }, [navigateToGame, needsReadyBeforeStart, requestReady, startGame, t]);
 
   const handleEnterGame = useCallback(() => {
     router.push(`/game/${roomId}`);
@@ -197,11 +211,11 @@ export default function RoomPage({ params }: RoomPageProps) {
                 <RoomControlsCard
                   isPlaying={isPlaying}
                   isConnected={isConnected}
-                  isReady={isReady}
+                  isReady={isReady || pageState.isSoloHuman}
                   canSelfStart={pageState.canSelfStart}
                   canStart={pageState.canStart}
                   hasEnoughPlayers={pageState.hasEnoughPlayers}
-                  allHumansReady={pageState.allHumansReady}
+                  allHumansReady={pageState.allHumansReady || pageState.isSoloHuman}
                   isTableFinished={pageState.isTableFinished}
                   onMarkReady={markReady}
                   onStartGame={handleStartGame}

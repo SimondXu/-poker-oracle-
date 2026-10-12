@@ -418,3 +418,18 @@ test('getVisibleHoleCards: empty holeCards never produce face-up cards, and neve
   // Hero who folded and got [] back: nothing to draw.
   assert.deepEqual(getVisibleHoleCards({ holeCards: [], status: 'folded', isHero: true, isShowdownReveal: true }), []);
 });
+
+test('an uncontested winner keeps their cards face down, even when the server sent them', () => {
+  const hand = handEndHand({
+    communityCards: [],
+    players: [
+      makePlayer({ id: 'hero', seatIndex: 0, isBot: false, status: 'folded', holeCards: ['7s', '2d'], handCommitted: 10 }),
+      makePlayer({ id: 'bot-tag-1', seatIndex: 1, status: 'active', holeCards: ['As', 'Jc'], handCommitted: 20 }),
+      makePlayer({ id: 'bot-fish-2', seatIndex: 2, status: 'folded', holeCards: [], handCommitted: 0 }),
+    ],
+    pots: [{ amount: 30, eligiblePlayerIds: ['bot-tag-1'] }],
+  });
+  const vm = buildTableViewModel(makeInput({ hand, handResultPhase: 'showing', winnerIds: ['bot-tag-1'] }));
+  assert.deepEqual(occupied(vm, 1).holeCards, [null, null]);
+  assert.equal(occupied(vm, 1).handName, null);
+});

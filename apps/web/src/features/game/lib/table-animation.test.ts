@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   buildCommunityRevealSteps,
+  getCommunityRunoutMs,
+  getDealDurationMs,
   getDisplayedSeatStack,
   getHandResultPhaseTimeline,
   getHoleCardSecondPassDelay,
@@ -14,19 +16,31 @@ import {
   shouldShowWinnerAnnouncement,
 } from './table-animation.ts';
 
-test('buildCommunityRevealSteps staggers a flop reveal card by card', () => {
+test('buildCommunityRevealSteps staggers a flop card by card, starting at once after the street hold', () => {
   assert.deepEqual(buildCommunityRevealSteps(0, 3), [
-    { count: 1, delayMs: 180 },
-    { count: 2, delayMs: 340 },
-    { count: 3, delayMs: 500 },
+    { count: 1, delayMs: 0 },
+    { count: 2, delayMs: 160 },
+    { count: 3, delayMs: 320 },
   ]);
 });
 
 test('buildCommunityRevealSteps keeps turn and river as separate beats', () => {
+  assert.deepEqual(buildCommunityRevealSteps(3, 4), [{ count: 4, delayMs: 0 }]);
   assert.deepEqual(buildCommunityRevealSteps(3, 5), [
-    { count: 4, delayMs: 780 },
-    { count: 5, delayMs: 1560 },
+    { count: 4, delayMs: 0 },
+    { count: 5, delayMs: 780 },
   ]);
+});
+
+test('getCommunityRunoutMs waits for the last new card to land', () => {
+  assert.equal(getCommunityRunoutMs(5, 5), 0);
+  assert.equal(getCommunityRunoutMs(4, 5), 200);
+  assert.equal(getCommunityRunoutMs(0, 5), 1880 + 200);
+});
+
+test('getDealDurationMs covers both passes of the hole-card deal', () => {
+  assert.equal(getDealDurationMs(2), Math.round((0.14 + 0.62) * 1000) + 200);
+  assert.equal(getDealDurationMs(6), Math.round((5 * 0.14 + 0.94) * 1000) + 200);
 });
 
 test('buildCommunityRevealSteps returns no work when the board does not grow', () => {
@@ -94,20 +108,29 @@ test('getHoleCardSecondPassDelay scales to active player count instead of max se
   assert.equal(getHoleCardSecondPassDelay(6), 0.94);
 });
 
-test('getHandResultPhaseTimeline adds a reveal beat before the winner presentation', () => {
-  assert.deepEqual(getHandResultPhaseTimeline(), {
-    revealingMs: 1400,
-    showingMs: 2300,
-    doneMs: 5200,
+test('getHandResultPhaseTimeline: a showdown waits for the runout, shows cards, then names the winner', () => {
+  assert.deepEqual(getHandResultPhaseTimeline({ runoutMs: 1000, isShowdown: true }), {
+    revealingMs: 1000,
+    showingMs: 1900,
+    doneMs: 4400,
     nextHandAutoStartMs: 2000,
   });
 });
 
-test('shouldShowWinnerAnnouncement waits until the reveal phase', () => {
+test('getHandResultPhaseTimeline: an uncontested hand names the winner at once', () => {
+  assert.deepEqual(getHandResultPhaseTimeline({ runoutMs: 0, isShowdown: false }), {
+    revealingMs: null,
+    showingMs: 0,
+    doneMs: 2500,
+    nextHandAutoStartMs: 2000,
+  });
+});
+
+test('shouldShowWinnerAnnouncement keeps the banner from the winner reveal until the next hand', () => {
   assert.equal(shouldShowWinnerAnnouncement('announcing'), false);
   assert.equal(shouldShowWinnerAnnouncement('revealing'), false);
   assert.equal(shouldShowWinnerAnnouncement('showing'), true);
-  assert.equal(shouldShowWinnerAnnouncement('done'), false);
+  assert.equal(shouldShowWinnerAnnouncement('done'), true);
 });
 
 test('shouldAnimatePotAward waits until the reveal phase', () => {
@@ -131,6 +154,6 @@ test('getDisplayedSeatStack keeps the settled stack after reveal or without payo
 test('buildCommunityRevealSteps(0, 5): a whole board at once reveals 1..5 in order, one beat per street', () => {
   const steps = buildCommunityRevealSteps(0, 5);
   assert.deepEqual(steps.map((step) => step.count), [1, 2, 3, 4, 5]);
-  assert.deepEqual(steps.map((step) => step.delayMs), [180, 340, 500, 1280, 2060]);
+  assert.deepEqual(steps.map((step) => step.delayMs), [0, 160, 320, 1100, 1880]);
   assert.ok(steps.every((step, index) => index === 0 || step.delayMs > steps[index - 1]!.delayMs));
 });

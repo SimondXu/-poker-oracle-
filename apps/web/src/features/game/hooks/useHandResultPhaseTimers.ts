@@ -1,10 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { getHandResultPhaseTimeline } from '../lib/table-animation';
+import type { HandResultPhaseTimeline } from '../lib/table-animation';
 import type { HandResult } from '@/stores/gameStore';
-
-const HAND_RESULT_PHASE_TIMELINE = getHandResultPhaseTimeline();
 
 export function useHandResultPhaseTimers(
   setHandResultPhase: (phase: HandResult['phase']) => void,
@@ -18,19 +16,13 @@ export function useHandResultPhaseTimers(
     phaseTimersRef.current = [];
   }, []);
 
-  const schedulePhaseTimers = useCallback(() => {
+  const schedulePhaseTimers = useCallback((timeline: HandResultPhaseTimeline) => {
     clearPhaseTimers();
-    const revealingTimer = setTimeout(() => {
-      setHandResultPhase('revealing');
-    }, HAND_RESULT_PHASE_TIMELINE.revealingMs);
-    const showingTimer = setTimeout(() => {
-      setHandResultPhase('showing');
-    }, HAND_RESULT_PHASE_TIMELINE.showingMs);
-    const doneTimer = setTimeout(() => {
-      setHandResultPhase('done');
-    }, HAND_RESULT_PHASE_TIMELINE.doneMs);
-
-    phaseTimersRef.current = [revealingTimer, showingTimer, doneTimer];
+    const at = (phase: HandResult['phase'], delayMs: number) =>
+      phaseTimersRef.current.push(setTimeout(() => setHandResultPhase(phase), delayMs));
+    if (timeline.revealingMs !== null) at('revealing', timeline.revealingMs);
+    at('showing', timeline.showingMs);
+    at('done', timeline.doneMs);
   }, [clearPhaseTimers, setHandResultPhase]);
 
   useEffect(() => clearPhaseTimers, [clearPhaseTimers]);

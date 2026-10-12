@@ -8,11 +8,20 @@ import { useT } from '@/i18n';
 import { getGameErrorKey } from '../lib/game-errors';
 import {
   canRequestNextHand,
+  getStreetHoldHand,
+  isShowdownHand,
   mapHandResultToStore,
   shouldIgnoreNextHandError,
   startsNewHand,
   type NextHandRequestSource,
 } from '../lib/game-socket-controller';
+import {
+  STREET_HOLD_MS,
+  getCommunityRunoutMs,
+  getDealDurationMs,
+  getHandResultPhaseTimeline,
+} from '../lib/table-animation';
+import { createHoldQueue, type HoldQueue } from '../lib/hold-queue';
 import { useGameSocketTransport } from './useGameSocketTransport';
 import { useHandResultPhaseTimers } from './useHandResultPhaseTimers';
 import type { ActionType, GameActionRequiredEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
@@ -49,49 +58,91 @@ export function useGameSocket(
     [setError],
   );
 
+  // While the table holds a moment (the action that closed a street, or a fresh deal), later server
+  // events wait and are applied in order once it ends, so nothing skips past what is on screen.
+  const holdQueueRef = useRef<HoldQueue | null>(null);
+  holdQueueRef.current ??= createHoldQueue();
+  const holdQueue = holdQueueRef.current;
+  const runoutMsRef = useRef(0);
+
+  const applyGameState = useCallback(
+    (hand: HandState, version: number | undefined) => {
+      const current = useGameStore.getState().hand;
+
+      if (startsNewHand(current, hand)) {
+        clearPhaseTimers();
+        clearHandResult();
+        clearNextHandRequested();
+        runoutMsRef.current = getCommunityRunoutMs(0, hand.communityCards.length);
+        setHandState(hand, version);
+        // A fresh deal: let the hole cards land before the hero is asked to act.
+        if (hand.phase === 'betting_preflop' && hand.actions.length === 0) {
+          holdQueue.hold(getDealDurationMs(hand.players.filter((player) => player.status !== 'out').length));
+        }
+        return;
+      }
+
+      const held = getStreetHoldHand(current, hand);
+      if (held) {
+        setHandState(held, version);
+        holdQueue.hold(STREET_HOLD_MS, () => {
+          runoutMsRef.current = getCommunityRunoutMs(held.communityCards.length, hand.communityCards.length);
+          setHandState(hand, version);
+        });
+        return;
+      }
+
+      runoutMsRef.current = getCommunityRunoutMs(current?.communityCards.length ?? 0, hand.communityCards.length);
+      setHandState(hand, version);
+    },
+    [clearHandResult, clearNextHandRequested, clearPhaseTimers, holdQueue, setHandState],
+  );
+
   const handleGameState = useCallback(
     (payload: GameStateEvent | HandState) => {
       const hand = 'hand' in payload ? payload.hand : payload;
       const version = 'stateVersion' in payload ? payload.stateVersion : undefined;
-
-      if (startsNewHand(useGameStore.getState().hand, hand)) {
-        clearPhaseTimers();
-        clearHandResult();
-        clearNextHandRequested();
-      }
-
-      setHandState(hand, version);
+      holdQueue.run(() => applyGameState(hand, version));
     },
-    [clearHandResult, clearNextHandRequested, clearPhaseTimers, setHandState],
+    [applyGameState, holdQueue],
   );
 
   const handleActionRequired = useCallback(
     (payload: GameActionRequiredEvent) => {
-      setValidActions(payload.validActions, payload.timeoutMs);
+      const receivedAt = Date.now();
+      holdQueue.run(() => {
+        // The server clock started on receipt; a hold must not hand the hero a longer timer than the server's.
+        setValidActions(payload.validActions, Math.max(0, payload.timeoutMs - (Date.now() - receivedAt)));
+      });
     },
-    [setValidActions],
+    [holdQueue, setValidActions],
   );
 
   const handleHandResult = useCallback(
     (payload: HandResultEvent) => {
-      clearValidActions();
-      clearNextHandRequested();
-      clearPhaseTimers();
+      holdQueue.run(() => {
+        clearValidActions();
+        clearNextHandRequested();
+        clearPhaseTimers();
 
-      const currentHand = useGameStore.getState().hand;
-      setHandResult(
-        mapHandResultToStore({
-          result: payload,
-          currentHand,
-          fallbackPlayerName: t('common.game.player.fallbackName'),
-        }),
-      );
-      schedulePhaseTimers();
+        const currentHand = useGameStore.getState().hand;
+        setHandResult(
+          mapHandResultToStore({
+            result: payload,
+            currentHand,
+            fallbackPlayerName: t('common.game.player.fallbackName'),
+          }),
+        );
+        schedulePhaseTimers(
+          getHandResultPhaseTimeline({ runoutMs: runoutMsRef.current, isShowdown: isShowdownHand(currentHand) }),
+        );
+      });
     },
     [
       clearNextHandRequested,
       clearPhaseTimers,
       clearValidActions,
+      holdQueue,
       schedulePhaseTimers,
       setHandResult,
       t,
@@ -112,10 +163,13 @@ export function useGameSocket(
 
   useEffect(() => {
     if (!enabled) {
+      holdQueue.clear();
       clearPhaseTimers();
       reset();
     }
-  }, [clearPhaseTimers, enabled, reset]);
+  }, [clearPhaseTimers, enabled, holdQueue, reset]);
+
+  useEffect(() => () => holdQueue.clear(), [holdQueue]);
 
   useGameSocketTransport({
     roomId,
@@ -138,6 +192,7 @@ export function useGameSocket(
     onHandResult: handleHandResult,
     onError: handleError,
     onCleanup: () => {
+      holdQueue.clear();
       clearPhaseTimers();
       reset();
     },

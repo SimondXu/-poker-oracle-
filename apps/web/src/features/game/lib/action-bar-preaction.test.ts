@@ -44,6 +44,7 @@ test('getHeroContext reads hero stack/status and a street key', () => {
     stack: 400,
     streetCommitted: 20,
     streetKey: '7:3',
+    isPreflop: false,
   });
   assert.equal(getHeroContext(hand, 'nobody'), null);
   assert.equal(getHeroContext(null, 'hero'), null);
@@ -57,7 +58,7 @@ test('getStreetKey changes per street and per hand', () => {
 });
 
 test('pre-actions are only offered to a live hero with chips', () => {
-  const live: HeroContext = { status: 'active', stack: 10, streetCommitted: 0, streetKey: '1:0' };
+  const live: HeroContext = { status: 'active', stack: 10, streetCommitted: 0, streetKey: '1:0', isPreflop: true };
   assert.equal(canOfferPreAction(live), true);
   assert.equal(canOfferPreAction({ ...live, status: 'folded' }), false);
   assert.equal(canOfferPreAction({ ...live, status: 'all_in' }), false);
@@ -66,7 +67,7 @@ test('pre-actions are only offered to a live hero with chips', () => {
 });
 
 test('a selection goes stale when the street or hand changes, or hero is out', () => {
-  const live: HeroContext = { status: 'active', stack: 10, streetCommitted: 0, streetKey: '1:0' };
+  const live: HeroContext = { status: 'active', stack: 10, streetCommitted: 0, streetKey: '1:0', isPreflop: true };
   const selection = { kind: 'call_any' as const, streetKey: '1:0' };
   assert.equal(isPreActionCurrent(selection, live), true);
   assert.equal(isPreActionCurrent(selection, { ...live, streetKey: '1:3' }), false);

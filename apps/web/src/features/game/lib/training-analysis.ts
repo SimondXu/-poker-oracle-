@@ -40,6 +40,12 @@ function buildPositionMap(hand: HandState): Map<number, BotPosition> {
   );
 }
 
+/** Heads-up the button posts the small blind and acts first before the flop, so call it SB there. */
+function getDisplayPosition(position: BotPosition, hand: HandState): BotPosition {
+  const seated = hand.players.filter((player) => player.status !== 'out' && player.status !== 'sitting_out').length;
+  return seated === 2 && position === 'btn' && hand.phase === 'betting_preflop' ? 'sb' : position;
+}
+
 function getPotTotal(hand: HandState): number {
   const potFromSettledPots = hand.pots.reduce((sum, pot) => sum + pot.amount, 0);
   const potFromCommitted = hand.players.reduce((sum, player) => sum + player.handCommitted, 0);
@@ -124,7 +130,7 @@ export function getPositionLabelForSeat(hand: HandState | null, seatIndex: numbe
   }
 
   const position = buildPositionMap(hand).get(seatIndex);
-  return position ? formatBotPositionLabel(position) : undefined;
+  return position ? formatBotPositionLabel(getDisplayPosition(position, hand)) : undefined;
 }
 
 function getTrainingValidActions(validActions: ValidActions | null): ValidActions {
@@ -226,7 +232,7 @@ export function getTrainingData(input: {
   const training = analyzeTrainingSpot(context, { includeRecommendation: input.isMyTurn });
 
   return {
-    position: formatBotPositionLabel(context.position),
+    position: formatBotPositionLabel(getDisplayPosition(context.position, input.hand)),
     ...training,
   };
 }

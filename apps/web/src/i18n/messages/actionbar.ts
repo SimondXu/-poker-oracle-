@@ -3,6 +3,7 @@ import type { Translation } from '../types.ts';
 /** Action bar: hero actions, sizing, pre-actions and the between-hand status bars. Owned by the action-bar agent. */
 const en = {
   'action.fold': 'Fold',
+  'action.foldConfirm': 'Fold anyway?',
   'action.check': 'Check',
   'action.call': 'Call {amount}',
   'action.callLabel': 'Call',
@@ -33,7 +34,7 @@ const en = {
   'pre.callAny': 'Call any',
   'pre.callAnyHint': 'When it is your turn: check if free, otherwise call any amount',
   'result.playing': 'Showing the hand result…',
-  'next.button': 'Deal next hand',
+  'next.button': 'Next hand',
   'next.hint': 'The next hand starts on its own if you do not.',
   'out.title': 'You are out',
   'out.subtitle': 'Other players still have chips. Keep watching or head back to the lobby.',
@@ -45,12 +46,16 @@ const en = {
   'finished.champion': 'Champion',
   'finished.player': 'Player',
   'finished.hands': '{count} hands',
+  'finished.hands_one': '1 hand',
+  'finished.you': 'You finished with {stack}',
+  'finished.youNet': 'You finished with {stack} ({net})',
   'finished.playAgain': 'Play again',
   'finished.lobby': 'Back to lobby',
 };
 
 const zh: Translation<typeof en> = {
   'action.fold': '弃牌',
+  'action.foldConfirm': '仍要弃牌？',
   'action.check': '过牌',
   'action.call': '跟注 {amount}',
   'action.callLabel': '跟注',
@@ -81,7 +86,7 @@ const zh: Translation<typeof en> = {
   'pre.callAny': '跟任何注',
   'pre.callAnyHint': '轮到你时：能过牌就过牌，否则跟任何金额',
   'result.playing': '正在展示结算…',
-  'next.button': '发下一手牌',
+  'next.button': '下一手',
   'next.hint': '若未手动开始，系统会自动推进下一手。',
   'out.title': '你已淘汰',
   'out.subtitle': '桌上仍有玩家持有筹码，可以继续观战或返回大厅。',
@@ -93,6 +98,9 @@ const zh: Translation<typeof en> = {
   'finished.champion': '冠军',
   'finished.player': '玩家',
   'finished.hands': '{count} 手',
+  'finished.hands_one': '1 手',
+  'finished.you': '你的最终筹码 {stack}',
+  'finished.youNet': '你的最终筹码 {stack}（{net}）',
   'finished.playAgain': '再来一局',
   'finished.lobby': '返回大厅',
 };

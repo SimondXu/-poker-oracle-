@@ -74,3 +74,46 @@ export function canRequestNextHand(input: {
 export function shouldIgnoreNextHandError(source: NextHandRequestSource, error?: string): boolean {
   return source !== 'manual' && error === 'hand_already_started';
 }
+
+const BETTING_PHASES: ReadonlySet<HandState['phase']> = new Set([
+  'betting_preflop',
+  'betting_flop',
+  'betting_turn',
+  'betting_river',
+]);
+
+/**
+ * The server closes a street (or the hand) in the same update as the action that closed it, so
+ * that action and its chips would vanish before anyone sees them. Returns `previous` with just that
+ * action applied, to show for a beat before `next`; `null` when `next` does not close a street right
+ * after `previous` (same street, another hand, or updates missed in between).
+ */
+export function getStreetHoldHand(previous: HandState | null, next: HandState): HandState | null {
+  if (!previous || previous.id !== next.id || previous.handNumber !== next.handNumber) return null;
+  if (previous.phase === next.phase || !BETTING_PHASES.has(previous.phase)) return null;
+  if (next.actions.length !== previous.actions.length + 1) return null;
+  const closing = next.actions.at(-1);
+  if (!closing || closing.phase !== previous.phase) return null;
+
+  return {
+    ...previous,
+    currentActorSeat: null,
+    actions: next.actions,
+    players: previous.players.map((player) => {
+      if (player.id !== closing.playerId) return player;
+      const stack = Math.max(0, player.stack - closing.addedAmount);
+      return {
+        ...player,
+        stack,
+        streetCommitted: player.streetCommitted + closing.addedAmount,
+        handCommitted: player.handCommitted + closing.addedAmount,
+        status: closing.type === 'fold' ? 'folded' : stack === 0 ? 'all_in' : player.status,
+      };
+    }),
+  };
+}
+
+/** Two or more players still in at hand end means cards are shown. */
+export function isShowdownHand(hand: HandState | null): boolean {
+  return Boolean(hand && hand.phase === 'hand_end' && hand.players.filter((player) => player.status === 'active' || player.status === 'all_in').length >= 2);
+}

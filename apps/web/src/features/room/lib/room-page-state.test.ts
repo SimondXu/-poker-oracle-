@@ -55,6 +55,25 @@ test('getRoomPageState blocks start when the current player has been eliminated'
   assert.equal(state.canStart, false);
 });
 
+test('getRoomPageState lets the only human start without pressing Ready first', () => {
+  const state = getRoomPageState(
+    {
+      players: [
+        { id: 'p0', name: 'Alice', seatIndex: 0, stack: 1000, isBot: false, botStrategy: null, isReady: false },
+        { id: 'bot-1', name: 'Gus', seatIndex: 1, stack: 1000, isBot: true, botStrategy: 'lag', isReady: true },
+      ],
+      playerCount: 2,
+      readyCount: 1,
+      isPlaying: false,
+      table: tableSnapshot,
+    },
+    'p0',
+  );
+
+  assert.equal(state.isSoloHuman, true);
+  assert.equal(state.canStart, true);
+});
+
 const readyToStart: RoomStatusInput = {
   isConnected: true,
   isPlaying: false,
