@@ -406,7 +406,7 @@ test('fish calls spots that tag folds when only the call buffer differs', () => 
     phase: 'river',
     holeCards: ['As', '9s'],
     communityCards: ['Kd', '9d', '4c', '2h', '7c'],
-    callAmount: 40,
+    callAmount: 270,
     potTotal: 60,
     canRaise: false,
     canAllIn: false,

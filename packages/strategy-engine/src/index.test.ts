@@ -4,6 +4,7 @@ import test from 'node:test';
 import type { BotDecisionContext } from '@aipoker/shared';
 
 import {
+  analyzePostflop,
   analyzeTrainingSpot,
   chooseBotAction,
   createStableAnalysisRng,
@@ -161,4 +162,181 @@ test('chooseBotAction sizes limper iso-raises larger than standard reopen sizing
   if (action.type === 'raise_to') {
     assert.equal(action.amount, 450);
   }
+});
+
+function makeRiverContext(overrides: Partial<BotDecisionContext> = {}): BotDecisionContext {
+  return makeContext({
+    phase: 'river',
+    canFold: false,
+    canCheck: true,
+    canCall: false,
+    callAmount: 0,
+    canRaise: true,
+    minRaiseTo: 100,
+    potTotal: 600,
+    activePlayerCount: 2,
+    opponentCount: 1,
+    bettingState: 'unopened',
+    ...overrides,
+  });
+}
+
+test('river equity does not credit a board-only pair to the hero', () => {
+  const analysis = analyzePostflop(
+    makeRiverContext({ holeCards: ['7h', '2d'], communityCards: ['Ks', 'Kd', '9c', '5h', '3s'] }),
+    createStableAnalysisRng('river-board-pair'),
+  );
+
+  assert.equal(analysis.madeHandRank, 0);
+  assert.ok(analysis.equity < 0.35, `equity ${analysis.equity}`);
+});
+
+test('river board full house does not make a bot jam with irrelevant hole cards', () => {
+  const context = makeRiverContext({ holeCards: ['7h', '2d'], communityCards: ['Ks', 'Kd', 'Kc', '9d', '9s'] });
+  const headsUp = analyzePostflop(context, createStableAnalysisRng('river-board-boat'));
+  const multiway = analyzePostflop(
+    { ...context, opponentCount: 3, activePlayerCount: 4 },
+    createStableAnalysisRng('river-board-boat'),
+  );
+
+  assert.ok(headsUp.equity < 0.7, `heads-up equity ${headsUp.equity}`);
+  assert.ok(multiway.equity < 0.5, `multiway equity ${multiway.equity}`);
+  for (const personality of ['fish', 'tag', 'lag'] as const) {
+    const action = chooseBotAction(context, personality, createStableAnalysisRng(`boat-${personality}`));
+    assert.notEqual(action.type, 'all_in');
+  }
+});
+
+test('river heuristic fallback does not credit board-only hands', () => {
+  const analysis = analyzePostflop(
+    makeRiverContext({ holeCards: ['7h', '2d'], communityCards: ['Ks', 'Kd', 'Kc', '9d', '9s'] }),
+    createStableAnalysisRng('river-heuristic'),
+    { riverIterations: 0, preferExactRiverHeadsUp: false },
+  );
+
+  assert.equal(analysis.madeHandRank, 0);
+  assert.ok(analysis.equity < 0.3, `equity ${analysis.equity}`);
+});
+
+test('river hole cards that really improve the board are still credited', () => {
+  const analysis = analyzePostflop(
+    makeRiverContext({ holeCards: ['Ah', 'As'], communityCards: ['Ks', 'Kd', '9c', '5h', '3s'] }),
+    createStableAnalysisRng('river-real-two-pair'),
+  );
+
+  assert.equal(analysis.madeHandRank, 2);
+  assert.ok(analysis.equity > 0.8, `equity ${analysis.equity}`);
+});
+
+test('missed draws on the river get no draw bonus', () => {
+  const analysis = analyzePostflop(
+    makeRiverContext({ holeCards: ['Ah', '2h'], communityCards: ['Kh', '9h', '5c', '7d', 'Js'] }),
+    createStableAnalysisRng('river-missed-flush'),
+    { riverIterations: 0, preferExactRiverHeadsUp: false },
+  );
+
+  assert.equal(analysis.features.flushDraw, false);
+  assert.equal(analysis.equity, analysis.madeHandStrength);
+});
+
+test('flush draws must use a hole card', () => {
+  const boardOnly = analyzePostflop(
+    makeContext({ phase: 'turn', holeCards: ['Ac', '2d'], communityCards: ['Kh', '9h', '5h', '7h'], opponentCount: 1 }),
+    createStableAnalysisRng('board-flush-draw'),
+  );
+  const withHole = analyzePostflop(
+    makeContext({ phase: 'turn', holeCards: ['Ah', '2d'], communityCards: ['Kh', '9h', '5h', '7d'], opponentCount: 1 }),
+    createStableAnalysisRng('hole-flush-draw'),
+  );
+
+  assert.equal(boardOnly.features.flushDraw, false);
+  assert.equal(withHole.features.flushDraw, true);
+});
+
+test('straight draws must use a hole card', () => {
+  const analyze = (holeCards: BotDecisionContext['holeCards']) => analyzePostflop(
+    makeContext({ phase: 'turn', holeCards, communityCards: ['5s', '6h', '7d', '8c'], opponentCount: 1 }),
+    createStableAnalysisRng('straight-draw'),
+  ).features;
+
+  const boardOnly = analyze(['Ac', '2d']);
+  assert.equal(boardOnly.oesd, false);
+  assert.equal(boardOnly.gutshot, false);
+
+  const irrelevantLowCard = analyze(['3c', 'Kd']);
+  assert.equal(irrelevantLowCard.oesd, false);
+  assert.equal(irrelevantLowCard.gutshot, false);
+
+  const gutshot = analyze(['Tc', '2d']);
+  assert.equal(gutshot.oesd, false);
+  assert.equal(gutshot.gutshot, true);
+});
+
+test('A-2-3-4 and J-Q-K-A are one-ended draws, not open-ended', () => {
+  const analyze = (holeCards: BotDecisionContext['holeCards'], communityCards: BotDecisionContext['communityCards']) =>
+    analyzePostflop(
+      makeContext({ phase: 'flop', holeCards, communityCards, opponentCount: 1 }),
+      createStableAnalysisRng('one-ended'),
+    ).features;
+
+  const wheelDraw = analyze(['Ah', '2d'], ['3c', '4s', '9d']);
+  assert.equal(wheelDraw.oesd, false);
+  assert.equal(wheelDraw.gutshot, true);
+
+  const broadwayDraw = analyze(['Ks', 'Ad'], ['Jd', 'Qh', '2c']);
+  assert.equal(broadwayDraw.oesd, false);
+  assert.equal(broadwayDraw.gutshot, true);
+
+  const openEnded = analyze(['5h', '6d'], ['7s', '8c', 'Kd']);
+  assert.equal(openEnded.oesd, true);
+});
+
+test('postflop raise sizing includes chips already committed on the street', () => {
+  const action = chooseBotAction(
+    makeContext({
+      phase: 'flop',
+      holeCards: ['Ah', 'Ad'],
+      communityCards: ['Ac', '7d', '2s'],
+      activePlayerCount: 2,
+      opponentCount: 1,
+      bettingState: 'facing_open',
+      canAllIn: false,
+      canCall: true,
+      callAmount: 100,
+      myStreetCommitted: 100,
+      currentBetToMatch: 200,
+      potTotal: 500,
+      minRaiseTo: 300,
+      maxRaiseTo: 5_000,
+      spr: 1,
+    }),
+    'tag',
+    createStableAnalysisRng('raise-sizing'),
+  );
+
+  assert.equal(action.type, 'raise_to');
+  if (action.type === 'raise_to') {
+    // committed 100 + call 100 + 1.0 x pot after calling (600)
+    assert.equal(action.amount, 800);
+  }
+});
+
+test('passive fallback is a legal call when neither check nor fold is available', () => {
+  const action = chooseBotAction(
+    makeRiverContext({
+      holeCards: ['7h', '2d'],
+      communityCards: ['As', 'Kd', 'Qc', '9h', '4s'],
+      canCheck: false,
+      canFold: false,
+      canCall: true,
+      callAmount: 400,
+      canRaise: false,
+      canAllIn: false,
+      bettingState: 'facing_open',
+    }),
+    'tag',
+    createStableAnalysisRng('passive-fallback'),
+  );
+
+  assert.equal(action.type, 'call');
 });
