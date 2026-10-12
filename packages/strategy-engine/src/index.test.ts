@@ -83,7 +83,33 @@ test('analyzeTrainingSpot returns a deterministic preflop raise recommendation',
 
   assert.equal(advice.strength.kind, 'top_percent');
   assert.equal(advice.suggestion, 'raise');
+  assert.deepEqual(advice.sizing, { kind: 'raise', to: 220, unit: 'bb', value: 2.2 });
   assert.ok((advice.suggestionReason ?? '').includes('TAG'));
+});
+
+test('analyzeTrainingSpot sizes a bet on an unopened flop as a share of the pot', () => {
+  const advice = analyzeTrainingSpot(
+    makeContext({
+      phase: 'flop',
+      canFold: false,
+      canCheck: true,
+      canCall: false,
+      callAmount: 0,
+      minRaiseTo: 100,
+      potTotal: 300,
+      currentBetToMatch: 0,
+      activePlayerCount: 2,
+      opponentCount: 1,
+      holeCards: ['As', 'Ad'],
+      communityCards: ['Ah', '7c', '2d'],
+    }),
+  );
+
+  assert.equal(advice.suggestion, 'raise');
+  assert.equal(advice.sizing?.kind, 'bet');
+  assert.equal(advice.sizing?.to, 100);
+  assert.equal(advice.sizing?.unit, 'pot');
+  assert.ok(Math.abs((advice.sizing?.value ?? 0) - 1 / 3) < 1e-9);
 });
 
 test('analyzeTrainingSpot returns deterministic postflop equity and a call recommendation', () => {
@@ -110,6 +136,9 @@ test('analyzeTrainingSpot returns deterministic postflop equity and a call recom
   assert.ok(first.potOdds !== undefined);
   assert.ok(first.winRequirement !== undefined);
   assert.ok(first.strength.value >= (first.winRequirement ?? 1));
+  // No opponent actions in this context, so the equity is against random hands.
+  assert.equal(first.equityVs, 'random');
+  assert.equal(first.spr, 10);
   assert.deepEqual(first, second);
 });
 

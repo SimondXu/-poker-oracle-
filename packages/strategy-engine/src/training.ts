@@ -4,7 +4,7 @@ import type {
   BotPersonality,
   BotPosition,
 } from '@aipoker/shared';
-import type { ActionIntent, AnalyzeTrainingSpotOptions, BotActionWithoutThinking, Mix, PersonalityProfile, PostflopAnalysis, TrainingAnalysis, TrainingStrength, TrainingSuggestion } from './types.ts';
+import type { ActionIntent, AnalyzeTrainingSpotOptions, BotActionWithoutThinking, Mix, PersonalityProfile, PostflopAnalysis, TrainingAnalysis, TrainingSizing, TrainingStrength, TrainingSuggestion } from './types.ts';
 import { PERSONALITY_PROFILES } from './personality.ts';
 import { createStableAnalysisRng } from './cards.ts';
 import { evaluatePreflopPercentile } from './preflop-hands.ts';
@@ -52,6 +52,19 @@ function mapActionToSuggestion(action: BotActionWithoutThinking): TrainingSugges
     default:
       return 'check';
   }
+}
+
+function describeSizing(context: BotDecisionContext, action: BotActionWithoutThinking): TrainingSizing | undefined {
+  if (action.type !== 'raise_to' && action.type !== 'all_in') {
+    return undefined;
+  }
+  const to = action.type === 'raise_to' ? action.amount : context.maxRaiseTo;
+  const kind = action.type === 'all_in' ? 'all_in' : context.currentBetToMatch === 0 ? 'bet' : 'raise';
+  if (context.phase === 'preflop') {
+    return { kind, to, unit: 'bb', value: to / context.bigBlind };
+  }
+  const added = to - context.myStreetCommitted - context.callAmount;
+  return { kind, to, unit: 'pot', value: added / (context.potTotal + context.callAmount) };
 }
 
 function chooseDeterministicPreflopIntent(mixValue: Mix): ActionIntent {
@@ -211,10 +224,12 @@ export function analyzeTrainingSpot(
     const intent = chooseDeterministicPreflopIntent(mixValue);
     const action = finalizeIntent(context, intent, getPreflopRaiseTo(context));
     const suggestion = mapActionToSuggestion(action);
+    const sizing = describeSizing(context, action);
 
     return {
       strength,
       suggestion,
+      ...(sizing ? { sizing } : {}),
       suggestionReason: buildPreflopReason(context, suggestion, strength),
     };
   }
@@ -234,13 +249,15 @@ export function analyzeTrainingSpot(
     kind: 'equity',
     value: analysis.equity,
   };
+  const numbers = { strength, equityVs: analysis.equityVs, spr: context.spr };
 
   if (!includeRecommendation) {
-    return { strength };
+    return numbers;
   }
 
   const suggestionAction = decideDeterministicPostflop(context, personality, analysis);
   const suggestion = mapActionToSuggestion(suggestionAction);
+  const sizing = describeSizing(context, suggestionAction);
   const potOdds = context.canCall ? computePotOdds(context) : undefined;
   const winRequirement =
     context.canCall && potOdds !== undefined
@@ -248,10 +265,11 @@ export function analyzeTrainingSpot(
       : undefined;
 
   return {
-    strength,
+    ...numbers,
     ...(potOdds && potOdds > 0 ? { potOdds } : {}),
     ...(winRequirement !== undefined && potOdds && potOdds > 0 ? { winRequirement } : {}),
     suggestion,
+    ...(sizing ? { sizing } : {}),
     suggestionReason: buildPostflopReason(context, analysis, suggestion, winRequirement),
   };
 }

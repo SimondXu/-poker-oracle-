@@ -5,6 +5,7 @@
  */
 import type { HandState } from '@aipoker/shared';
 import type { TFunction } from '@/i18n';
+import { formatChips } from '../../../../lib/utils.ts';
 import type { GameTrainingData } from '../../lib/training-analysis';
 
 export type CoachData = GameTrainingData;
@@ -41,6 +42,27 @@ export function formatPotOddsRatio(potOdds: number): string | null {
   if (!(potOdds > 0 && potOdds < 1)) return null;
   const ratio = (1 - potOdds) / potOdds;
   return ratio >= 10 ? String(Math.round(ratio)) : (Math.round(ratio * 10) / 10).toFixed(1);
+}
+
+/** The suggested action with its amount: "Bet 40", "Raise to 220", "All-in 940", "Call". */
+export function suggestionText(data: CoachData, t: TFunction): string | null {
+  if (!data.suggestion) return null;
+  if (!data.sizing) return t(`panel.coach.suggest.${data.suggestion}`);
+  return t(`panel.coach.do.${data.sizing.kind}`, { amount: formatChips(data.sizing.to) });
+}
+
+/** The size of a suggested bet or raise: "33% pot" after the flop, "2.2 BB" before it; none for an all-in. */
+export function sizeText(data: CoachData, t: TFunction): string | null {
+  const sizing = data.sizing;
+  if (!sizing || sizing.kind === 'all_in') return null;
+  return sizing.unit === 'pot'
+    ? t('panel.coach.size.pot', { percent: percent(sizing.value) })
+    : t('panel.coach.size.bb', { bb: formatSpr(sizing.value) });
+}
+
+/** One decimal below 10 ("2.4"), whole numbers above ("14"). Used for SPR and sizes in big blinds. */
+export function formatSpr(value: number): string {
+  return value >= 10 ? String(Math.round(value)) : (Math.round(value * 10) / 10).toFixed(1);
 }
 
 /** Fraction of the equity bar that the hand strength fills (preflop: how far from the top of the range). */

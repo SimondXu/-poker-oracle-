@@ -70,7 +70,8 @@ function buildTrainingContext(
     canCheck: valid.canCheck,
     canCall: valid.canCall,
     callAmount: valid.callAmount,
-    canRaise: valid.canRaise,
+    // The engine has one flag for betting and raising; the client splits it by whether the street is opened.
+    canRaise: valid.canBet || valid.canRaise,
     minRaiseTo: valid.minBetOrRaiseTo,
     maxRaiseTo: valid.maxBetOrRaiseTo,
     canAllIn: valid.canAllIn,

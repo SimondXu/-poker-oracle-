@@ -102,11 +102,28 @@ export interface TrainingStrength {
   value: number;
 }
 
+/**
+ * The size of a suggested bet or raise. `to` is the street total, like `raise_to`.
+ * `value` is in big blinds before the flop, and afterwards the chips added beyond a call
+ * as a share of the pot after calling.
+ */
+export interface TrainingSizing {
+  kind: 'bet' | 'raise' | 'all_in';
+  to: number;
+  unit: 'bb' | 'pot';
+  value: number;
+}
+
 export interface TrainingAnalysis {
   strength: TrainingStrength;
+  /** Postflop: what the equity was computed against. */
+  equityVs?: PostflopAnalysis['equityVs'];
+  /** Postflop: effective stack over the pot as the street began. */
+  spr?: number;
   potOdds?: number;
   winRequirement?: number;
   suggestion?: TrainingSuggestion;
+  sizing?: TrainingSizing;
   suggestionReason?: string;
 }
 

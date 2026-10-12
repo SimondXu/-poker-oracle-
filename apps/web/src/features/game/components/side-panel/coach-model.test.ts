@@ -4,7 +4,18 @@ import test from 'node:test';
 import type { HandState, PlayerState } from '@aipoker/shared';
 
 import { translate } from '../../../../i18n/translate.ts';
-import { clearsPrice, coachEmptyState, coachReason, deriveCoachContext, formatPotOddsRatio, strengthFill, type CoachData } from './coach-model.ts';
+import {
+  clearsPrice,
+  coachEmptyState,
+  coachReason,
+  deriveCoachContext,
+  formatPotOddsRatio,
+  formatSpr,
+  sizeText,
+  strengthFill,
+  suggestionText,
+  type CoachData,
+} from './coach-model.ts';
 
 function player(id: string, seatIndex: number, overrides: Partial<PlayerState> = {}): PlayerState {
   return {
@@ -143,4 +154,27 @@ test('preflop straight to hand_end with a folded hero and empty hole cards is st
   });
   assert.equal(coachEmptyState(over, 'hero'), 'hand_over');
   assert.deepEqual(deriveCoachContext(over, 'hero'), { opponents: 1, toCall: 0, pot: 0 });
+});
+
+test('the suggestion names bet or raise-to with its amount and size', () => {
+  const en = (key: Parameters<typeof translate>[1], vars?: Parameters<typeof translate>[2]) => translate('en', key, vars);
+  const bet = equity(0.8, { suggestion: 'raise', sizing: { kind: 'bet', to: 40, unit: 'pot', value: 1 / 3 } });
+  assert.equal(suggestionText(bet, en), 'Bet 40');
+  assert.equal(sizeText(bet, en), '33% pot');
+  const open: CoachData = {
+    strength: { kind: 'top_percent', value: 0.1 },
+    suggestion: 'raise',
+    sizing: { kind: 'raise', to: 50, unit: 'bb', value: 2.5 },
+  };
+  assert.equal(suggestionText(open, en), 'Raise to 50');
+  assert.equal(sizeText(open, en), '2.5 BB');
+  const jam = equity(0.9, { suggestion: 'raise', sizing: { kind: 'all_in', to: 940, unit: 'pot', value: 3 } });
+  assert.equal(suggestionText(jam, en), 'All-in 940');
+  assert.equal(sizeText(jam, en), null);
+  assert.equal(suggestionText(equity(0.5, { suggestion: 'call' }), en), 'Call');
+});
+
+test('SPR keeps one decimal below 10', () => {
+  assert.equal(formatSpr(2.44), '2.4');
+  assert.equal(formatSpr(13.6), '14');
 });

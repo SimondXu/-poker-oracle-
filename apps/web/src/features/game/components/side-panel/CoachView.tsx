@@ -13,8 +13,11 @@ import {
   coachReason,
   deriveCoachContext,
   formatPotOddsRatio,
+  formatSpr,
   percent,
+  sizeText,
   strengthFill,
+  suggestionText,
   type CoachData,
 } from './coach-model';
 
@@ -81,6 +84,7 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
   const reason = coachReason(data, t);
   const positionKey = data.position?.toLowerCase();
   const positionNote = positionKey && POSITION_KEYS.has(positionKey) ? t(`panel.coach.pos.${positionKey as 'utg'}`) : null;
+  const size = sizeText(data, t);
 
   return (
     <div className={cn('min-h-0 overflow-y-auto px-4 py-4', className)}>
@@ -88,7 +92,8 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
 
       {isHeroTurn ? (
         <>
-          <dl className="mt-4 grid grid-cols-3 border-y border-line">
+          {/* Two rows: the price (pot odds, to call), then the spot (position, SPR from the flop on). */}
+          <dl className="mt-4 grid grid-cols-2 border-y border-line [&>*:nth-child(n+3)]:border-t [&>*:nth-child(n+3)]:border-line">
             <Stat
               label={t('panel.coach.stat.pot_odds')}
               value={potOdds !== undefined ? `${percent(potOdds)}%` : '—'}
@@ -98,7 +103,6 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
                   : null
               }
             />
-            <Stat label={t('panel.coach.stat.position')} value={data.position ?? '—'} note={positionNote} divided />
             <Stat
               label={t('panel.coach.stat.to_call')}
               value={context ? formatChips(context.toCall) : '—'}
@@ -111,13 +115,16 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
               }
               divided
             />
+            <Stat label={t('panel.coach.stat.position')} value={data.position ?? '—'} note={positionNote} />
+            <Stat label={t('panel.coach.stat.spr')} value={data.spr !== undefined ? formatSpr(data.spr) : '—'} note={null} divided />
           </dl>
 
           {data.suggestion && (
             <section aria-label={t('panel.tab.coach')} className="mt-4">
               <p className={cn('font-index text-title font-semibold uppercase tracking-caps-tight', SUGGESTION_CLASS[data.suggestion])}>
-                {t(`panel.coach.suggest.${data.suggestion}`)}
+                {suggestionText(data, t)}
               </p>
+              {size && <p className="mt-1 text-body text-text-3">{size}</p>}
               {reason && <p className="mt-2 max-w-[34ch] text-body text-text-2">{reason}</p>}
             </section>
           )}
@@ -147,12 +154,11 @@ function StrengthBlock({ data, opponents, quiet }: { data: CoachData; opponents:
   const clears = clearsPrice(data);
   const fill = strengthFill(data);
 
+  const versusRange = data.equityVs === 'range';
   const label = isEquity
-    ? opponents === 1
-      ? t('panel.coach.equity.one')
-      : opponents && opponents > 1
-        ? t('panel.coach.equity.many', { count: opponents })
-        : t('panel.coach.equity.one')
+    ? opponents && opponents > 1
+      ? t(versusRange ? 'panel.coach.equity.range.many' : 'panel.coach.equity.many', { count: opponents })
+      : t(versusRange ? 'panel.coach.equity.range.one' : 'panel.coach.equity.one')
     : t('panel.coach.strength');
   const value = isEquity ? `${percent(strength.value)}%` : t('panel.coach.strength.top', { percent: percent(1 - strength.value) });
 

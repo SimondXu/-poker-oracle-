@@ -1,4 +1,4 @@
-export type { BotRng, StackBucket, PreflopScenario, Mix, ChooseBotActionOptions, PostflopAnalysis, AnalyzePostflopOptions, TrainingSuggestion, TrainingStrength, TrainingAnalysis, AnalyzeTrainingSpotOptions } from './types.ts';
+export type { BotRng, StackBucket, PreflopScenario, Mix, ChooseBotActionOptions, PostflopAnalysis, AnalyzePostflopOptions, TrainingSuggestion, TrainingStrength, TrainingSizing, TrainingAnalysis, AnalyzeTrainingSpotOptions } from './types.ts';
 export { createStableAnalysisRng } from './cards.ts';
 export { evaluatePreflopPercentile, canonicalizeHoleCards, getStackBucket } from './preflop-hands.ts';
 export { getPreflopMix } from './preflop-mixes.ts';
