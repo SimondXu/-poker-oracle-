@@ -4,7 +4,8 @@ import type {
   Card,
 } from '@aipoker/shared';
 import type { AnalyzePostflopOptions, BotRng, PostflopAnalysis, PostflopFeatures, RankVector } from './types.ts';
-import { clamp01, compareRankVectors, rankValue, remainingDeck, sampleWithoutReplacement } from './cards.ts';
+import { clamp01, compareRankVectors, detectStraightState, rankValue, remainingDeck, sampleWithoutReplacement } from './cards.ts';
+import { buildOpponentRange, enumerateRiverRangeEquity, simulateRangeEquity } from './range.ts';
 
 const MADE_HAND_STRENGTH: Record<number, number> = {
   0: 0.16,
@@ -17,62 +18,6 @@ const MADE_HAND_STRENGTH: Record<number, number> = {
   7: 0.985,
   8: 0.995,
 };
-
-function highestStraightStart(rankSet: ReadonlySet<number>): number {
-  for (let start = 10; start >= 1; start -= 1) {
-    if ([0, 1, 2, 3, 4].every((offset) => rankSet.has(start + offset))) {
-      return start;
-    }
-  }
-  return 0;
-}
-
-// When `holeCards` is given, a draw only counts if completing it makes a straight that uses a hole card.
-function detectStraightState(
-  cards: readonly Card[],
-  holeCards?: readonly Card[],
-): { hasStraight: boolean; oesd: boolean; gutshot: boolean } {
-  const rankSet = new Set<number>(cards.map((card) => rankValue(card)));
-  if (rankSet.has(14)) {
-    rankSet.add(1);
-  }
-  const holeRanks = holeCards ? new Set<number>(holeCards.map((card) => rankValue(card))) : undefined;
-  if (holeRanks?.has(14)) {
-    holeRanks.add(1);
-  }
-
-  let hasStraight = false;
-  const outs = new Set<number>();
-  for (let start = 1; start <= 10; start += 1) {
-    const window = [start, start + 1, start + 2, start + 3, start + 4];
-    const present = window.filter((value) => rankSet.has(value));
-    if (present.length === 5) {
-      hasStraight = true;
-      continue;
-    }
-    if (present.length !== 4) {
-      continue;
-    }
-    const missing = window.find((value) => !rankSet.has(value))!;
-    if (holeRanks) {
-      const completed = new Set<number>(rankSet);
-      completed.add(missing);
-      const bestStart = highestStraightStart(completed);
-      const usesHoleCard = [0, 1, 2, 3, 4].some((offset) => holeRanks.has(bestStart + offset));
-      if (!usesHoleCard) {
-        continue;
-      }
-    }
-    outs.add(missing === 1 ? 14 : missing);
-  }
-
-  if (hasStraight) {
-    return { hasStraight: true, oesd: false, gutshot: false };
-  }
-
-  // Two distinct completing ranks is open-ended; A-2-3-4 and J-Q-K-A have only one.
-  return { hasStraight, oesd: outs.size >= 2, gutshot: outs.size === 1 };
-}
 
 function hasBackdoorStraightPotential(holeCards: readonly Card[], communityCards: readonly Card[]): boolean {
   const toRankSet = (cards: readonly Card[]) => {
@@ -318,15 +263,21 @@ export function analyzePostflop(
       : context.phase === 'turn'
         ? turnIterations
         : riverIterations;
+  // Without a record of what the opponents did, fall back to equity against random hands.
+  const ranges = context.opponents && context.opponents.length === context.opponentCount
+    ? context.opponents.map((view) => buildOpponentRange(view, context))
+    : null;
   const exactRiverEquity =
     shouldSimulate && preferExactRiverHeadsUp && context.phase === 'river'
-      ? enumerateRiverHeadsUpEquity(context)
+      ? ranges
+        ? ranges.length === 1 ? enumerateRiverRangeEquity(context, ranges[0]!) : null
+        : enumerateRiverHeadsUpEquity(context)
       : null;
   const simulatedEquity =
     exactRiverEquity !== null
       ? exactRiverEquity
       : shouldSimulate
-        ? simulateShowdownEquity(context, rng, iterations)
+        ? ranges ? simulateRangeEquity(context, ranges, rng, iterations) : simulateShowdownEquity(context, rng, iterations)
         : 0;
   const baseStrength = MADE_HAND_STRENGTH[madeHandRank] ?? 0.2;
   const drawBonus =
@@ -341,5 +292,6 @@ export function analyzePostflop(
     madeHandRank,
     madeHandStrength: baseStrength,
     features,
+    equityVs: ranges && shouldSimulate ? 'range' : 'random',
   };
 }

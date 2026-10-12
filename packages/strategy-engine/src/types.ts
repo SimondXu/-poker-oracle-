@@ -77,6 +77,8 @@ export interface PostflopAnalysis {
   madeHandRank: number;
   madeHandStrength: number;
   features: PostflopFeatures;
+  // 'range' when equity was computed against each opponent's likely hands, 'random' against any two cards.
+  equityVs: 'range' | 'random';
 }
 
 export interface AnalyzePostflopOptions {

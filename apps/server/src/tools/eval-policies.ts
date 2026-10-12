@@ -3,7 +3,7 @@ import type { BotAction, BotDecisionContext } from '@aipoker/shared';
 
 export type Policy = (context: BotDecisionContext, rng: () => number) => BotAction;
 
-export const POLICY_NAMES = ['fish', 'tag', 'lag', 'station', 'maniac-shove', 'overbettor'] as const;
+export const POLICY_NAMES = ['fish', 'tag', 'lag', 'tag-random', 'station', 'maniac-shove', 'overbettor'] as const;
 export type PolicyName = (typeof POLICY_NAMES)[number];
 
 const OVERBET_POT_FRACTION = 1.5;
@@ -42,6 +42,12 @@ export const POLICIES: Record<PolicyName, Policy> = {
   fish: (context, rng) => chooseBotAction(context, 'fish', rng),
   tag: (context, rng) => chooseBotAction(context, 'tag', rng),
   lag: (context, rng) => chooseBotAction(context, 'lag', rng),
+  // TAG with equity against random hands, as before range equity: the A/B baseline.
+  'tag-random': (context, rng) => {
+    const { opponents, ...withoutOpponents } = context;
+    void opponents;
+    return chooseBotAction(withoutOpponents, 'tag', rng);
+  },
   station,
   'maniac-shove': maniacShove,
   overbettor,

@@ -24,7 +24,7 @@ const RANK_VALUE: Record<Rank, number> = {
   '2': 2,
 };
 
-const FULL_DECK: Card[] = RANKS_DESC.flatMap((rank) => SUITS.map((suit) => `${rank}${suit}` as Card));
+export const FULL_DECK: Card[] = RANKS_DESC.flatMap((rank) => SUITS.map((suit) => `${rank}${suit}` as Card));
 
 export function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -85,4 +85,60 @@ export function sampleWithoutReplacement(deck: Card[], count: number, rng: BotRn
     }
   }
   return sample;
+}
+
+export function highestStraightStart(rankSet: ReadonlySet<number>): number {
+  for (let start = 10; start >= 1; start -= 1) {
+    if ([0, 1, 2, 3, 4].every((offset) => rankSet.has(start + offset))) {
+      return start;
+    }
+  }
+  return 0;
+}
+
+// When `holeCards` is given, a draw only counts if completing it makes a straight that uses a hole card.
+export function detectStraightState(
+  cards: readonly Card[],
+  holeCards?: readonly Card[],
+): { hasStraight: boolean; oesd: boolean; gutshot: boolean } {
+  const rankSet = new Set<number>(cards.map((card) => rankValue(card)));
+  if (rankSet.has(14)) {
+    rankSet.add(1);
+  }
+  const holeRanks = holeCards ? new Set<number>(holeCards.map((card) => rankValue(card))) : undefined;
+  if (holeRanks?.has(14)) {
+    holeRanks.add(1);
+  }
+
+  let hasStraight = false;
+  const outs = new Set<number>();
+  for (let start = 1; start <= 10; start += 1) {
+    const window = [start, start + 1, start + 2, start + 3, start + 4];
+    const present = window.filter((value) => rankSet.has(value));
+    if (present.length === 5) {
+      hasStraight = true;
+      continue;
+    }
+    if (present.length !== 4) {
+      continue;
+    }
+    const missing = window.find((value) => !rankSet.has(value))!;
+    if (holeRanks) {
+      const completed = new Set<number>(rankSet);
+      completed.add(missing);
+      const bestStart = highestStraightStart(completed);
+      const usesHoleCard = [0, 1, 2, 3, 4].some((offset) => holeRanks.has(bestStart + offset));
+      if (!usesHoleCard) {
+        continue;
+      }
+    }
+    outs.add(missing === 1 ? 14 : missing);
+  }
+
+  if (hasStraight) {
+    return { hasStraight: true, oesd: false, gutshot: false };
+  }
+
+  // Two distinct completing ranks is open-ended; A-2-3-4 and J-Q-K-A have only one.
+  return { hasStraight, oesd: outs.size >= 2, gutshot: outs.size === 1 };
 }
