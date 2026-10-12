@@ -50,10 +50,13 @@ export function describeRankVector(rank: readonly (number | undefined)[]): strin
   }
 }
 
-/** Best-hand name from hole + board cards, or null with fewer than 5 cards. */
+/** A hand has a name only with both hole cards known (a folded player's result has none). */
+const HOLE_CARD_COUNT = 2;
+
+/** Best-hand name from hole + board cards, or null with fewer than 2 hole cards or 5 cards. */
 export function describeBestHand(holeCards: readonly string[], boardCards: readonly string[]): string | null {
   const cards = [...holeCards, ...boardCards];
-  if (cards.length < 5) {
+  if (holeCards.length < HOLE_CARD_COUNT || cards.length < 5) {
     return null;
   }
   return describeRankVector(evaluateBestSevenCards(cards as Card[]).rank);
@@ -82,10 +85,10 @@ export function getRankVectorCategory(rank: readonly (number | undefined)[]): Ha
   return CATEGORY_KEYS[category ?? 0] ?? 'highCard';
 }
 
-/** Best-hand category from hole + board cards, or null with fewer than 5 cards. */
+/** Best-hand category from hole + board cards, or null with fewer than 2 hole cards or 5 cards. */
 export function getBestHandCategory(holeCards: readonly string[], boardCards: readonly string[]): HandCategoryKey | null {
   const cards = [...holeCards, ...boardCards];
-  if (cards.length < 5) {
+  if (holeCards.length < HOLE_CARD_COUNT || cards.length < 5) {
     return null;
   }
   return getRankVectorCategory(evaluateBestSevenCards(cards as Card[]).rank);

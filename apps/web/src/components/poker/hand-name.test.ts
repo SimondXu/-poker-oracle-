@@ -32,3 +32,11 @@ test('getBestHandCategory returns the category key', () => {
   assert.equal(getBestHandCategory(['6h', '7h'], ['8h', '9h', 'Th', '2c', '3d']), 'straightFlush');
   assert.equal(getBestHandCategory(['Ah', 'Kh'], ['2c', '3d']), null);
 });
+
+test('fewer than two hole cards never produce a name (folded players have none)', () => {
+  const board = ['Kd', '7c', '2h', '9s', '4d'];
+  assert.equal(describeBestHand([], board), null);
+  assert.equal(describeBestHand(['Ah'], board), null);
+  assert.equal(getBestHandCategory([], board), null);
+  assert.equal(getBestHandCategory(['Ah'], board), null);
+});

@@ -110,3 +110,32 @@ test('empty state tells a finished hand, a fold, a wait and no cards apart', () 
   assert.equal(coachEmptyState(null, 'hero'), 'no_cards');
   assert.equal(coachEmptyState(dealt({}), 'ghost'), 'no_cards');
 });
+
+test('a hand that starts at hand_end (all-in from the blinds): context is safe, empty state is hand_over', () => {
+  const over = hand({
+    phase: 'hand_end',
+    currentActorSeat: null,
+    communityCards: ['Ah', 'Kd', '7c', '2s', '9h'],
+    actions: [],
+    betting: { currentBetToMatch: 0, lastFullRaiseSize: 20, lastAggressorId: null },
+    players: [
+      player('hero', 0, { status: 'all_in', stack: 0, handCommitted: 500, holeCards: ['As', 'Ad'] }),
+      player('a', 1, { status: 'all_in', stack: 0, handCommitted: 500, holeCards: ['Kc', '3d'] }),
+      player('b', 2, { status: 'folded', handCommitted: 20, holeCards: [] }),
+    ],
+    pots: [{ amount: 1020, eligiblePlayerIds: ['hero', 'a'] }],
+  });
+  assert.deepEqual(deriveCoachContext(over, 'hero'), { opponents: 1, toCall: 0, pot: 1020 });
+  assert.equal(coachEmptyState(over, 'hero'), 'hand_over');
+});
+
+test('preflop straight to hand_end with a folded hero and empty hole cards is still hand_over', () => {
+  const over = hand({
+    phase: 'hand_end',
+    communityCards: [],
+    betting: { currentBetToMatch: 0, lastFullRaiseSize: 20, lastAggressorId: null },
+    players: [player('hero', 0, { status: 'folded', holeCards: [] }), player('a', 1)],
+  });
+  assert.equal(coachEmptyState(over, 'hero'), 'hand_over');
+  assert.deepEqual(deriveCoachContext(over, 'hero'), { opponents: 1, toCall: 0, pot: 0 });
+});

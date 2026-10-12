@@ -171,3 +171,46 @@ test('recording is idempotent and a room switch drops the previous room', () => 
   const other = recordObservation(first, { ...observeHand(hand(1, []))!, roomId: 'room-2' });
   assert.deepEqual(other.map((entry) => entry.roomId), ['room-2']);
 });
+
+test('a hand that starts at hand_end (all-in from the blinds, no actions) counts as seen, with no VPIP and no crash', () => {
+  const observation = observeHand(
+    hand(1, [], {
+      communityCards: ['Ah', 'Kd', '7c', '2s', '9h'],
+      players: [player('a', 0, 'all_in'), player('b', 1, 'all_in'), player('c', 2, 'all_in')],
+    }),
+  );
+  assert.ok(observation);
+  for (const id of ['a', 'b', 'c']) {
+    assert.deepEqual(observation.players[id], { dealtIn: true, vpip: false, pfr: false, aggressive: 0, passive: 0 });
+  }
+  const observations = [1, 2, 3, 4, 5].map((n) => observeHand(hand(n, []))!);
+  const stats = computeOpponentStats(observations, 'a', 'room-1');
+  assert.equal(stats.hands, 5);
+  assert.equal(stats.vpip, 0);
+  assert.equal(stats.pfr, 0);
+  assert.equal(stats.aggression, null);
+});
+
+test('preflop straight to hand_end: raiser has VPIP and PFR, folders have neither, postflop stays empty', () => {
+  const observation = observeHand(
+    hand(2, [
+      act('a', 'betting_preflop', 'raise_to', 60),
+      act('b', 'betting_preflop', 'fold'),
+      act('c', 'betting_preflop', 'fold'),
+    ], { players: [player('a', 0), player('b', 1, 'folded'), player('c', 2, 'folded')] }),
+  );
+  assert.ok(observation);
+  assert.equal(observation.players.a?.vpip, true);
+  assert.equal(observation.players.a?.pfr, true);
+  assert.equal(observation.players.b?.vpip, false);
+  assert.equal(observation.players.b?.dealtIn, true);
+  assert.equal(observation.players.c?.pfr, false);
+  assert.equal(observation.players.a?.aggressive, 0);
+  assert.equal(observation.players.b?.passive, 0);
+});
+
+test('an action from a player missing in hand.players is ignored', () => {
+  const observation = observeHand(hand(3, [act('ghost', 'betting_preflop', 'raise_to', 60)]));
+  assert.ok(observation);
+  assert.equal(observation.players.ghost, undefined);
+});

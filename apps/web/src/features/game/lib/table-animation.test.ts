@@ -127,3 +127,10 @@ test('getDisplayedSeatStack keeps the settled stack after reveal or without payo
   assert.equal(getDisplayedSeatStack(3000, 3000, 'done'), 3000);
   assert.equal(getDisplayedSeatStack(990, undefined, 'announcing'), 990);
 });
+
+test('buildCommunityRevealSteps(0, 5): a whole board at once reveals 1..5 in order, one beat per street', () => {
+  const steps = buildCommunityRevealSteps(0, 5);
+  assert.deepEqual(steps.map((step) => step.count), [1, 2, 3, 4, 5]);
+  assert.deepEqual(steps.map((step) => step.delayMs), [180, 340, 500, 1280, 2060]);
+  assert.ok(steps.every((step, index) => index === 0 || step.delayMs > steps[index - 1]!.delayMs));
+});

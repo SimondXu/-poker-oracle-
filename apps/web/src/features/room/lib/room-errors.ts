@@ -14,6 +14,8 @@ const ROOM_ERROR_KEYS: Record<string, MessageKey> = {
   starter_not_active: 'lobby.room.error.starterOut',
   table_finished: 'lobby.room.error.tableFinished',
   not_room_member: 'lobby.room.error.notMember',
+  room_full: 'lobby.room.error.roomFull',
+  too_many_players: 'lobby.room.error.tooManyPlayers',
 };
 
 /** Message key for a server error code, or the caller's fallback key for unknown/missing codes. */
@@ -22,5 +24,5 @@ export function getRoomErrorKey(error: string | undefined, fallback: MessageKey)
     return fallback;
   }
 
-  return ROOM_ERROR_KEYS[error] ?? fallback;
+  return Object.hasOwn(ROOM_ERROR_KEYS, error) ? ROOM_ERROR_KEYS[error]! : fallback;
 }

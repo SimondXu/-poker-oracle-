@@ -31,6 +31,11 @@ export interface SizingContext {
   /** Chips hero already has in front on this street (0 when unknown). */
   heroStreetBet: number;
   bounds: RaiseBounds;
+  /**
+   * `validActions.canAllIn`. False when the server will not take an `all_in` action (hero can no
+   * longer raise, e.g. the betting was not reopened); the All-in preset is then left out.
+   */
+  canAllIn: boolean;
 }
 
 /**
@@ -53,18 +58,23 @@ export function clampRaiseTo(amount: number, bounds: RaiseBounds): number {
  * simply `fraction * pot`. `heroStreetBet` turns the added chips into a
  * street-total "raise to" figure.
  */
-export function potFractionRaiseTo(fraction: number, context: Omit<SizingContext, 'bounds'>): number {
+export function potFractionRaiseTo(
+  fraction: number,
+  context: Omit<SizingContext, 'bounds' | 'canAllIn'>,
+): number {
   const potAfterCall = context.pot + context.callAmount;
   return context.heroStreetBet + context.callAmount + Math.round(fraction * potAfterCall);
 }
 
 export function buildSizingPresets(context: SizingContext): SizingPreset[] {
-  const { bounds } = context;
+  const { bounds, canAllIn } = context;
   const presets: SizingPreset[] = POT_FRACTION_PRESETS.map((preset) => {
     const amount = clampRaiseTo(potFractionRaiseTo(preset.fraction, context), bounds);
-    return { id: preset.id, label: preset.label, amount, isAllIn: amount >= bounds.max };
+    return { id: preset.id, label: preset.label, amount, isAllIn: canAllIn && amount >= bounds.max };
   });
-  presets.push({ id: 'all-in', label: 'All-in', amount: bounds.max, isAllIn: true });
+  if (canAllIn) {
+    presets.push({ id: 'all-in', label: 'All-in', amount: bounds.max, isAllIn: true });
+  }
   return presets;
 }
 
@@ -80,14 +90,17 @@ export interface RaiseActionRequest {
   amount: number;
 }
 
-/** Same wire behaviour as the v1 panel: reaching the max is an all-in, otherwise bet (unopened) or raise_to. */
+/**
+ * Reaching the max is an all-in only when the server allows `all_in` (`canAllIn`); otherwise the
+ * max is sent as a plain bet (unopened) or raise_to. Below the max it is always bet / raise_to.
+ */
 export function resolveRaiseAction(
   amount: number,
-  validActions: Pick<ValidActions, 'canBet' | 'minBetOrRaiseTo' | 'maxBetOrRaiseTo'>,
+  validActions: Pick<ValidActions, 'canBet' | 'canAllIn' | 'minBetOrRaiseTo' | 'maxBetOrRaiseTo'>,
 ): RaiseActionRequest {
   const bounds = getRaiseBounds(validActions);
   const clamped = clampRaiseTo(amount, bounds);
-  if (clamped >= bounds.max) return { type: 'all_in', amount: bounds.max };
+  if (clamped >= bounds.max && validActions.canAllIn) return { type: 'all_in', amount: bounds.max };
   return { type: validActions.canBet ? 'bet' : 'raise_to', amount: clamped };
 }
 

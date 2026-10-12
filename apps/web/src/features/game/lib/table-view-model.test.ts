@@ -313,3 +313,108 @@ test('toBotPersonality accepts rule personalities only', () => {
   assert.equal(toBotPersonality('gpt'), null);
   assert.equal(toBotPersonality(undefined), null);
 });
+
+function handEndHand(overrides: Partial<HandState> = {}): HandState {
+  return makeHand({
+    phase: 'hand_end',
+    buttonMarkerSeat: 0,
+    sbSeat: 1,
+    bbSeat: 2,
+    players: [
+      makePlayer({ id: 'hero', seatIndex: 0, isBot: false, status: 'all_in', stack: 0, holeCards: ['As', 'Ad'], handCommitted: 1000 }),
+      makePlayer({ id: 'bot-tag-1', seatIndex: 1, status: 'all_in', stack: 0, holeCards: ['Kc', '3d'], handCommitted: 1000 }),
+      makePlayer({ id: 'bot-fish-2', seatIndex: 2, status: 'folded', holeCards: [], handCommitted: 20 }),
+    ],
+    communityCards: ['Ah', '7c', '2s', '9h', 'Jd'],
+    pots: [{ amount: 2020, eligiblePlayerIds: ['hero', 'bot-tag-1'] }],
+    betting: { currentBetToMatch: 0, lastFullRaiseSize: 20, lastAggressorId: null },
+    currentActorSeat: null,
+    actions: [],
+    ...overrides,
+  });
+}
+
+test('a hand that starts at hand_end (all-in from the blinds): no deal animation, full board, no bets', () => {
+  const vm = buildTableViewModel(makeInput({ hand: handEndHand() }));
+  assert.equal(vm.phase, 'hand_end');
+  assert.equal(vm.deal.isDealing, false);
+  assert.equal(vm.street, null);
+  assert.deepEqual(vm.board.cards, ['Ah', '7c', '2s', '9h', 'Jd']);
+  assert.equal(vm.actorSeatIndex, null);
+  assert.deepEqual(vm.folds, []);
+  for (const index of [0, 1, 2]) {
+    const seat = occupied(vm, index);
+    assert.equal(seat.streetCommitted, 0);
+    assert.equal(seat.lastAction, null);
+    assert.equal(seat.timer, null);
+  }
+  assert.equal(vm.pot.total, 2020);
+  // Hero's cards are known from the first frame; opponent backs show until the reveal phase.
+  assert.deepEqual(occupied(vm, 0).holeCards, ['As', 'Ad']);
+  assert.deepEqual(occupied(vm, 1).holeCards, [null, null]);
+});
+
+test('hand_end showdown reveal: all-in hands are named, the folded player shows no cards', () => {
+  const vm = buildTableViewModel(makeInput({ hand: handEndHand(), handResultPhase: 'revealing' }));
+  const hero = occupied(vm, 0);
+  const rival = occupied(vm, 1);
+  const folded = occupied(vm, 2);
+  assert.deepEqual(rival.holeCards, ['Kc', '3d']);
+  assert.equal(hero.handName, 'Three of a Kind, Aces');
+  assert.equal(rival.handName, 'Ace High');
+  assert.equal(rival.handCategory, 'highCard');
+  assert.deepEqual(folded.holeCards, []);
+  assert.equal(folded.showCards, false);
+  assert.equal(folded.handName, null);
+  assert.equal(folded.handCategory, null);
+  assert.equal(folded.isDimmed, true);
+});
+
+test('preflop straight to hand_end: no board, nothing to name, folded seats empty, winner gated as usual', () => {
+  const hand = handEndHand({
+    communityCards: [],
+    players: [
+      makePlayer({ id: 'hero', seatIndex: 0, isBot: false, holeCards: ['7s', '2d'], handCommitted: 20, stack: 1010 }),
+      makePlayer({ id: 'bot-tag-1', seatIndex: 1, status: 'folded', holeCards: [], handCommitted: 10 }),
+      makePlayer({ id: 'bot-fish-2', seatIndex: 2, status: 'folded', holeCards: [], handCommitted: 20 }),
+    ],
+    pots: [{ amount: 30, eligiblePlayerIds: ['hero'] }],
+    actions: [
+      makeAction({ playerId: 'bot-tag-1', type: 'fold', sequenceNum: 1, seatIndex: 1 }),
+      makeAction({ playerId: 'bot-fish-2', type: 'fold', sequenceNum: 2, seatIndex: 2 }),
+    ],
+  });
+
+  const announcing = buildTableViewModel(makeInput({ hand, handResultPhase: 'announcing', winnerIds: ['hero'] }));
+  assert.equal(occupied(announcing, 0).isWinner, false);
+
+  const showing = buildTableViewModel(
+    makeInput({ hand, handResultPhase: 'showing', winnerIds: ['hero'], payoutAmountsByPlayer: { hero: 30 }, isWinning: true }),
+  );
+  assert.deepEqual(showing.board.cards, []);
+  assert.equal(showing.deal.isDealing, false);
+  assert.equal(occupied(showing, 0).isWinner, true);
+  assert.equal(occupied(showing, 0).handName, null);
+  assert.equal(occupied(showing, 0).handCategory, null);
+  for (const index of [1, 2]) {
+    const seat = occupied(showing, index);
+    assert.deepEqual(seat.holeCards, []);
+    assert.equal(seat.showCards, false);
+    assert.equal(seat.streetCommitted, 0);
+    assert.equal(seat.lastAction, null);
+  }
+  assert.deepEqual(showing.folds.map((fold) => fold.seatIndex), [1, 2]);
+  assert.ok(showing.folds.every((fold) => fold.cards.length === 0 && fold.faceDown));
+  assert.equal(showing.pot.isAwarding, true);
+});
+
+test('getVisibleHoleCards: empty holeCards never produce face-up cards, and never throw at showdown', () => {
+  for (const status of ['folded', 'active', 'all_in', 'out'] as const) {
+    for (const isShowdownReveal of [false, true]) {
+      const slots = getVisibleHoleCards({ holeCards: [], status, isHero: false, isShowdownReveal });
+      assert.ok(slots.every((card) => card === null), `${status}/${isShowdownReveal}`);
+    }
+  }
+  // Hero who folded and got [] back: nothing to draw.
+  assert.deepEqual(getVisibleHoleCards({ holeCards: [], status: 'folded', isHero: true, isShowdownReveal: true }), []);
+});

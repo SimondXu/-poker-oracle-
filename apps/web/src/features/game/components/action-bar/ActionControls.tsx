@@ -58,8 +58,9 @@ export function ActionControls({ validActions, pot, hero, onAction }: ActionCont
         callAmount: validActions.callAmount,
         heroStreetBet: hero?.streetCommitted ?? 0,
         bounds,
+        canAllIn: validActions.canAllIn,
       }),
-    [bounds, hero?.streetCommitted, pot, validActions.callAmount],
+    [bounds, hero?.streetCommitted, pot, validActions.callAmount, validActions.canAllIn],
   );
 
   const send = useCallback(

@@ -4,6 +4,8 @@ import { useCallback } from 'react';
 import type { Socket } from 'socket.io-client';
 import { getSocket } from '@/lib/socket';
 import { useSocketSession } from '@/hooks/useSocketSession';
+import { useT } from '@/i18n';
+import { getGameErrorKey } from '../lib/game-errors';
 import type { GameActionRequiredEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
 
 interface UseGameSocketTransportOptions {
@@ -39,6 +41,7 @@ export function useGameSocketTransport({
   onCleanup,
   onAuthError,
 }: UseGameSocketTransportOptions) {
+  const t = useT();
   const normalizedPlayerName = playerName.trim();
 
   const handleConnect = useCallback(
@@ -46,7 +49,7 @@ export function useGameSocketTransport({
       onConnected?.();
 
       if (!playerId || !normalizedPlayerName) {
-        onError('玩家身份缺失，请返回首页重新进入');
+        onError(t('common.game.toast.identityMissing'));
         return;
       }
 
@@ -55,12 +58,12 @@ export function useGameSocketTransport({
         { roomId, playerName: normalizedPlayerName, stack: 1000, isBot: false },
         (res: { ok: boolean; error?: string }) => {
           if (!res.ok) {
-            onError(res.error ?? '加入房间失败');
+            onError(t(getGameErrorKey(res.error, 'common.game.toast.joinFailed')));
           }
         },
       );
     },
-    [normalizedPlayerName, onConnected, onError, playerId, roomId],
+    [normalizedPlayerName, onConnected, onError, playerId, roomId, t],
   );
 
   const registerEvents = useCallback(
@@ -71,8 +74,9 @@ export function useGameSocketTransport({
       const handleReconnect = () => {
         onReconnected?.();
       };
-      const handleSocketError = (payload: { code: string; message: string }) => {
-        onError(payload.message);
+      // The server's `message` is English debug text; show our own copy for the code.
+      const handleSocketError = (payload: { code?: string }) => {
+        onError(t(getGameErrorKey(payload?.code, 'common.game.error.generic')));
       };
 
       socket.io.on('reconnect_attempt', handleReconnectAttempt);
@@ -91,7 +95,7 @@ export function useGameSocketTransport({
         socket.off('error', handleSocketError);
       };
     },
-    [onActionRequired, onError, onGameState, onHandResult, onReconnected, onReconnecting],
+    [onActionRequired, onError, onGameState, onHandResult, onReconnected, onReconnecting, t],
   );
 
   const handleCleanup = useCallback(

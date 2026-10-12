@@ -1,5 +1,9 @@
 import type { BotPersonality } from '@aipoker/shared';
 
+/** Hard server cap (seatIndex 0-8). No UI path may seat a player beyond it. */
+export const SERVER_MAX_SEATS = 9;
+
+/** Seats the room UI offers today (never above SERVER_MAX_SEATS). */
 export const ROOM_MAX_SEATS = 6;
 
 /** Practice table: five bots, a mix of all three personalities. */

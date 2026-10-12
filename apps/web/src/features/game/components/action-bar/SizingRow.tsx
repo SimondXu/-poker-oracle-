@@ -20,7 +20,10 @@ interface SizingRowProps {
   onConfirm: () => void;
 }
 
-/** Presets + slider + numeric input, shown above the main row while the raise flow is open. */
+/**
+ * Presets + slider + numeric input, shown above the main row while the raise flow is open.
+ * `presets` already omits All-in when the server will not accept it (`canAllIn` false).
+ */
 export function SizingRow({
   presets,
   bounds,
@@ -55,7 +58,7 @@ export function SizingRow({
 
   return (
     <div role="group" aria-label={label} onKeyDown={handleKeyDown} className="flex flex-col gap-snug">
-      <div className="grid grid-cols-5 gap-snug">
+      <div className="grid gap-snug" style={{ gridTemplateColumns: `repeat(${Math.max(presets.length, 1)}, minmax(0, 1fr))` }}>
         {presets.map((preset, index) => {
           const selected = preset.amount === amount;
           return (

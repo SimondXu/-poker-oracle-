@@ -157,3 +157,50 @@ test('results are only attached when a result is given', () => {
   assert.equal(log.results.length, 1);
   assert.equal(log.potTotal, 80);
 });
+
+const RUNOUT_BOARD: HandState['communityCards'] = ['Ah', 'Kd', '7c', '2s', '9h'];
+
+test('a hand that starts at hand_end (0 actions, five board cards): blinds, one block per dealt street, result rows', () => {
+  const hand = makeHand({ phase: 'hand_end', communityCards: RUNOUT_BOARD, actions: [], currentActorSeat: null });
+  const log = buildHandLog(hand, {
+    potTotal: 60,
+    payouts: [{ playerId: 'p0', playerName: 'Simon', amount: 60, handRankName: '一对', bestCards: ['Ah', 'Ad', 'Kd', '9h', '7c'] }],
+  });
+
+  const blocks: { street: string; board: number; actions: number }[] = [];
+  for (const entry of log.entries) {
+    if (entry.kind === 'street') blocks.push({ street: entry.street, board: entry.board.length, actions: 0 });
+    else if (entry.kind === 'action') blocks.at(-1)!.actions += 1;
+  }
+  assert.deepEqual(blocks.map((block) => block.street), ['preflop', 'flop', 'turn', 'river']);
+  // No block is empty: either it has actions or its board cards are dealt (preflop has the blinds).
+  assert.ok(blocks.slice(1).every((block) => block.board > 0 || block.actions > 0));
+  assert.deepEqual(log.entries.filter((entry) => entry.kind === 'blind').map((entry) => entry.key), ['blind-sb', 'blind-bb']);
+  assert.equal(log.results.length, 1);
+  assert.equal(log.results[0]?.handRankName, '一对');
+  assert.equal(log.potTotal, 60);
+});
+
+test('preflop straight to hand_end with no board: a single preflop block, uncontested result row', () => {
+  const hand = makeHand({
+    phase: 'hand_end',
+    communityCards: [],
+    currentActorSeat: null,
+    actions: [action(1, 'betting_preflop', 0, 'raise_to', 60), action(2, 'betting_preflop', 1, 'fold'), action(3, 'betting_preflop', 2, 'fold')],
+  });
+  const log = buildHandLog(hand, {
+    potTotal: 90,
+    payouts: [{ playerId: 'p0', playerName: 'Simon', amount: 90, handRankName: '', bestCards: [] }],
+  });
+  const streets = log.entries.flatMap((entry) => (entry.kind === 'street' ? [entry.street] : []));
+  assert.deepEqual(streets, ['preflop']);
+  assert.equal(log.entries.filter((entry) => entry.kind === 'action').length, 3);
+  assert.deepEqual(log.results.map((line) => [line.playerName, line.amount, line.handRankName, line.cards]), [['Simon', 90, null, []]]);
+});
+
+test('hand_end with no actions and no board still builds (blinds only, no crash on missing seats)', () => {
+  const hand = makeHand({ phase: 'hand_end', communityCards: [], actions: [], sbSeat: null, bbSeat: 8 });
+  const log = buildHandLog(hand);
+  assert.deepEqual(log.entries.map((entry) => entry.kind), ['street']);
+  assert.deepEqual(log.results, []);
+});
