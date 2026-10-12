@@ -6,7 +6,7 @@ import { getSocket } from '@/lib/socket';
 import { useSocketSession } from '@/hooks/useSocketSession';
 import { useT } from '@/i18n';
 import { getGameErrorKey } from '../lib/game-errors';
-import type { GameActionRequiredEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
+import type { GameActionRequiredEvent, GameCoachEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
 
 interface UseGameSocketTransportOptions {
   roomId: string;
@@ -19,6 +19,7 @@ interface UseGameSocketTransportOptions {
   onReconnected?: () => void;
   onGameState: (payload: GameStateEvent | HandState) => void;
   onActionRequired: (payload: GameActionRequiredEvent) => void;
+  onCoach: (payload: GameCoachEvent) => void;
   onHandResult: (payload: HandResultEvent) => void;
   onError: (message: string) => void;
   onCleanup?: () => void;
@@ -36,6 +37,7 @@ export function useGameSocketTransport({
   onReconnected,
   onGameState,
   onActionRequired,
+  onCoach,
   onHandResult,
   onError,
   onCleanup,
@@ -83,6 +85,7 @@ export function useGameSocketTransport({
       socket.io.on('reconnect', handleReconnect);
       socket.on('game:state', onGameState);
       socket.on('game:action_required', onActionRequired);
+      socket.on('game:coach', onCoach);
       socket.on('game:hand_result', onHandResult);
       socket.on('error', handleSocketError);
 
@@ -91,11 +94,12 @@ export function useGameSocketTransport({
         socket.io.off('reconnect', handleReconnect);
         socket.off('game:state', onGameState);
         socket.off('game:action_required', onActionRequired);
+        socket.off('game:coach', onCoach);
         socket.off('game:hand_result', onHandResult);
         socket.off('error', handleSocketError);
       };
     },
-    [onActionRequired, onError, onGameState, onHandResult, onReconnected, onReconnecting, t],
+    [onActionRequired, onCoach, onError, onGameState, onHandResult, onReconnected, onReconnecting, t],
   );
 
   const handleCleanup = useCallback(

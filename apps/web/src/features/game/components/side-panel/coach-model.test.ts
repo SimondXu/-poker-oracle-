@@ -1,10 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { HandState, PlayerState } from '@aipoker/shared';
+import type { CoachAdvice, CoachReason, HandState, PlayerState } from '@aipoker/shared';
 
 import { translate } from '../../../../i18n/translate.ts';
-import { clearsPrice, coachEmptyState, coachReason, deriveCoachContext, formatPotOddsRatio, strengthFill, type CoachData } from './coach-model.ts';
+import {
+  clearsPrice,
+  coachEmptyState,
+  coachVerdict,
+  deriveCoachContext,
+  formatPotOddsRatio,
+  formatSpr,
+  frequencyLabel,
+  optionText,
+  reasonText,
+  sizeText,
+  strengthFill,
+} from './coach-model.ts';
 
 function player(id: string, seatIndex: number, overrides: Partial<PlayerState> = {}): PlayerState {
   return {
@@ -75,37 +87,6 @@ test('pot odds ratio', () => {
   assert.equal(formatPotOddsRatio(1), null);
 });
 
-const equity = (value: number, extra: Partial<CoachData> = {}): CoachData => ({ strength: { kind: 'equity', value }, ...extra });
-
-test('strength fill: equity as is, preflop percentile inverted', () => {
-  assert.equal(strengthFill(equity(0.71)), 0.71);
-  assert.ok(Math.abs(strengthFill({ strength: { kind: 'top_percent', value: 0.12 } }) - 0.88) < 1e-9);
-});
-
-test('equity clears the price only when both numbers exist', () => {
-  assert.equal(clearsPrice(equity(0.5, { winRequirement: 0.3 })), true);
-  assert.equal(clearsPrice(equity(0.2, { winRequirement: 0.3 })), false);
-  assert.equal(clearsPrice(equity(0.5)), null);
-  assert.equal(clearsPrice({ strength: { kind: 'top_percent', value: 0.1 }, winRequirement: 0.3 }), null);
-});
-
-const en = (key: Parameters<typeof translate>[1], vars?: Parameters<typeof translate>[2]) => translate('en', key, vars);
-
-test('the reason is composed from the analysis in either locale', () => {
-  const call = equity(0.45, { suggestion: 'call', winRequirement: 0.3, suggestionReason: '原文' });
-  assert.equal(coachReason(call, en), 'Equity is about 45%, and calling needs about 30%. That clears the price to continue.');
-  const zh = (key: Parameters<typeof translate>[1], vars?: Parameters<typeof translate>[2]) => translate('zh', key, vars);
-  assert.equal(coachReason(call, zh), '当前权益约 45%，跟注所需约 30%。 已经覆盖继续投入的门槛。');
-  const pre: CoachData = { strength: { kind: 'top_percent', value: 0.08 }, suggestion: 'raise', position: 'BTN' };
-  assert.equal(coachReason(pre, en), 'This hand beats about 92% of starting hands, from BTN. Raising is the best training play here.');
-  const pricedCall = equity(0.17, { suggestion: 'fold', winRequirement: 0.29, potOdds: 0.28 });
-  assert.equal(
-    coachReason(pricedCall, en)?.startsWith('Equity is about 17%, and calling needs about 29% (pot odds 28% plus a small safety margin).'),
-    true,
-  );
-  assert.equal(coachReason({ strength: { kind: 'equity', value: 0.5 } }, en), null);
-});
-
 test('empty state tells a finished hand, a fold, a wait and no cards apart', () => {
   const dealt = (overrides: Partial<PlayerState>) => hand({ players: [player('hero', 0, { holeCards: ['Ah', 'Kd'], ...overrides }), player('a', 1)] });
   assert.equal(coachEmptyState(dealt({}), 'hero'), 'waiting');
@@ -143,4 +124,112 @@ test('preflop straight to hand_end with a folded hero and empty hole cards is st
   });
   assert.equal(coachEmptyState(over, 'hero'), 'hand_over');
   assert.deepEqual(deriveCoachContext(over, 'hero'), { opponents: 1, toCall: 0, pot: 0 });
+});
+
+test('SPR keeps one decimal below 10', () => {
+  assert.equal(formatSpr(2.44), '2.4');
+  assert.equal(formatSpr(13.6), '14');
+});
+
+const en = (key: Parameters<typeof translate>[1], vars?: Parameters<typeof translate>[2]) => translate('en', key, vars);
+const zh = (key: Parameters<typeof translate>[1], vars?: Parameters<typeof translate>[2]) => translate('zh', key, vars);
+
+function advice(overrides: Partial<CoachAdvice> = {}): CoachAdvice {
+  return {
+    policyVersion: 'test',
+    personality: 'tag',
+    handId: 'R:1',
+    street: 'flop',
+    actionIndex: 3,
+    stateVersion: 7,
+    spot: { holeCards: ['As', 'Ad'], board: ['Ah', '7c', '2d'], pot: 120, toCall: 0, heroStack: 940, bigBlind: 20 },
+    options: [
+      { kind: 'bet', to: 40, size: { unit: 'pot', value: 1 / 3 }, frequency: 0.85, reasons: [] },
+      { kind: 'check', frequency: 0.15, reasons: [{ code: 'slowplay', params: { equity: 0.98 } }] },
+    ],
+    stable: true,
+    equity: 0.98,
+    equityStdErr: 0.006,
+    equityVs: 'range',
+    spr: 7.8,
+    effStackBb: 47,
+    position: 'bb',
+    scenario: 'unopened',
+    opponents: 1,
+    reasons: [{ code: 'value', params: { equity: 0.98 } }],
+    ...overrides,
+  };
+}
+
+test('strength fill: equity from the advice, else the preflop percentile inverted, else nothing', () => {
+  assert.equal(strengthFill({ heroTurn: true, advice: advice({ equity: 0.71 }) }), 0.71);
+  assert.ok(Math.abs((strengthFill({ heroTurn: false, handPercentile: 0.12 }) ?? 0) - 0.88) < 1e-9);
+  assert.equal(strengthFill({ heroTurn: false }), null);
+});
+
+test('equity clears the price only when both numbers exist', () => {
+  assert.equal(clearsPrice(advice({ equity: 0.5, requiredEquity: 0.3 })), true);
+  assert.equal(clearsPrice(advice({ equity: 0.2, requiredEquity: 0.3 })), false);
+  assert.equal(clearsPrice(advice()), null);
+  assert.equal(clearsPrice(undefined), null);
+});
+
+test('options name bet, raise-to and all-in with their amounts, and sizes in pot or big blinds', () => {
+  const [bet] = advice().options;
+  assert.equal(optionText(bet!, en), 'Bet 40');
+  assert.equal(sizeText(bet!, en), '33% pot');
+  assert.equal(optionText(bet!, zh), '下注 40');
+  assert.equal(optionText({ kind: 'raise', to: 50, size: { unit: 'bb', value: 2.5 }, frequency: 1, reasons: [] }, en), 'Raise to 50');
+  assert.equal(sizeText({ kind: 'raise', to: 50, size: { unit: 'bb', value: 2.5 }, frequency: 1, reasons: [] }, en), '2.5 BB');
+  assert.equal(optionText({ kind: 'all_in', to: 940, frequency: 1, reasons: [] }, en), 'All-in 940');
+  assert.equal(optionText({ kind: 'call', frequency: 1, reasons: [] }, en), 'Call');
+  assert.equal(sizeText({ kind: 'call', frequency: 1, reasons: [] }, en), null);
+});
+
+test('the verdict commits only to a strong, stable top option', () => {
+  assert.equal(coachVerdict(advice()), 'commit');
+  assert.equal(coachVerdict(advice({ options: [{ kind: 'call', frequency: 0.55, reasons: [] }, { kind: 'fold', frequency: 0.45, reasons: [] }] })), 'mix');
+  assert.equal(coachVerdict(advice({ stable: false })), 'close');
+  assert.equal(frequencyLabel(0.53), '55%');
+  assert.equal(frequencyLabel(0.01), '<5%');
+  assert.equal(frequencyLabel(0.98), '>95%');
+  assert.equal(frequencyLabel(1), '100%');
+});
+
+const EVERY_REASON: CoachReason[] = [
+  { code: 'preflop_chart', params: { handClass: 'playable', scenario: 'facing_open', position: 'btn', effStackBb: 47.2 } },
+  { code: 'price_ok', params: { equity: 0.41, required: 0.3 } },
+  { code: 'price_short', params: { equity: 0.21, required: 0.3 } },
+  { code: 'jam', params: { trigger: 'short_stack', effStackBb: 9, spr: 0.8 } },
+  { code: 'jam', params: { trigger: 'low_spr', effStackBb: 30, spr: 0.9 } },
+  { code: 'jam', params: { trigger: 'near_lock', effStackBb: 40, spr: 2.6 } },
+  { code: 'value', params: { equity: 0.72 } },
+  { code: 'slowplay', params: { equity: 0.95 } },
+  { code: 'draw', params: { draw: 'oesd' } },
+  { code: 'bluff_share', params: { frequency: 0.18 } },
+  { code: 'cbet', params: { frequency: 0.6 } },
+  { code: 'no_initiative', params: {} },
+  { code: 'checked_to_in_position', params: {} },
+  { code: 'position_range', params: { position: 'utg', scenario: 'unopened', share: 0.14, buttonShare: 0.48 } },
+  { code: 'position_range', params: { position: 'btn', scenario: 'unopened', share: 0.48, buttonShare: null } },
+  { code: 'sticky_opponent', params: { playerId: 'p3', foldToBet: 0.14, facingBets: 9 } },
+];
+
+test('every reason code reads as a sentence in both languages, with every value filled in', () => {
+  const nameOf = (id: string) => (id === 'p3' ? 'Viper' : id);
+  for (const t of [en, zh]) {
+    for (const reason of EVERY_REASON) {
+      const text = reasonText(reason, t, nameOf);
+      assert.ok(!text.includes('{') && !text.startsWith('panel.'), `${reason.code}: ${text}`);
+    }
+  }
+  assert.equal(reasonText(EVERY_REASON[1]!, en, nameOf), 'Equity 41% clears the 30% a call needs.');
+  assert.equal(
+    reasonText(EVERY_REASON[0]!, en, nameOf),
+    'TAG chart: a playable hand facing an open from BTN, 47 BB deep.',
+  );
+  assert.equal(reasonText(EVERY_REASON.at(-1)!, zh, nameOf), 'Viper 面对下注只弃牌 14%（共 9 次），所以不诈唬。');
+  const fromUtg = EVERY_REASON.find((reason) => reason.code === 'position_range' && reason.params.position === 'utg')!;
+  assert.equal(reasonText(fromUtg, en, nameOf), 'From UTG, the TAG chart plays 14% of hands with no one in yet; on the button, 48%.');
+  assert.equal(reasonText(fromUtg, zh, nameOf), '在 UTG，TAG 起手牌表无人入池时会玩 14% 的牌；按钮位是 48%。');
 });

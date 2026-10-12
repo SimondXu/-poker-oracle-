@@ -200,7 +200,7 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
           championName={championInfo?.name ?? null}
           championStack={screenState.championStack}
           heroResult={heroResult}
-          coachHint={screenState.trainingData}
+          coachHint={isTrainingHUDVisible ? screenState.trainingData : undefined}
           handNumber={hand?.handNumber ?? null}
           onAction={onAction}
           onSpectate={handleSpectate}

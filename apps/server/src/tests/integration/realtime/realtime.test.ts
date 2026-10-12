@@ -2885,3 +2885,63 @@ test('a player whose hand ends while they are refreshing keeps their seat', asyn
   const roomState = await rejoinAsAlice(t, url, 'AAAAGU');
   assert.equal(roomState.players.find((player: { id: string }) => player.id === 'p0')?.stack, 990);
 });
+
+test('game:coach goes only to the actor, after action_required, and a second socket for that player gets the same advice', async (t) => {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app);
+
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  const url = `http://127.0.0.1:${address.port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const aliceAgain = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+
+  t.after(() => {
+    alice.close();
+    bob.close();
+    aliceAgain.close();
+  });
+
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+  await once(aliceAgain, 'connect');
+
+  await emitWithAck(alice, 'room:create', { roomId: 'CQACHA', smallBlind: 10, bigBlind: 20 });
+  await emitWithAck(alice, 'room:join', { roomId: 'CQACHA', playerId: 'p0', playerName: 'Alice', seatIndex: 0, stack: 1000 });
+  await emitWithAck(bob, 'room:join', { roomId: 'CQACHA', playerId: 'p1', playerName: 'Bob', seatIndex: 1, stack: 1000 });
+
+  const aliceEvents: string[] = [];
+  alice.on('game:action_required', () => aliceEvents.push('action_required'));
+  alice.on('game:coach', () => aliceEvents.push('coach'));
+  let bobCoachCount = 0;
+  bob.on('game:coach', () => {
+    bobCoachCount += 1;
+  });
+
+  const aliceCoach = new Promise<any>((resolve) => alice.once('game:coach', resolve));
+  const startAck = await emitWithAck<{ ok: boolean }>(alice, 'game:start', { roomId: 'CQACHA', buttonMarkerSeat: 0 });
+  assert.deepEqual(startAck, { ok: true });
+
+  const coach = await aliceCoach;
+  assert.deepEqual(aliceEvents, ['action_required', 'coach']);
+  assert.equal(coach.roomId, 'CQACHA');
+  assert.equal(coach.playerId, 'p0');
+  assert.equal(coach.advice.street, 'preflop');
+  assert.equal(coach.advice.stateVersion, coach.stateVersion);
+  assert.equal(coach.advice.spot.holeCards.length, 2);
+  assert.ok(coach.advice.options.length > 0);
+
+  const secondSocketCoach = new Promise<any>((resolve) => aliceAgain.once('game:coach', resolve));
+  await emitWithAck(aliceAgain, 'room:join', { roomId: 'CQACHA', playerId: 'p0', playerName: 'Alice', seatIndex: 0, stack: 1000 });
+  assert.deepEqual(await secondSocketCoach, coach);
+
+  await sleep(100);
+  assert.equal(bobCoachCount, 0);
+});

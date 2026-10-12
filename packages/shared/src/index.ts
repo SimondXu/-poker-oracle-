@@ -404,6 +404,14 @@ export interface GameActionRequiredEvent {
   timeoutMs: number;
 }
 
+/** The current human actor's coach advice, sent only to their own sockets right after game:action_required. */
+export interface GameCoachEvent {
+  roomId: string;
+  playerId: string;
+  stateVersion: number;
+  advice: CoachAdvice;
+}
+
 export interface HandResultPayout {
   potIndex: number;
   playerId: string;
@@ -437,3 +445,104 @@ export interface GameActionAppliedEvent {
 }
 
 export type GameEvent = GameActionAppliedEvent;
+
+// ---- Coach advice: what the coach tells the hero, built by strategy-engine (see Docs/game-design/coach-advice.md).
+
+export type HandClass = 'premium' | 'strong' | 'playable' | 'speculative' | 'marginal' | 'trash';
+
+/** Bump when decide.ts behaviour changes, so stored advice and golden sets can tell which policy they came from. */
+export const COACH_POLICY_VERSION = '2026-10-12.1';
+
+/** Shared by advice options and the hero's recorded action, so the review compares like with like. */
+export type CoachActionKind = 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'all_in';
+
+/**
+ * An action as the hero sees it: a raise on a street nobody has bet is a bet, and an all-in that
+ * doesn't put in more than the bet to match is a call.
+ */
+export function classifyAction(
+  action: { type: 'fold' | 'check' | 'call' | 'bet' | 'raise_to' | 'all_in' },
+  spot: { currentBetToMatch: number; myStreetCommitted: number; myStack: number },
+): CoachActionKind {
+  switch (action.type) {
+    case 'raise_to':
+    case 'bet':
+      return spot.currentBetToMatch === 0 ? 'bet' : 'raise';
+    case 'all_in':
+      return spot.myStreetCommitted + spot.myStack <= spot.currentBetToMatch ? 'call' : 'all_in';
+    default:
+      return action.type;
+  }
+}
+
+/** Why the policy plays the spot as it does; each code is recorded at the decide.ts branch that uses the fact. */
+export type CoachReason =
+  | { code: 'preflop_chart'; params: { handClass: HandClass; scenario: BotBettingState; position: BotPosition; effStackBb: number } }
+  /** Share of all starting hands the chart plays from this seat in this scenario, and from the button (null on the button). */
+  | { code: 'position_range'; params: { position: BotPosition; scenario: BotBettingState; share: number; buttonShare: number | null } }
+  | { code: 'price_ok'; params: { equity: number; required: number } }
+  | { code: 'price_short'; params: { equity: number; required: number } }
+  | { code: 'jam'; params: { trigger: 'short_stack' | 'low_spr' | 'near_lock'; effStackBb: number; spr: number } }
+  | { code: 'value'; params: { equity: number } }
+  | { code: 'slowplay'; params: { equity: number } }
+  | { code: 'draw'; params: { draw: 'flush' | 'oesd' | 'pair_plus_draw' } }
+  | { code: 'bluff_share'; params: { frequency: number } }
+  | { code: 'cbet'; params: { frequency: number } }
+  | { code: 'no_initiative'; params: Record<string, never> }
+  | { code: 'checked_to_in_position'; params: Record<string, never> }
+  | { code: 'sticky_opponent'; params: { playerId: string; foldToBet: number; facingBets: number } };
+
+export interface CoachOption {
+  kind: CoachActionKind;
+  /** Street total for bet / raise / all_in, like raise_to. */
+  to?: number;
+  /** bet / raise only: big blinds before the flop; afterwards the chips added beyond a call as a share of the pot after calling. */
+  size?: { unit: 'bb' | 'pot'; value: number };
+  /** 0..1; the options sum to 1. */
+  frequency: number;
+  /** Reasons on the paths to this option that not every option shares, most important first. */
+  reasons: CoachReason[];
+}
+
+export interface CoachAdvice {
+  policyVersion: string;
+  personality: 'tag';
+
+  // Join keys for the post-hand review.
+  handId: string;
+  street: BotDecisionPhase;
+  /** hand.actions.length when advised: the hero's action lands at this index. */
+  actionIndex: number;
+  stateVersion: number;
+
+  /** What the hero saw, so a stored advice is a self-contained eval sample. */
+  spot: { holeCards: Card[]; board: Card[]; pot: number; toCall: number; heroStack: number; bigBlind: number };
+
+  /** Highest frequency first. */
+  options: CoachOption[];
+  /** False when equity moved by two standard errors changes the top option or shifts a frequency by more than 0.25. */
+  stable: boolean;
+
+  /** Postflop, and preflop when the price check ran (equityVs is then 'range'). */
+  equity?: number;
+  equityStdErr?: number;
+  equityVs?: 'range' | 'random';
+  /** How many opponents the equity is against: preflop, those who put chips in; postflop, everyone still in. */
+  equityAgainst?: number;
+  /** Preflop: share of starting hands this hand is in the top of (0.08 = top 8%). */
+  handPercentile?: number;
+  /** Only when there is a price to call; requiredEquity = clamp01(potOdds + callBuffer). */
+  potOdds?: number;
+  requiredEquity?: number;
+
+  /** Postflop only: effective stack over the pot as the street began. */
+  spr?: number;
+  effStackBb: number;
+  position: BotPosition;
+  scenario: BotBettingState;
+  /** Live opponents. */
+  opponents: number;
+
+  /** Reasons common to every option's path, most important first. */
+  reasons: CoachReason[];
+}

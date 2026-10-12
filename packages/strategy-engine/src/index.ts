@@ -1,10 +1,11 @@
-export type { BotRng, StackBucket, PreflopScenario, Mix, ChooseBotActionOptions, PostflopAnalysis, AnalyzePostflopOptions, TrainingSuggestion, TrainingStrength, TrainingAnalysis, AnalyzeTrainingSpotOptions } from './types.ts';
+export type { BotRng, StackBucket, PreflopScenario, Mix, ChooseBotActionOptions, PostflopAnalysis, AnalyzePostflopOptions } from './types.ts';
 export { createStableAnalysisRng } from './cards.ts';
 export { evaluatePreflopPercentile, canonicalizeHoleCards, getStackBucket } from './preflop-hands.ts';
 export { getPreflopMix } from './preflop-mixes.ts';
-export { getPotOdds, getRequiredEquity } from './actions.ts';
+export { getPotOdds } from './actions.ts';
 export { analyzePostflop } from './postflop-analysis.ts';
-export { analyzeTrainingSpot } from './training.ts';
 export { chooseBotAction } from './decide.ts';
+export type { CoachJoinKeys } from './coach.ts';
+export { buildCoachAdvice } from './coach.ts';
 export type { DecisionHand, DecisionValidActions } from './context.ts';
 export { buildDecisionContext, getAggressiveActions, recordHandStats } from './context.ts';

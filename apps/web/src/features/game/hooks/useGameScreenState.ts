@@ -40,6 +40,7 @@ export function useGameScreenState({
   const isBotsOnlyContinuation = useGameStore(selectIsBotsOnlyContinuation);
   const championInfo = useGameStore(selectChampionInfo);
   const validActions = useGameStore(selectValidActions);
+  const coach = useGameStore((state) => state.coach);
   const timerStartedAt = useGameStore((state) => state.timerStartedAt);
   const timerDurationMs = useGameStore((state) => state.timerDurationMs);
   const isWinning = useGameStore((state) => state.isWinning);
@@ -57,10 +58,11 @@ export function useGameScreenState({
         hand,
         handResult,
         validActions,
+        coach,
         eliminatedDecision,
         championInfo,
       }),
-    [championInfo, currentUserId, eliminatedDecision, hand, handResult, validActions],
+    [championInfo, coach, currentUserId, eliminatedDecision, hand, handResult, validActions],
   );
 
   const isCurrentUserActiveStackPlayer = Boolean(

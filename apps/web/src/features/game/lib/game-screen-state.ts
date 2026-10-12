@@ -1,10 +1,6 @@
-import type { HandState, ValidActions } from '@aipoker/shared';
+import type { CoachAdvice, HandState, ValidActions } from '@aipoker/shared';
 import type { HandResult } from '../../../stores/gameStore.ts';
-import {
-  getPositionLabelForSeat,
-  getTrainingData,
-  type GameTrainingData,
-} from './training-analysis.ts';
+import { getCoachData, getPositionLabelForSeat, type CoachData } from './coach-data.ts';
 import {
   shouldAnimatePotAward,
   shouldRevealShowdownCards,
@@ -39,7 +35,7 @@ export interface GameScreenState {
   championStack: number | null;
   winnerBestCardsByPlayer: Record<string, string[]>;
   payoutAmountsByPlayer: Record<string, number>;
-  trainingData: GameTrainingData | undefined;
+  trainingData: CoachData | undefined;
 }
 
 interface GetGameScreenStateInput {
@@ -47,6 +43,8 @@ interface GetGameScreenStateInput {
   hand: HandState | null;
   handResult: HandResult | null;
   validActions: ValidActions | null;
+  /** The server's advice for the hero's open decision (gameStore.coach). */
+  coach?: CoachAdvice | null;
   eliminatedDecision: EliminatedDecision;
   championInfo: { id: string; name: string } | null;
 }
@@ -87,10 +85,10 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     payoutAmountsByPlayer[payout.playerId] = payout.amount;
   }
 
-  const trainingData = getTrainingData({
+  const trainingData = getCoachData({
     currentUserId: input.currentUserId,
     hand: input.hand,
-    validActions: input.validActions,
+    advice: input.coach ?? null,
     isMyTurn,
   });
 

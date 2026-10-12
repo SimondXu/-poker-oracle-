@@ -1,5 +1,6 @@
 import type {
   BotPersonality,
+  HandClass,
 } from '@aipoker/shared';
 
 export type BotRng = () => number;
@@ -10,7 +11,7 @@ export type PreflopScenario = 'unopened' | 'facing_limpers' | 'facing_open' | 'f
 
 export type ActionIntent = 'fold' | 'call' | 'raise' | 'jam';
 
-export type HandClass = 'premium' | 'strong' | 'playable' | 'speculative' | 'marginal' | 'trash';
+export type { HandClass };
 
 export type HandDetail =
   | 'premium_pair'
@@ -93,27 +94,6 @@ export interface AnalyzePostflopOptions {
   riverIterations?: number;
   preferExactRiverHeadsUp?: boolean;
   forceSimulation?: boolean;
-}
-
-export type TrainingSuggestion = 'fold' | 'check' | 'call' | 'raise';
-
-export interface TrainingStrength {
-  kind: 'top_percent' | 'equity';
-  value: number;
-}
-
-export interface TrainingAnalysis {
-  strength: TrainingStrength;
-  potOdds?: number;
-  winRequirement?: number;
-  suggestion?: TrainingSuggestion;
-  suggestionReason?: string;
-}
-
-export interface AnalyzeTrainingSpotOptions {
-  personality?: BotPersonality;
-  includeRecommendation?: boolean;
-  seed?: string;
 }
 
 export type MixByHandClass = Record<HandClass, Mix>;

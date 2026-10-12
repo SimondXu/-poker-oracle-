@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  classifyAction,
   getRuleBotPersonality,
   buildBotPositionMap,
   deriveBotBettingState,
@@ -95,4 +96,15 @@ test('getRuleBotPersonality extracts rule-bot personalities and ignores llm bots
     null,
   );
   assert.equal(getRuleBotPersonality(undefined), null);
+});
+
+test('classifyAction names actions as the hero sees them', () => {
+  const opened = { currentBetToMatch: 100, myStreetCommitted: 0, myStack: 1_000 };
+  assert.equal(classifyAction({ type: 'raise_to' }, { ...opened, currentBetToMatch: 0 }), 'bet');
+  assert.equal(classifyAction({ type: 'raise_to' }, opened), 'raise');
+  assert.equal(classifyAction({ type: 'all_in' }, opened), 'all_in');
+  // All-in for no more than the bet to match is a call.
+  assert.equal(classifyAction({ type: 'all_in' }, { ...opened, currentBetToMatch: 1_500 }), 'call');
+  assert.equal(classifyAction({ type: 'all_in' }, { ...opened, currentBetToMatch: 1_000 }), 'call');
+  assert.equal(classifyAction({ type: 'fold' }, opened), 'fold');
 });

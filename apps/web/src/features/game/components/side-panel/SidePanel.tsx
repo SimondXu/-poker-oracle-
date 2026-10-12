@@ -44,7 +44,7 @@ export function SidePanel({ hand, trainingData, isTrainingHUDVisible, onToggleTr
   }, [isTrainingHUDVisible]);
 
   // So does the start of the hero's turn (the suggestion only exists on the hero's turn).
-  const isHeroTurn = trainingData?.suggestion !== undefined;
+  const isHeroTurn = trainingData?.heroTurn === true;
   const wasHeroTurn = useRef(isHeroTurn);
   useEffect(() => {
     if (isHeroTurn && !wasHeroTurn.current && isTrainingHUDVisible) setTab('coach');

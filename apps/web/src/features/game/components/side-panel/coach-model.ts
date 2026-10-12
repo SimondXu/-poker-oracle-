@@ -1,13 +1,14 @@
 /**
- * Pure helpers for the Coach tab. Everything shown comes from the training
- * analysis (`trainingData`) or from the hand state; nothing is estimated here.
+ * Pure helpers for the Coach tab. Everything shown comes from the server's
+ * advice (`CoachData.advice`) or from the hand state; nothing is estimated here.
  * `coach-model.test.ts` covers it.
  */
-import type { HandState } from '@aipoker/shared';
+import { formatBotPositionLabel, type CoachAdvice, type CoachOption, type CoachReason, type HandState } from '@aipoker/shared';
 import type { TFunction } from '@/i18n';
-import type { GameTrainingData } from '../../lib/training-analysis';
+import { formatChips } from '../../../../lib/utils.ts';
+import type { CoachData } from '../../lib/coach-data';
 
-export type CoachData = GameTrainingData;
+export type { CoachData };
 
 export interface CoachContext {
   /** Players still in the hand besides the hero. */
@@ -43,42 +44,103 @@ export function formatPotOddsRatio(potOdds: number): string | null {
   return ratio >= 10 ? String(Math.round(ratio)) : (Math.round(ratio * 10) / 10).toFixed(1);
 }
 
-/** Fraction of the equity bar that the hand strength fills (preflop: how far from the top of the range). */
-export function strengthFill(data: CoachData): number {
-  const { strength } = data;
-  return Math.min(1, Math.max(0, strength.kind === 'top_percent' ? 1 - strength.value : strength.value));
+/** One option as an action: "Bet 40", "Raise to 220", "All-in 940", "Call", "Check", "Fold". */
+export function optionText(option: CoachOption, t: TFunction): string {
+  switch (option.kind) {
+    case 'bet':
+    case 'raise':
+    case 'all_in':
+      return t(`panel.coach.do.${option.kind}`, { amount: formatChips(option.to ?? 0) });
+    default:
+      return t(`panel.coach.suggest.${option.kind}`);
+  }
 }
 
-/** Whether the hand's equity beats the equity the price demands; `null` when either side is unknown. */
-export function clearsPrice(data: CoachData): boolean | null {
-  if (data.strength.kind !== 'equity' || data.winRequirement === undefined) return null;
-  return data.strength.value >= data.winRequirement;
+/** The size of a bet or raise: "33% pot" after the flop, "2.5 BB" before it. */
+export function sizeText(option: CoachOption, t: TFunction): string | null {
+  const size = option.size;
+  if (!size) return null;
+  return size.unit === 'pot'
+    ? t('panel.coach.size.pot', { percent: percent(size.value) })
+    : t('panel.coach.size.bb', { bb: formatSpr(size.value) });
 }
+
+/** One decimal below 10 ("2.4"), whole numbers above ("14"). Used for SPR and sizes in big blinds. */
+export function formatSpr(value: number): string {
+  return value >= 10 ? String(Math.round(value)) : (Math.round(value * 10) / 10).toFixed(1);
+}
+
+/** Frequencies to the nearest 5%: the estimate behind them is not finer than that. */
+export function frequencyPercent(frequency: number): number {
+  return Math.round((frequency * 100) / 5) * 5;
+}
+
+/** The share to the nearest 5%, with "<5%" and ">95%" for shares that would round to 0 or 100 beside others. */
+export function frequencyLabel(frequency: number): string {
+  if (frequency < 0.025) return '<5%';
+  if (frequency > 0.975 && frequency < 1) return '>95%';
+  return `${frequencyPercent(frequency)}%`;
+}
+
+/** A strong enough top option is the suggestion; otherwise the spot is a mix, or close when equity noise could flip it. */
+export function coachVerdict(advice: CoachAdvice): 'commit' | 'mix' | 'close' {
+  if (!advice.stable) return 'close';
+  return (advice.options[0]?.frequency ?? 0) >= 0.65 ? 'commit' : 'mix';
+}
+
+/** Fraction of the strength bar: equity when there is one, else how far from the top of the starting hands. */
+export function strengthFill(data: CoachData): number | null {
+  const value = data.advice?.equity ?? (data.handPercentile !== undefined ? 1 - data.handPercentile : undefined);
+  return value === undefined ? null : Math.min(1, Math.max(0, value));
+}
+
+/** Whether equity beats the equity the price demands; `null` when either side is unknown. */
+export function clearsPrice(advice: CoachAdvice | undefined): boolean | null {
+  if (advice?.equity === undefined || advice.requiredEquity === undefined) return null;
+  return advice.equity >= advice.requiredEquity;
+}
+
+type ReasonOf<C extends CoachReason['code']> = Extract<CoachReason, { code: C }>;
 
 /**
- * The reason sentence, composed from the same numbers and suggestion the
- * engine used. The engine's own `suggestionReason` is Chinese-only and mixes in
- * English scenario names, so it is not shown as is.
+ * One sentence per reason code; a missing code fails typecheck. `nameOf` turns a player id into
+ * the name shown at the table.
  */
-export function coachReason(data: CoachData, t: TFunction): string | null {
-  if (!data.suggestion) return null;
+const REASON_TEXT: { [C in CoachReason['code']]: (reason: ReasonOf<C>, t: TFunction, nameOf: (id: string) => string) => string } = {
+  preflop_chart: ({ params }, t) =>
+    t('panel.coach.why.preflop_chart', {
+      handClass: t(`panel.coach.class.${params.handClass}`),
+      scenario: t(`panel.coach.scenario.${params.scenario}`),
+      position: formatBotPositionLabel(params.position),
+      bb: Math.round(params.effStackBb),
+    }),
+  price_ok: ({ params }, t) => t('panel.coach.why.price_ok', { equity: percent(params.equity), need: percent(params.required) }),
+  price_short: ({ params }, t) => t('panel.coach.why.price_short', { equity: percent(params.equity), need: percent(params.required) }),
+  jam: ({ params }, t) =>
+    t(`panel.coach.why.jam.${params.trigger}`, { bb: Math.round(params.effStackBb), spr: formatSpr(params.spr) }),
+  value: ({ params }, t) => t('panel.coach.why.value', { equity: percent(params.equity) }),
+  slowplay: (_reason, t) => t('panel.coach.why.slowplay'),
+  draw: ({ params }, t) => t('panel.coach.why.draw', { draw: t(`panel.coach.draw.${params.draw}`) }),
+  bluff_share: ({ params }, t) => t('panel.coach.why.bluff_share', { frequency: frequencyPercent(params.frequency) }),
+  cbet: ({ params }, t) => t('panel.coach.why.cbet', { frequency: frequencyPercent(params.frequency) }),
+  position_range: ({ params }, t) =>
+    params.buttonShare === null
+      ? t('panel.coach.why.position_range_btn', { share: percent(params.share), scenario: t(`panel.coach.scenario.${params.scenario}`) })
+      : t('panel.coach.why.position_range', {
+          position: formatBotPositionLabel(params.position),
+          share: percent(params.share),
+          scenario: t(`panel.coach.scenario.${params.scenario}`),
+          button: percent(params.buttonShare),
+        }),
+  no_initiative: (_reason, t) => t('panel.coach.why.no_initiative'),
+  checked_to_in_position: (_reason, t) => t('panel.coach.why.checked_to_in_position'),
+  sticky_opponent: ({ params }, t, nameOf) =>
+    t('panel.coach.why.sticky_opponent', { name: nameOf(params.playerId), percent: percent(params.foldToBet), count: params.facingBets }),
+};
 
-  const { strength, suggestion } = data;
-  if (strength.kind === 'top_percent') {
-    // `value` is the top-percent rank (0.08 = top 8%); "beats 92%" reads the right way round for a learner.
-    const lead = t('panel.coach.reason.pre', { percent: percent(1 - strength.value), position: data.position ?? '—' });
-    return `${lead} ${t(`panel.coach.reason.pre.${suggestion}`)}`;
-  }
-  const needsPrice = data.winRequirement !== undefined && suggestion !== 'raise' && suggestion !== 'check';
-  // The stats row shows raw pot odds; say why the requirement can sit a point or two above them.
-  const odds = data.potOdds !== undefined ? percent(data.potOdds) : null;
-  const need = data.winRequirement !== undefined ? percent(data.winRequirement) : null;
-  const lead = !needsPrice
-    ? t('panel.coach.reason.post', { percent: percent(strength.value) })
-    : odds !== null && odds !== need
-      ? t('panel.coach.reason.post_need_margin', { percent: percent(strength.value), need: need ?? 0, odds })
-      : t('panel.coach.reason.post_need', { percent: percent(strength.value), need: need ?? 0 });
-  return `${lead} ${t(`panel.coach.reason.post.${suggestion}`)}`;
+export function reasonText(reason: CoachReason, t: TFunction, nameOf: (id: string) => string): string {
+  const render = REASON_TEXT[reason.code] as (reason: CoachReason, t: TFunction, nameOf: (id: string) => string) => string;
+  return render(reason, t, nameOf);
 }
 
 export type CoachEmptyState = 'no_cards' | 'hand_over' | 'folded' | 'waiting';

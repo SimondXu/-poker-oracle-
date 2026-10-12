@@ -156,10 +156,6 @@ export function getPotOdds(callAmount: number, potTotal: number): number {
   return callAmount / Math.max(1, potTotal + callAmount);
 }
 
-export function getRequiredEquity(potOdds: number, callBuffer = 0): number {
-  return clamp01(potOdds + callBuffer);
-}
-
 export function computePotOdds(context: BotDecisionContext): number {
   if (!context.canCall || context.callAmount <= 0) {
     return 0;

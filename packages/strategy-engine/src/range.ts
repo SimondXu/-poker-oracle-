@@ -338,10 +338,24 @@ export function enumerateRiverRangeEquity(context: BotDecisionContext, range: We
   return total > 0 ? equity / total : null;
 }
 
+/** The live opponent with history who folds to a bet least often, with that smoothed rate; null without one. */
+export function stickiestOpponent(context: BotDecisionContext): { id: string; foldToBet: number; facingBets: number } | null {
+  let stickiest: { id: string; foldToBet: number; facingBets: number } | null = null;
+  for (const opponent of context.opponents ?? []) {
+    if (!opponent.stats) {
+      continue;
+    }
+    const foldToBet = estimateTendencies(opponent.stats).foldToBet;
+    if (!stickiest || foldToBet < stickiest.foldToBet) {
+      stickiest = { id: opponent.id, foldToBet, facingBets: opponent.stats.postflopFacingBets };
+    }
+  }
+  return stickiest;
+}
+
 /** How often the stickiest live opponent folds to a bet, from their history; null without one. */
 export function lowestFoldToBetRate(context: BotDecisionContext): number | null {
-  const rates = (context.opponents ?? []).filter((opponent) => opponent.stats).map((opponent) => estimateTendencies(opponent.stats).foldToBet);
-  return rates.length > 0 ? Math.min(...rates) : null;
+  return stickiestOpponent(context)?.foldToBet ?? null;
 }
 
 export interface OwnRangeRead {
