@@ -75,9 +75,10 @@ test('getGameScreenState derives rich hero-turn training data', () => {
   assert.equal(state.isMyTurn, true);
   assert.equal(state.pot, 30);
   assert.equal(state.trainingData?.position, 'SB'); // heads-up preflop: the button posts the small blind
-  assert.equal(state.trainingData?.strength?.kind, 'top_percent');
-  assert.equal(state.trainingData?.suggestion, 'raise');
-  assert.ok((state.trainingData?.suggestionReason ?? '').length > 0);
+  assert.equal(state.trainingData?.heroTurn, true);
+  assert.ok((state.trainingData?.handPercentile ?? 1) < 0.1); // AKo
+  // The suggestion is the server's; none has arrived in this state.
+  assert.equal(state.trainingData?.advice, undefined);
 });
 
 test('getGameScreenState keeps only static training context when it is not my turn', () => {
@@ -155,9 +156,10 @@ test('getGameScreenState keeps only static training context when it is not my tu
 
   assert.equal(state.isMyTurn, false);
   assert.equal(state.trainingData?.position, 'BTN');
-  assert.equal(state.trainingData?.strength?.kind, 'equity');
-  assert.equal(state.trainingData?.suggestion, undefined);
-  assert.equal(state.trainingData?.potOdds, undefined);
+  assert.equal(state.trainingData?.heroTurn, false);
+  // Off-turn after the flop there is nothing to compute in the browser: no equity, no advice.
+  assert.equal(state.trainingData?.handPercentile, undefined);
+  assert.equal(state.trainingData?.advice, undefined);
 });
 
 test('getGameScreenState derives position labels from occupied seats instead of raw max-seat offsets', () => {

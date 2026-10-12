@@ -3,7 +3,8 @@ import test from 'node:test';
 
 import type { BotDecisionContext, BotOpponentView } from '@aipoker/shared';
 
-import { analyzePostflop, analyzeTrainingSpot, createStableAnalysisRng } from './index.ts';
+import { adviseFromEquities } from './coach.ts';
+import { analyzePostflop, createStableAnalysisRng } from './index.ts';
 import { ALL_COMBOS, buildOpponentRange } from './range.ts';
 
 const RIVER: BotDecisionContext = {
@@ -72,5 +73,10 @@ test('bottom pair facing a triple barrel is a fold against the range, not a call
   // A pot-sized bet needs 1/3 equity to call.
   assert.ok(versusRandom.equity > 1 / 3);
   assert.ok(versusRange.equity < 1 / 3);
-  assert.equal(analyzeTrainingSpot({ ...RIVER, opponents: [TRIPLE_BARREL] }).suggestion, 'fold');
+  const advice = adviseFromEquities({ ...RIVER, opponents: [TRIPLE_BARREL] }, { postflop: () => versusRange, preflopVsCallers: () => null }, {
+    handId: 'h',
+    actionIndex: 0,
+    stateVersion: 0,
+  });
+  assert.equal(advice.options[0]?.kind, 'fold');
 });

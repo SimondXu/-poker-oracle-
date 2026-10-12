@@ -75,7 +75,7 @@ export function sampledEquities(context: BotDecisionContext, rng: BotRng): Equit
   };
 }
 
-export function shouldJamPostflop(
+function shouldJamPostflop(
   context: BotDecisionContext,
   analysis: PostflopAnalysis,
   profile: PersonalityProfile

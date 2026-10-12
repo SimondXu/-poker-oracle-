@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { HandState, TableLifecycleSnapshot, ValidActions } from '@aipoker/shared';
+import type { CoachAdvice, GameCoachEvent, HandState, TableLifecycleSnapshot, ValidActions } from '@aipoker/shared';
 
 /**
  * gameStore — 游戏实时状态
@@ -30,6 +30,8 @@ interface GameState {
   hand: HandState | null;
   stateVersion: number | null;
   validActions: ValidActions | null;
+  /** The server's advice for the hero's current decision; only while that decision is open. */
+  coach: CoachAdvice | null;
   timerStartedAt: number | null;   // 当前行动者计时开始时间 (Date.now())
   timerDurationMs: number;
 
@@ -47,6 +49,7 @@ interface GameState {
   setHandState: (hand: HandState, stateVersion?: number) => void;
   setValidActions: (actions: ValidActions, timeoutMs: number) => void;
   clearValidActions: () => void;
+  setCoach: (event: GameCoachEvent) => void;
   setHandResult: (result: HandResult) => void;
   setHandResultPhase: (phase: HandResult['phase']) => void;
   clearHandResult: () => void;
@@ -61,6 +64,7 @@ const INITIAL_STATE = {
   hand: null,
   stateVersion: null,
   validActions: null,
+  coach: null,
   timerStartedAt: null,
   timerDurationMs: 30000,
   isWinning: false,
@@ -86,12 +90,19 @@ export const useGameStore = create<GameState>()(
     setValidActions: (actions, timeoutMs) =>
       set({
         validActions: actions,
+        coach: null,
         timerStartedAt: Date.now(),
         timerDurationMs: timeoutMs,
       }),
 
     clearValidActions: () =>
-      set({ validActions: null, timerStartedAt: null }),
+      set({ validActions: null, coach: null, timerStartedAt: null }),
+
+    // Advice for a decision the hero already made (or a state that moved on) is dropped.
+    setCoach: (event) =>
+      set((current) =>
+        current.validActions && current.stateVersion === event.stateVersion ? { coach: event.advice } : current,
+      ),
 
     setHandResult: (result) =>
       set({

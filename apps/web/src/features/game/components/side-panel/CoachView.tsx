@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useMemo } from 'react';
-import type { HandState } from '@aipoker/shared';
+import type { CoachActionKind, CoachAdvice, HandState } from '@aipoker/shared';
 import { useT } from '@/i18n';
 import { cn, formatChips } from '@/lib/utils';
 import type { GameScreenState } from '../../lib/game-screen-state';
@@ -10,19 +10,23 @@ import { useHeroSummaryText } from './labels';
 import {
   clearsPrice,
   coachEmptyState,
-  coachReason,
+  coachVerdict,
   deriveCoachContext,
   formatPotOddsRatio,
   formatSpr,
+  frequencyLabel,
+  optionText,
   percent,
+  reasonText,
   sizeText,
   strengthFill,
-  suggestionText,
   type CoachData,
 } from './coach-model';
 
-export const SUGGESTION_CLASS: Record<NonNullable<CoachData['suggestion']>, string> = {
+export const OPTION_CLASS: Record<CoachActionKind, string> = {
+  bet: 'text-vermilion-hi',
   raise: 'text-vermilion-hi',
+  all_in: 'text-vermilion-hi',
   call: 'text-text',
   check: 'text-text',
   fold: 'text-text-2',
@@ -77,20 +81,19 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
     );
   }
 
-  const isHeroTurn = data.suggestion !== undefined;
-  // The engine reports pot odds postflop only; preflop they follow from the same hand state (call / (pot + call)).
+  const advice = data.advice;
+  // Preflop the advice has no pot odds unless the price check ran; they follow from the same hand state (call / (pot + call)).
   const potOdds =
-    data.potOdds ?? (context && context.toCall > 0 ? context.toCall / (context.pot + context.toCall) : undefined);
-  const reason = coachReason(data, t);
+    advice?.potOdds ?? (context && context.toCall > 0 ? context.toCall / (context.pot + context.toCall) : undefined);
   const positionKey = data.position?.toLowerCase();
   const positionNote = positionKey && POSITION_KEYS.has(positionKey) ? t(`panel.coach.pos.${positionKey as 'utg'}`) : null;
-  const size = sizeText(data, t);
+  const nameOf = (id: string) => hand?.players.find((player) => player.id === id)?.name ?? id;
 
   return (
     <div className={cn('min-h-0 overflow-y-auto px-4 py-4', className)}>
-      <StrengthBlock data={data} opponents={context?.opponents ?? null} quiet={!isHeroTurn} />
+      {strengthFill(data) !== null && <StrengthBlock data={data} opponents={context?.opponents ?? null} />}
 
-      {isHeroTurn ? (
+      {data.heroTurn ? (
         <>
           {/* Two rows: the price (pot odds, to call), then the spot (position, SPR from the flop on). */}
           <dl className="mt-4 grid grid-cols-2 border-y border-line [&>*:nth-child(n+3)]:border-t [&>*:nth-child(n+3)]:border-line">
@@ -116,17 +119,13 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
               divided
             />
             <Stat label={t('panel.coach.stat.position')} value={data.position ?? '—'} note={positionNote} />
-            <Stat label={t('panel.coach.stat.spr')} value={data.spr !== undefined ? formatSpr(data.spr) : '—'} note={null} divided />
+            <Stat label={t('panel.coach.stat.spr')} value={advice?.spr !== undefined ? formatSpr(advice.spr) : '—'} note={null} divided />
           </dl>
 
-          {data.suggestion && (
-            <section aria-label={t('panel.tab.coach')} className="mt-4">
-              <p className={cn('font-index text-title font-semibold uppercase tracking-caps-tight', SUGGESTION_CLASS[data.suggestion])}>
-                {suggestionText(data, t)}
-              </p>
-              {size && <p className="mt-1 text-body text-text-3">{size}</p>}
-              {reason && <p className="mt-2 max-w-[34ch] text-body text-text-2">{reason}</p>}
-            </section>
+          {advice ? (
+            <Suggestion advice={advice} nameOf={nameOf} />
+          ) : (
+            <p className="mt-4 text-body text-text-3">{t('panel.coach.loading')}</p>
           )}
         </>
       ) : (
@@ -145,22 +144,85 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
   );
 });
 
-/** Hand strength; with a price to pay, one bar compares equity against the equity the price requires. */
-function StrengthBlock({ data, opponents, quiet }: { data: CoachData; opponents: number | null; quiet: boolean }) {
+/**
+ * What the TAG policy does here: one action when it mostly takes it, otherwise the mix, and
+ * "close" when the equity estimate's noise could change it. Then the reasons, as recorded by the policy.
+ */
+function Suggestion({ advice, nameOf }: { advice: CoachAdvice; nameOf: (id: string) => string }) {
   const t = useT();
-  const { strength } = data;
-  const isEquity = strength.kind === 'equity';
-  const need = isEquity && !quiet ? data.winRequirement : undefined;
-  const clears = clearsPrice(data);
-  const fill = strengthFill(data);
+  const verdict = coachVerdict(advice);
+  const top = advice.options[0];
+  if (!top) return null;
 
-  const versusRange = data.equityVs === 'range';
-  const label = isEquity
+  return (
+    <section aria-label={t('panel.tab.coach')} className="mt-4">
+      <p className="label-index text-micro text-text-3">{t('panel.coach.source')}</p>
+      <p
+        className={cn(
+          'mt-1 font-index text-title font-semibold uppercase tracking-caps-tight',
+          verdict === 'commit' ? OPTION_CLASS[top.kind] : 'text-text',
+        )}
+      >
+        {verdict === 'commit' ? optionText(top, t) : t(`panel.coach.verdict.${verdict}`)}
+      </p>
+      {verdict === 'commit' && advice.options.length === 1 && sizeText(top, t) && (
+        <p className="mt-1 text-body text-text-3">{sizeText(top, t)}</p>
+      )}
+
+      {advice.options.length > 1 && (
+        <ul className="mt-2 space-y-2">
+          {advice.options.map((option) => (
+            <li key={`${option.kind}:${option.to ?? ''}`} className="text-body">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className={cn('font-semibold', OPTION_CLASS[option.kind])}>
+                  {optionText(option, t)}
+                  {sizeText(option, t) && <span className="ml-2 font-normal text-text-3">{sizeText(option, t)}</span>}
+                </span>
+                <span className="font-index font-semibold text-text-2">{frequencyLabel(option.frequency)}</span>
+              </div>
+              {option.reasons.map((reason) => (
+                <p key={reason.code} className="mt-0.5 text-text-3">
+                  {reasonText(reason, t, nameOf)}
+                </p>
+              ))}
+            </li>
+          ))}
+        </ul>
+      )}
+      {verdict === 'close' && <p className="mt-2 text-body text-caution">{t('panel.coach.close_note')}</p>}
+
+      {advice.reasons.length > 0 && (
+        <ul className="mt-3 max-w-[38ch] space-y-1 border-t border-line pt-3">
+          {advice.reasons.map((reason) => (
+            <li key={reason.code} className="text-body text-text-2">
+              {reasonText(reason, t, nameOf)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Hand strength; with a price to pay, one bar compares equity against the equity the price requires. */
+function StrengthBlock({ data, opponents }: { data: CoachData; opponents: number | null }) {
+  const t = useT();
+  const advice = data.advice;
+  const equity = advice?.equity;
+  const quiet = !advice;
+  const need = equity !== undefined ? advice?.requiredEquity : undefined;
+  const clears = clearsPrice(advice);
+  const fill = strengthFill(data) ?? 0;
+
+  const versusRange = advice?.equityVs === 'range';
+  const label = equity !== undefined
     ? opponents && opponents > 1
       ? t(versusRange ? 'panel.coach.equity.range.many' : 'panel.coach.equity.many', { count: opponents })
       : t(versusRange ? 'panel.coach.equity.range.one' : 'panel.coach.equity.one')
     : t('panel.coach.strength');
-  const value = isEquity ? `${percent(strength.value)}%` : t('panel.coach.strength.top', { percent: percent(1 - strength.value) });
+  const value = equity !== undefined
+    ? `${percent(equity)}%`
+    : t('panel.coach.strength.top', { percent: percent(1 - (data.handPercentile ?? 1)) });
 
   const fillClass = need === undefined ? (quiet ? 'bg-ink-7' : 'bg-brass') : clears ? 'bg-positive' : 'bg-caution';
   const needLeft = need === undefined ? 0 : Math.min(0.92, Math.max(0.08, need));

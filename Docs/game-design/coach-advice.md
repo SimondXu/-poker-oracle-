@@ -249,8 +249,8 @@ export function buildCoachAdvice(view: DecisionHand, heroId: string, valid: Deci
 ### 6. The web
 
 - `gameStore` stores `coach` with `validActions` and clears it with them.
-- `getGameScreenState` no longer calls `analyzeTrainingSpot`. `training-analysis.ts` keeps only position labels and the preflop percentile lookup for the off-turn view.
-- `analyzeTrainingSpot`, `decideDeterministicPostflop` and the Chinese reason builders in `training.ts` are deleted once nothing imports them.
+- `getGameScreenState` no longer calls `analyzeTrainingSpot`. `training-analysis.ts` became `coach-data.ts`: position labels, the preflop percentile lookup for the off-turn view, and the advice while the hero's decision is open.
+- `training.ts` (`analyzeTrainingSpot`, the deterministic baseline and its Chinese reasons) is deleted, with the unused `components/game/hud/training-hud-state.ts` that only its own test imported.
 - The render path then only formats an object; this completes "move coach analysis out of the render path".
 
 ## Implementation plan

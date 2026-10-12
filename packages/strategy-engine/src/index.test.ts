@@ -5,7 +5,6 @@ import type { BotDecisionContext } from '@aipoker/shared';
 
 import {
   analyzePostflop,
-  analyzeTrainingSpot,
   chooseBotAction,
   createStableAnalysisRng,
   evaluatePreflopPercentile,
@@ -70,78 +69,6 @@ test('createStableAnalysisRng produces a repeatable sequence for the same seed',
   );
 });
 
-test('analyzeTrainingSpot returns a deterministic preflop raise recommendation', () => {
-  const advice = analyzeTrainingSpot(
-    makeContext({
-      canCall: false,
-      callAmount: 0,
-      holeCards: ['Ah', 'Jh'],
-      position: 'btn',
-      bettingState: 'unopened',
-    }),
-  );
-
-  assert.equal(advice.strength.kind, 'top_percent');
-  assert.equal(advice.suggestion, 'raise');
-  assert.deepEqual(advice.sizing, { kind: 'raise', to: 220, unit: 'bb', value: 2.2 });
-  assert.ok((advice.suggestionReason ?? '').includes('TAG'));
-});
-
-test('analyzeTrainingSpot sizes a bet on an unopened flop as a share of the pot', () => {
-  const advice = analyzeTrainingSpot(
-    makeContext({
-      phase: 'flop',
-      canFold: false,
-      canCheck: true,
-      canCall: false,
-      callAmount: 0,
-      minRaiseTo: 100,
-      potTotal: 300,
-      currentBetToMatch: 0,
-      activePlayerCount: 2,
-      opponentCount: 1,
-      holeCards: ['As', 'Ad'],
-      communityCards: ['Ah', '7c', '2d'],
-    }),
-  );
-
-  assert.equal(advice.suggestion, 'raise');
-  assert.equal(advice.sizing?.kind, 'bet');
-  assert.equal(advice.sizing?.to, 100);
-  assert.equal(advice.sizing?.unit, 'pot');
-  assert.ok(Math.abs((advice.sizing?.value ?? 0) - 1 / 3) < 1e-9);
-});
-
-test('analyzeTrainingSpot returns deterministic postflop equity and a call recommendation', () => {
-  const context = makeContext({
-    phase: 'flop',
-    potTotal: 150,
-    callAmount: 50,
-    canRaise: false,
-    canAllIn: false,
-    activePlayerCount: 2,
-    opponentCount: 1,
-    holeCards: ['Ah', 'Qh'],
-    communityCards: ['Kh', '7h', '2c'],
-    bettingState: 'facing_open',
-    isPreflopAggressor: false,
-  });
-
-  const first = analyzeTrainingSpot(context);
-  const second = analyzeTrainingSpot(context);
-
-  assert.equal(first.strength.kind, 'equity');
-  assert.equal(first.suggestion, 'call');
-  assert.ok(first.strength.value > 0);
-  assert.ok(first.potOdds !== undefined);
-  assert.ok(first.winRequirement !== undefined);
-  assert.ok(first.strength.value >= (first.winRequirement ?? 1));
-  // No opponent actions in this context, so the equity is against random hands.
-  assert.equal(first.equityVs, 'random');
-  assert.equal(first.spr, 10);
-  assert.deepEqual(first, second);
-});
-
 test('facing_raise reuses the 3-bet defense mix instead of open-defense ranges', () => {
   const facingOpenMix = getPreflopMix('tag', 60, 'facing_open', 'btn', ['Ah', 'Jh']);
   const facingRaiseMix = getPreflopMix('tag', 60, 'facing_raise', 'btn', ['Ah', 'Jh']);
@@ -150,18 +77,6 @@ test('facing_raise reuses the 3-bet defense mix instead of open-defense ranges',
   assert.deepEqual(facingRaiseMix, facingThreeBetMix);
   assert.notDeepEqual(facingRaiseMix, facingOpenMix);
   assert.ok(facingRaiseMix.raise + facingRaiseMix.jam < facingOpenMix.raise + facingOpenMix.jam);
-});
-
-test('analyzeTrainingSpot labels facing_raise spots as 3-bet decisions', () => {
-  const advice = analyzeTrainingSpot(
-    makeContext({
-      bettingState: 'facing_raise',
-      holeCards: ['Ah', 'Jh'],
-      position: 'btn',
-    }),
-  );
-
-  assert.ok((advice.suggestionReason ?? '').includes('3-bet+'));
 });
 
 test('facing_limpers keeps a dedicated iso-raise mix instead of open-defense heuristics', () => {
