@@ -50,7 +50,11 @@ export function getOrCreateRoom(
     lastBroadcastActionCount: 0,
     lastButtonMarkerSeat: null,
     hostPlayerId: null,
-    playerStats: new Map()
+    playerStats: new Map(),
+    coachAdvice: new Map(),
+    coachRecords: new Map(),
+    coachSessions: new Map(),
+    coachReviews: new Map(),
   };
   rooms.set(roomId, room);
   return room;

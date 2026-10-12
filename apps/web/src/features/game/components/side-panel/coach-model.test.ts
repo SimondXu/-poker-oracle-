@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { CoachAdvice, CoachReason, HandState, PlayerState } from '@aipoker/shared';
+import type { CoachAdvice, CoachReason, CoachReviewDecision, GameAction, GameReviewEvent, HandState, PlayerState } from '@aipoker/shared';
 
 import { translate } from '../../../../i18n/translate.ts';
 import {
@@ -14,6 +14,9 @@ import {
   frequencyLabel,
   optionText,
   reasonText,
+  reviewRowText,
+  reviewToShow,
+  sessionText,
   sizeText,
   strengthFill,
 } from './coach-model.ts';
@@ -232,4 +235,70 @@ test('every reason code reads as a sentence in both languages, with every value 
   const fromUtg = EVERY_REASON.find((reason) => reason.code === 'position_range' && reason.params.position === 'utg')!;
   assert.equal(reasonText(fromUtg, en, nameOf), 'From UTG, the TAG chart plays 14% of hands with no one in yet; on the button, 48%.');
   assert.equal(reasonText(fromUtg, zh, nameOf), '在 UTG，TAG 起手牌表无人入池时会玩 14% 的牌；按钮位是 48%。');
+});
+
+function review(handNumber: number, decisions: CoachReviewDecision[] = []): GameReviewEvent {
+  return { roomId: 'R', playerId: 'hero', handNumber, decisions, session: { matched: 14, close: 5, off: 2 } };
+}
+
+test('the review shows once its hand is over, and in the next hand until the hero’s first decision', () => {
+  const last = review(4);
+  const heroCall = { playerId: 'hero' } as GameAction;
+  const opponentRaise = { playerId: 'a' } as GameAction;
+  assert.deepEqual(reviewToShow(last, hand({ handNumber: 4, phase: 'hand_end' }), 'hero', false), { review: last, which: 'this' });
+  // Still running: the review is not in yet, and an earlier one is not shown mid-hand.
+  assert.equal(reviewToShow(last, hand({ handNumber: 4 }), 'hero', false), null);
+  assert.deepEqual(reviewToShow(last, hand({ handNumber: 5, actions: [opponentRaise] }), 'hero', false), { review: last, which: 'last' });
+  // The hero's turn brings the live coach; after their first decision the old review is gone.
+  assert.equal(reviewToShow(last, hand({ handNumber: 5 }), 'hero', true), null);
+  assert.equal(reviewToShow(last, hand({ handNumber: 5, actions: [opponentRaise, heroCall] }), 'hero', false), null);
+  // Two hands back is stale.
+  assert.equal(reviewToShow(last, hand({ handNumber: 6 }), 'hero', false), null);
+  assert.equal(reviewToShow(null, hand(), 'hero', false), null);
+});
+
+test('a review row reads as text in both languages, reasons grouped under the option they explain', () => {
+  const nameOf = (id: string) => id;
+  const call: CoachReviewDecision = {
+    street: 'flop',
+    advice: advice({
+      spot: { holeCards: ['Qs', 'Td'], board: ['Kh', '7c', '2d'], pot: 200, toCall: 40, heroStack: 900, bigBlind: 20 },
+      options: [
+        { kind: 'raise', to: 120, size: { unit: 'pot', value: 0.33 }, frequency: 0.7, reasons: [{ code: 'value', params: { equity: 0.62 } }] },
+        { kind: 'call', frequency: 0.3, reasons: [] },
+      ],
+      reasons: [{ code: 'price_ok', params: { equity: 0.62, required: 0.2 } }],
+    }),
+    heroAction: { kind: 'call', source: 'player' },
+    verdict: 'matched',
+  };
+  assert.deepEqual(reviewRowText(call, en, nameOf), {
+    street: 'Flop',
+    hero: 'You: Call 40',
+    policy: 'TAG: Raise to 120 70% · Call 30%',
+    verdict: 'Matched',
+    reasons: [
+      { label: 'Raise to 120', lines: ['Equity 62% is ahead of what calls, so it bets for value.'] },
+      { label: null, lines: ['Equity 62% clears the 20% a call needs.'] },
+    ],
+  });
+  assert.deepEqual(reviewRowText(call, zh, nameOf), {
+    street: '翻牌',
+    hero: '你：跟注 40',
+    policy: 'TAG：加注到 120 70% · 跟注 30%',
+    verdict: '一致',
+    reasons: [
+      { label: '加注到 120', lines: [reasonText(call.advice.options[0]!.reasons[0]!, zh, nameOf)] },
+      { label: null, lines: [reasonText(call.advice.reasons[0]!, zh, nameOf)] },
+    ],
+  });
+
+  const timedOut: CoachReviewDecision = { ...call, heroAction: { kind: 'fold', source: 'timeout' }, verdict: 'off' };
+  assert.equal(reviewRowText(timedOut, en, nameOf).hero, 'You: Fold (timed out)');
+  assert.equal(reviewRowText(timedOut, en, nameOf).verdict, 'Off');
+  assert.equal(reviewRowText(timedOut, zh, nameOf).hero, '你：弃牌（超时）');
+  assert.equal(reviewRowText({ ...call, verdict: 'close' }, zh, nameOf).verdict, '接近');
+
+  assert.equal(sessionText(review(1).session, en), 'Session: 14 matched, 5 close, 2 off');
+  assert.equal(sessionText(review(1).session, zh), '本场：一致 14 · 接近 5 · 偏离 2');
 });

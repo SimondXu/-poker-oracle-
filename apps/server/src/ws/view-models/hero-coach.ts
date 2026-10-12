@@ -1,5 +1,5 @@
 import { getValidActions } from '@aipoker/game-engine';
-import type { GameCoachEvent, HandState as ClientHandState } from '@aipoker/shared';
+import type { CoachAdvice, GameCoachEvent, HandState as ClientHandState } from '@aipoker/shared';
 import { buildCoachAdvice, type DecisionHand } from '@aipoker/strategy-engine';
 
 import type { RuntimeRoom } from '../../rooms/types.ts';
@@ -32,9 +32,32 @@ export function toDecisionView(view: ClientHandState): DecisionHand {
 
 /** The current human actor's advice, or null for a bot, between actions, or if building it fails. */
 export function buildHeroCoachEvent(room: RuntimeRoom): GameCoachEvent | null {
+  const actor = room.hand?.players.find((player) => player.seatIndex === room.hand?.currentActorSeat);
+  const advice = actor ? openDecisionAdvice(room, actor.id) : null;
+  return actor && advice ? { roomId: room.id, playerId: actor.id, stateVersion: room.stateVersion, advice } : null;
+}
+
+/**
+ * The advice for a human's open decision: the one already built for this state, or built now and
+ * kept on the room, so the review grades the action against exactly what the hero was (or would
+ * have been) sent.
+ */
+export function openDecisionAdvice(room: RuntimeRoom, heroId: string): CoachAdvice | null {
+  const kept = room.coachAdvice.get(heroId);
+  if (kept && kept.stateVersion === room.stateVersion) {
+    return kept;
+  }
+  const advice = buildHeroAdvice(room, heroId);
+  if (advice) {
+    room.coachAdvice.set(heroId, advice);
+  }
+  return advice;
+}
+
+function buildHeroAdvice(room: RuntimeRoom, heroId: string): CoachAdvice | null {
   const hand = room.hand;
   const actor = hand?.players.find((player) => player.seatIndex === hand.currentActorSeat);
-  if (!hand || !actor || room.players.get(actor.id)?.isBot !== false) {
+  if (!hand || !actor || actor.id !== heroId || room.players.get(actor.id)?.isBot !== false) {
     return null;
   }
 
@@ -53,7 +76,7 @@ export function buildHeroCoachEvent(room: RuntimeRoom): GameCoachEvent | null {
     if (elapsedMs > SLOW_ADVICE_MS) {
       console.warn('slow coach advice', { roomId: room.id, street: advice?.street, opponents: advice?.opponents, elapsedMs: Math.round(elapsedMs) });
     }
-    return advice ? { roomId: room.id, playerId: actor.id, stateVersion: room.stateVersion, advice } : null;
+    return advice;
   } catch (error) {
     // Advice is optional; the hero's turn must go on without it.
     console.error('coach advice failed', { roomId: room.id, playerId: actor.id, error });

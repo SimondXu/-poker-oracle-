@@ -24,7 +24,7 @@ import {
 import { createHoldQueue, type HoldQueue } from '../lib/hold-queue';
 import { useGameSocketTransport } from './useGameSocketTransport';
 import { useHandResultPhaseTimers } from './useHandResultPhaseTimers';
-import type { ActionType, GameActionRequiredEvent, GameCoachEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
+import type { ActionType, GameActionRequiredEvent, GameCoachEvent, GameReviewEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
 
 const GAME_START_ACK_TIMEOUT_MS = 5000;
 const GAME_SPECTATE_ACK_TIMEOUT_MS = 5000;
@@ -40,6 +40,7 @@ export function useGameSocket(
   const setHandState = useGameStore((state) => state.setHandState);
   const setValidActions = useGameStore((state) => state.setValidActions);
   const setCoach = useGameStore((state) => state.setCoach);
+  const setReview = useGameStore((state) => state.setReview);
   const clearValidActions = useGameStore((state) => state.clearValidActions);
   const setHandResult = useGameStore((state) => state.setHandResult);
   const setHandResultPhase = useGameStore((state) => state.setHandResultPhase);
@@ -127,6 +128,14 @@ export function useGameSocket(
     [holdQueue, setCoach],
   );
 
+  // Queued behind the hand result it follows.
+  const handleReview = useCallback(
+    (payload: GameReviewEvent) => {
+      holdQueue.run(() => setReview(payload));
+    },
+    [holdQueue, setReview],
+  );
+
   const handleHandResult = useCallback(
     (payload: HandResultEvent) => {
       holdQueue.run(() => {
@@ -199,6 +208,7 @@ export function useGameSocket(
     onGameState: handleGameState,
     onActionRequired: handleActionRequired,
     onCoach: handleCoach,
+    onReview: handleReview,
     onHandResult: handleHandResult,
     onError: handleError,
     onCleanup: () => {

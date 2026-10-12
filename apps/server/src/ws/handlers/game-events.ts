@@ -39,7 +39,8 @@ import {
   getTableLifecycleSnapshot,
 } from '../../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
-import { emitBotStatus, emitGameState } from '../emitters.ts';
+import { recordCoachDecision } from '../../game-loop/coach-review.ts';
+import { emitBotStatus, emitGameState, emitHandReviews } from '../emitters.ts';
 import {
   gameActionPayloadSchema,
   gameSpectatePayloadSchema,
@@ -122,6 +123,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     }
     await runBotTurns(io, room, memberships, botRuntime, startRealtimeLlmTurn);
     recordFinishedHandStats(room);
+    emitHandReviews(io, room, memberships);
     cleanupDisconnectedPlayersAfterHandEnd(io, room, deleteRoom);
     syncActionTimeout(room.id);
     syncBotsOnlyAutoNext(room);
@@ -314,6 +316,8 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
         if (isBotActor) {
           console.error('bot turn watchdog fired', { roomId: room.id, playerId: latestActor.id });
           emitBotFailureStatus(latestRoom, latestActor.id, '', 'watchdog');
+        } else {
+          recordCoachDecision(latestRoom, timeoutAction, 'timeout');
         }
         latestRoom.hand = timeoutResult.value;
         syncRoomPlayersFromHand(latestRoom);
@@ -584,6 +588,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
         return;
       }
 
+      recordCoachDecision(room, action, 'player');
       room.hand = result.value;
       recordActionSeq(room, actionPlayerId, parsed.data.seq);
       syncRoomPlayersFromHand(room);
