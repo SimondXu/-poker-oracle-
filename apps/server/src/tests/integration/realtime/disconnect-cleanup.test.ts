@@ -76,7 +76,7 @@ function waitForRoomState(
 
 test('disconnect during active hand is cleaned up after hand_end', async (t) => {
   const app = createServer({ nowMs: () => 42 });
-  const io = attachRealtime(app, { actionTimeoutMs: 40 });
+  const io = attachRealtime(app, { actionTimeoutMs: 40, waitingRoomReconnectGraceMs: 30 });
 
   t.after(async () => {
     await new Promise<void>((resolve) => io.close(() => resolve()));

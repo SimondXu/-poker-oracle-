@@ -26,7 +26,7 @@ interface AttachRealtimeOptions {
   sessionRevocations?: SessionRevocations;
   corsOrigin?: string;
   emptyRoomTtlMs?: number;
-  /** How long a disconnected human keeps a waiting-room seat (e.g. across a page refresh). */
+  /** How long a disconnected human keeps their seat (e.g. across a page refresh), before, between, or during hands. */
   waitingRoomReconnectGraceMs?: number;
   nowMs?: () => number;
   botRuntime?: Partial<BotRuntimeDeps>;

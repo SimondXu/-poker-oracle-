@@ -146,8 +146,8 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     emitRoomState(io, room);
   }
 
-  /** A refresh drops the socket for a moment; hold the waiting-room seat so the same player can come back. */
-  function scheduleWaitingRoomRemoval(roomId: string, playerId: string): void {
+  /** A refresh drops the socket for a moment; hold the seat (between or during hands) so the same player can come back. */
+  function scheduleDisconnectRemoval(roomId: string, playerId: string): void {
     cancelWaitingRoomRemoval(roomId, playerId);
     const handle = setTimeout(() => {
       waitingRoomRemovals.delete(`${roomId}:${playerId}`);
@@ -515,8 +515,8 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
 
-    if (!room.hand && waitingRoomReconnectGraceMs > 0) {
-      scheduleWaitingRoomRemoval(membership.roomId, membership.playerId);
+    if (waitingRoomReconnectGraceMs > 0) {
+      scheduleDisconnectRemoval(membership.roomId, membership.playerId);
       return;
     }
 

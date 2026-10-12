@@ -1871,7 +1871,7 @@ test('disconnecting current actor still allows timeout auto-fold progression', a
 
 test('disconnected in-hand player is removed after hand_end so next hand can start', async (t) => {
   const app = createServer({ nowMs: () => 42 });
-  const io = attachRealtime(app, { actionTimeoutMs: 40 });
+  const io = attachRealtime(app, { actionTimeoutMs: 40, waitingRoomReconnectGraceMs: 30 });
 
   t.after(async () => {
     await new Promise<void>((resolve) => io.close(() => resolve()));
@@ -1982,6 +1982,7 @@ test('bots-only table is deleted once the last human disconnects and the hand en
   const app = createServer({ nowMs: () => 42 });
   const io = attachRealtime(app, {
     actionTimeoutMs: 40,
+    waitingRoomReconnectGraceMs: 30,
     botRuntime: { sleep: async () => {} }
   });
 
@@ -2817,4 +2818,70 @@ test('a waiting-room player who stays away past the grace period is removed with
     stack: 1000
   });
   assert.deepEqual(rejoin, { ok: false, error: 'room_not_found' });
+});
+
+async function seatHeadsUpPair(
+  t: { after: (fn: () => unknown) => void },
+  options: { roomId: string; actionTimeoutMs?: number }
+) {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, { waitingRoomReconnectGraceMs: 5_000, actionTimeoutMs: options.actionTimeoutMs });
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const url = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+
+  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const bob = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => {
+    alice.close();
+    bob.close();
+  });
+  await once(alice, 'connect');
+  await once(bob, 'connect');
+  await emitWithAck(alice, 'room:create', { roomId: options.roomId, smallBlind: 10, bigBlind: 20 });
+  await emitWithAck(alice, 'room:join', { roomId: options.roomId, playerId: 'p0', playerName: 'Alice', seatIndex: 0, stack: 1000 });
+  await emitWithAck(bob, 'room:join', { roomId: options.roomId, playerId: 'p1', playerName: 'Bob', seatIndex: 1, stack: 1000 });
+  const startAck = await emitWithAck(alice, 'game:start', { roomId: options.roomId, buttonMarkerSeat: 0 });
+  assert.deepEqual(startAck, { ok: true });
+  return { url, alice, bob };
+}
+
+async function rejoinAsAlice(t: { after: (fn: () => unknown) => void }, url: string, roomId: string) {
+  const socket = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => socket.close());
+  await once(socket, 'connect');
+  const roomState = waitForRoomState(socket, (payload) => payload.roomId === roomId);
+  const ack = await emitWithAck(socket, 'room:join', { roomId, playerId: 'p0', playerName: 'Alice', stack: 1000 });
+  assert.deepEqual(ack, { ok: true, roomId, playerCount: 2 });
+  return roomState;
+}
+
+test('a player who refreshes between hands keeps their seat, stack, and host role', async (t) => {
+  const { url, alice, bob } = await seatHeadsUpPair(t, { roomId: 'AAAAGT' });
+  const handEnd = waitForState(bob, (payload) => payload.hand.phase === 'hand_end');
+  await emitWithAck(alice, 'game:action', { roomId: 'AAAAGT', playerId: 'p0', type: 'fold', seq: 1 });
+  await handEnd;
+
+  alice.close();
+  await sleep(50);
+
+  const roomState = await rejoinAsAlice(t, url, 'AAAAGT');
+  assert.equal(roomState.players.find((player: { id: string }) => player.id === 'p0')?.stack, 990);
+  assert.equal(roomState.hostPlayerId, 'p0');
+});
+
+test('a player whose hand ends while they are refreshing keeps their seat', async (t) => {
+  const { url, alice, bob } = await seatHeadsUpPair(t, { roomId: 'AAAAGU', actionTimeoutMs: 40 });
+  const handEnd = waitForState(bob, (payload) => payload.hand.phase === 'hand_end');
+
+  // Alice is first to act; she drops and the action timer folds her hand before she is back.
+  alice.close();
+  await handEnd;
+  await sleep(50);
+
+  const roomState = await rejoinAsAlice(t, url, 'AAAAGU');
+  assert.equal(roomState.players.find((player: { id: string }) => player.id === 'p0')?.stack, 990);
 });
