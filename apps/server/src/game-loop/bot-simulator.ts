@@ -1,6 +1,6 @@
 import { chooseBotAction } from '@aipoker/bot-engine';
 import { applyAction, initializeHand, type HandActionRecord, type HandState, type PlayerActionInput } from '@aipoker/game-engine';
-import type { BotAction, BotDecisionContext, BotPersonality, BotPosition } from '@aipoker/shared';
+import { getRuleBotPersonality, type BotAction, type BotDecisionContext, type BotPersonality, type BotPosition } from '@aipoker/shared';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -698,7 +698,10 @@ function createSimulationRoom(input: {
         if (!seat.personality) {
           throw new Error(`Missing bot personality for simulation seat ${seat.id}`);
         }
-        const runtimePlayer: RuntimePlayer = { ...basePlayer, botStrategy: seat.personality };
+        const runtimePlayer: RuntimePlayer = {
+          ...basePlayer,
+          botConfig: { kind: 'rule', personality: seat.personality },
+        };
         return [seat.id, runtimePlayer];
       }
 
@@ -776,7 +779,7 @@ function playSimulatedHand(input: {
     }
     const isFirstPreflopDecision = context.phase === 'preflop' && isFirstPreflopDecisionForPlayer(room.hand, actor.id);
     const action = actor.isBot
-      ? chooseBotAction(context, actor.botStrategy ?? 'fish', rng, {
+      ? chooseBotAction(context, actor.botConfig ? (getRuleBotPersonality(actor.botConfig) ?? 'fish') : 'fish', rng, {
           preflopConsecutiveFolds: getBotPreflopFoldStreak(room, actor.id),
           isFirstPreflopDecision,
         })

@@ -1,50 +1,39 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { useT, type MessageKey } from '@/i18n';
 import { cn } from '@/lib/utils';
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
 
-const CONNECTION_BANNER_CONFIG = {
-  connecting: {
-    text: '正在连接服务器',
-    tone: 'border-[var(--color-warning)]/35 bg-[rgba(255,152,0,0.18)] text-[#ffc778]',
-  },
-  disconnected: {
-    text: '连接已断开',
-    tone: 'border-[var(--color-error)]/40 bg-[rgba(239,83,80,0.2)] text-[#ffb7b5]',
-  },
-  reconnecting: {
-    text: '正在重新连接',
-    tone: 'border-[var(--color-warning)]/35 bg-[rgba(255,152,0,0.18)] text-[#ffc778]',
-  },
-} as const;
+const CONNECTION_BANNER_CONFIG: Record<Exclude<ConnectionStatus, 'connected'>, { key: MessageKey; tone: string }> = {
+  connecting: { key: 'common.banner.connecting', tone: 'bg-caution/15 text-caution' },
+  disconnected: { key: 'common.banner.disconnected', tone: 'bg-vermilion/20 text-vermilion-hi' },
+  reconnecting: { key: 'common.banner.reconnecting', tone: 'bg-caution/15 text-caution' },
+};
 
 interface ConnectionBannerProps {
   status: ConnectionStatus;
 }
 
+/**
+ * Thin status strip. GameView renders it in flow above the table stage, so it
+ * pushes the stage down instead of floating over the felt.
+ */
 export function ConnectionBanner({ status }: ConnectionBannerProps) {
-  if (status === 'connected') {
-    return null;
-  }
-
+  const t = useT();
+  if (status === 'connected') return null;
   const config = CONNECTION_BANNER_CONFIG[status];
-  if (!config) {
-    return null;
-  }
 
   return (
-    <motion.div
-      initial={{ y: -16, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: -12, opacity: 0 }}
+    <div
+      role="status"
+      data-layout-box="connection-banner"
       className={cn(
-        'fixed left-1/2 top-3 z-[60] -translate-x-1/2 rounded-full border px-4 py-1.5 text-center text-[12px] font-semibold tracking-[0.04em] backdrop-blur-lg',
+        'label-index flex h-7 shrink-0 animate-[table-fade-in_180ms_ease-out] items-center justify-center truncate border-b border-line px-3 text-micro',
         config.tone,
       )}
     >
-      {config.text}
-    </motion.div>
+      {t(config.key)}
+    </div>
   );
 }

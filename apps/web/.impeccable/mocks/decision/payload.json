@@ -1,0 +1,56 @@
+{
+  "title": "Choose the visual world for AiPoker",
+  "question": "The roll assigned Card-Room Print. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Card-Room Print",
+      "kicker": "THE ROLL",
+      "lineage": "classic playing-card printing: engraved card backs, court-card inks, tuck-box index type",
+      "thesis": "The whole table printed like a premium deck: two inks, engraved line, index typography.",
+      "palette": ["#141c2e", "#1d4a3c", "#c8372d", "#f2ece0", "#b89a5e"],
+      "materials": ["engraved guilloche line on deep baize", "ivory card stock for cards and plates only", "court-card vermilion as the single loud ink"],
+      "viewport": "Ink-navy room, deep green baize oval with a faint engraved rosette; the pot sits inside a card-back medallion at center; ivory seat plates with condensed index numerals; action bar bottom-right.",
+      "risk": "Engraving can tip into casino kitsch if the line work is louder than the data.",
+      "raised": [
+        {"from": "operate-b-exposure-record-zone-sheets", "raise": "All neutrals come from one tinted ink ramp (11 steps), no ad-hoc greys."},
+        {"from": "rw-manual-acetate-tab-board", "raise": "A strict seat state vocabulary: to-act, waiting, folded, all-in, winner, each exactly one treatment."},
+        {"from": "pop-culture-shelf-streaming-title-card-wall", "raise": "The acting seat lifts while the rest of the ring dims one step."},
+        {"from": "notation-diagram-systems-labanotation", "raise": "Bets in the hand log carry a bar sized to bet / pot, so sizing reads without arithmetic."},
+        {"from": "vernacular-ephemera-cassette-j-card", "raise": "Every number right-aligned tabular; pot visibly equals the sum of the bets."},
+        {"from": "emigre-bitmap-specimen", "raise": "One display face repeated at fixed scale steps for every number on the table."}
+      ],
+      "html": ".impeccable/mocks/decision/assigned.html"
+    },
+    {
+      "id": "model-pick",
+      "label": "Broadcast Feature Table",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "televised poker graphics: hole-card cam lower thirds, live equity percentages",
+      "thesis": "Play your session as if it were the featured table on a poker broadcast.",
+      "palette": ["#0b0d12", "#16351f", "#ffffff", "#ffcc33", "#e5484d"],
+      "materials": ["black glass name bars", "condensed white broadcast numerals", "per-seat equity strips"],
+      "viewport": "Near-black stage, green felt; each seat is a broadcast lower-third with name, stack, and a live hand-strength strip; coach equity shown like TV win percentages.",
+      "risk": "Familiar: most modern poker clients borrow this look, and live equity on opponents would leak information, so it must show only hero equity until showdown.",
+      "html": ".impeccable/mocks/decision/model-pick.html"
+    },
+    {"id": "emigre-bitmap-specimen", "label": "Bitmap Type Specimen", "verdict": "declined", "lineage": "Emigre bitmap specimens", "thesis": "Pixel display type at poster scale.", "palette": ["#f6f4ef", "#111111", "#ff3b00"], "materials": ["bitmap type", "halftone"], "viewport": "Stacks and pot in coarse pixel numerals.", "risk": "Unreadable at seat-plate sizes.", "case": "Fuses poorly: learners do not identify with type specimens; pixel numerals slow reading.", "kept": "One display face repeated at fixed scale steps."},
+    {"id": "notation-diagram-systems-labanotation", "label": "Labanotation Score", "verdict": "declined", "lineage": "dance notation", "thesis": "Time read upward on a center staff.", "palette": ["#ffffff", "#111111", "#d9d9d9"], "materials": ["score paper", "shaded blocks"], "viewport": "Hand history as a vertical score.", "risk": "Turns the table into a diagram.", "case": "Only the hand log benefits; the table loses clarity.", "kept": "Bet bars sized to bet / pot in the log."},
+    {"id": "pop-culture-shelf-streaming-title-card-wall", "label": "Streaming Title Wall", "verdict": "declined", "lineage": "streaming catalog rows", "thesis": "Opponents as poster tiles that expand on focus.", "palette": ["#0e0e10", "#e50914", "#ffffff"], "materials": ["poster art", "focus scale"], "viewport": "Lobby as rows of bot opponents.", "risk": "No table metaphor; needs artwork we do not have.", "case": "Helps the lobby only.", "kept": "Acting seat lifts, others dim."},
+    {"id": "vernacular-ephemera-cassette-j-card", "label": "Mixtape J-Card", "verdict": "declined", "lineage": "cassette inlays", "thesis": "Sessions as hand-lettered tracklists.", "palette": ["#f4f4f0", "#1f3b8f", "#d22b2b"], "materials": ["ballpoint", "lined inlay"], "viewport": "Hand log inked like a tracklist.", "risk": "Handwriting fights fast reading.", "case": "Fuses poorly with a timed decision screen.", "kept": "Right-aligned tabular totals that reconcile."},
+    {"id": "rw-manual-acetate-tab-board", "label": "Acetate Tab Manual", "verdict": "declined", "lineage": "boxed-software manuals", "thesis": "Panels as hued tab sections with acetate leaves.", "palette": ["#e8742a", "#f2c230", "#2f8f5b", "#2e5cb8"], "materials": ["acetate", "tab rail"], "viewport": "Side panel tabs in section hues.", "risk": "Too many hues compete with suit colors.", "case": "Clashes with the 4-color deck.", "kept": "Strict, minimal state vocabulary."},
+    {"id": "operate-b-exposure-record-zone-sheets", "label": "Darkroom Zone Sheets", "verdict": "declined", "lineage": "darkroom exposure records", "thesis": "An 11-step tonal ramp with hatch density as load.", "palette": ["#1a1a1a", "#7a7a7a", "#e6e6e6", "#d13ad1"], "materials": ["zone ramp", "hatching"], "viewport": "Table rendered in zone greys.", "risk": "Monochrome felt kills suit and state color.", "case": "Loses audience and clarity.", "kept": "Neutrals from one tinted 11-step ramp."}
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "canon": true,
+  "canonCard": {
+    "label": "PokerNow, played straight",
+    "thesis": "The flat online-poker standard, executed at full craft.",
+    "palette": ["#1d1e22", "#2f8f46", "#f3f4f6", "#f2d94e"],
+    "materials": ["flat green felt", "grey rail", "white plates", "yellow bet bubbles"],
+    "viewport": "Charcoal page, flat green oval, white plates, yellow bets, action bar bottom-right.",
+    "risk": "Indistinguishable from PokerNow by design; this is roughly what exists today.",
+    "html": ".impeccable/mocks/decision/canon.html"
+  },
+  "steer": true
+}

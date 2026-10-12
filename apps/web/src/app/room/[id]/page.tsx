@@ -1,13 +1,17 @@
 'use client';
 
-import { use, useCallback, useEffect, useMemo, useRef } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { LocaleToggle } from '@/components/LocaleToggle';
+import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { PracticeProgress } from '@/features/room/components/PracticeProgress';
 import { RoomControlsCard } from '@/features/room/components/RoomControlsCard';
-import { RoomSeatCard } from '@/features/room/components/RoomSeatCard';
-import { RoomStatusCard } from '@/features/room/components/RoomStatusCard';
+import { RoomInviteCard } from '@/features/room/components/RoomInviteCard';
+import { RoomTable } from '@/features/room/components/RoomTable';
+import { Wordmark } from '@/features/room/components/Wordmark';
+import { usePracticeSetup } from '@/features/room/hooks/usePracticeSetup';
 import { useRoomSocket, type RoomJoinIntent } from '@/features/room/hooks/useRoomSocket';
 import { getRoomPageState } from '@/features/room/lib/room-page-state';
 import {
@@ -20,18 +24,19 @@ interface RoomPageProps {
   params: Promise<{ id: string }>;
 }
 
-const MAX_SEATS = 6;
-
 export default function RoomPage({ params }: RoomPageProps) {
   const { id: roomId } = use(params);
   const router = useRouter();
+  const t = useT();
   const searchParams = useSearchParams();
   const user = useAuthStore((state) => state.user);
   const intentParam = searchParams.get('intent');
   const intent: RoomJoinIntent = intentParam === 'create' ? 'create' : 'join';
   const initialIntentRef = useRef<RoomJoinIntent>(intent);
+  const [practiceRequested] = useState(() => searchParams.get('mode') === 'practice' && intent === 'create');
   const hasNavigatedToGameRef = useRef(false);
   const initialIntent = initialIntentRef.current;
+  const [practiceAbandoned, setPracticeAbandoned] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -51,18 +56,31 @@ export default function RoomPage({ params }: RoomPageProps) {
     [router],
   );
 
-  const { roomState, isConnected, isReady, addBot, removeBot, markReady, startGame } = useRoomSocket(
-    roomId,
-    playerId,
-    playerName,
-    { intent: initialIntent, onJoinFailed: handleJoinFailed },
-  );
+  const {
+    roomState,
+    isConnected,
+    isReady,
+    addBot,
+    removeBot,
+    markReady,
+    startGame,
+    requestAddBot,
+    requestReady,
+    requestStart,
+  } = useRoomSocket(roomId, playerId, playerName, { intent: initialIntent, onJoinFailed: handleJoinFailed });
 
+  // Once, early: drop ?intent=create so a refresh joins instead of re-creating. Never after we head to the table.
+  const hasNormalizedIntentRef = useRef(false);
   useEffect(() => {
-    if (!shouldNormalizeCreateIntent(initialIntent, roomState, playerId)) {
+    if (
+      hasNormalizedIntentRef.current
+      || hasNavigatedToGameRef.current
+      || !shouldNormalizeCreateIntent(initialIntent, roomState, playerId)
+    ) {
       return;
     }
 
+    hasNormalizedIntentRef.current = true;
     router.replace(`/room/${roomId}?intent=join`);
   }, [initialIntent, playerId, roomId, roomState, router]);
 
@@ -87,11 +105,19 @@ export default function RoomPage({ params }: RoomPageProps) {
   }, [roomId, roomState?.isPlaying, router]);
 
   const pageState = getRoomPageState(roomState, playerId);
-  const readyHumanCount = pageState.humanPlayers.filter((player) => player.isReady).length;
-  const playerBySeat = useMemo(
-    () => new Map(roomState?.players.map((player) => [player.seatIndex, player]) ?? []),
-    [roomState?.players],
-  );
+  const players = roomState?.players ?? [];
+  const isPlaying = roomState?.isPlaying ?? false;
+
+  const practice = usePracticeSetup({
+    enabled: practiceRequested && !practiceAbandoned,
+    ready: isConnected && pageState.selfPlayer !== null,
+    players,
+    requestAddBot,
+    requestReady,
+    requestStart,
+    onStarted: navigateToGame,
+  });
+  const isPracticeActive = practiceRequested && !practiceAbandoned;
 
   const handleStartGame = useCallback(() => {
     startGame(navigateToGame);
@@ -106,135 +132,86 @@ export default function RoomPage({ params }: RoomPageProps) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-12 top-10 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-12 bottom-10 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+    <div className="flex min-h-dvh flex-col bg-page">
+      <header className="border-b border-line bg-panel">
+        <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center gap-3 px-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            aria-label={t('lobby.room.backAria')}
+            className="-ml-2 flex size-11 touch-manipulation select-none items-center justify-center rounded-[var(--radius-control)] text-text-2 [-webkit-tap-highlight-color:transparent] transition-[color,background-color,transform] duration-[var(--duration-fast)] ease-out hover:bg-panel-2 hover:text-text active:scale-95 motion-reduce:transition-none"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <Wordmark className="shrink-0" />
+          <span
+            aria-label={t('lobby.room.roomCode', { code: roomId })}
+            className="font-index hidden h-7 items-center rounded-[var(--radius-stamp)] border border-brass/50 px-2 text-body font-semibold tracking-caps-wide text-brass min-[420px]:inline-flex"
+          >
+            {roomId.slice(0, 14)}
+          </span>
 
-      <header className="sticky top-0 z-20 border-b border-white/6 bg-[var(--color-bg-deep)]/70 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1240px] items-center justify-between px-5 py-4 sm:px-8 sm:py-5">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <motion.button
-              whileHover={{ y: -1.5, scale: 1.015 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => router.push('/')}
-              aria-label="返回大厅"
-              className={cn(
-                'group relative flex h-10 items-center gap-2.5 overflow-hidden rounded-[12px] border px-3.5 sm:h-11',
-                'border-white/14 bg-[rgba(12,20,31,0.84)] text-[var(--color-text-secondary)]',
-                'transition-all duration-200',
-                'shadow-[var(--shadow-hairline),0_8px_18px_rgba(0,0,0,0.32)]',
-                'hover:border-[var(--color-gold)]/42 hover:bg-[rgba(16,25,38,0.9)] hover:text-[var(--color-text-primary)] hover:shadow-[var(--shadow-hairline),0_12px_24px_rgba(0,0,0,0.4)]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2d58a]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-deep)]',
-              )}
-            >
-              <span className="pointer-events-none absolute inset-x-2 top-0 h-px bg-gradient-to-r from-transparent via-white/24 to-transparent" />
-              <span className="relative flex h-7 w-7 items-center justify-center rounded-[9px] border border-white/12 bg-white/[0.03] text-[var(--color-gold)] transition-all duration-200 group-hover:border-[var(--color-gold)]/35 group-hover:bg-[var(--color-gold)]/10">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M14.5 6.5L9 12L14.5 17.5"
-                    stroke="currentColor"
-                    strokeWidth="2.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <span role="status" className="flex items-center gap-2 text-body text-text-2">
+              <span aria-hidden className={cn('size-2 rounded-full', isConnected ? 'bg-positive' : 'bg-vermilion')} />
+              <span className="hidden sm:inline">
+                {t(isConnected ? 'common.connection.connected' : 'common.connection.connecting')}
               </span>
-              <span className="relative text-[12px] font-semibold tracking-[0.08em] text-[var(--color-text-primary)] sm:text-[13px]">
-                返回大厅
-              </span>
-            </motion.button>
-
-            <div className="flex items-center gap-2">
-              <span className="text-lg text-[var(--color-gold)]">♠</span>
-              <span className="font-display text-[20px] leading-none text-[var(--color-text-primary)]">AiPoker</span>
-            </div>
-            <div className="h-5 w-px bg-white/10" />
-            <span className="hidden font-mono text-[12px] tracking-[0.08em] text-[var(--color-text-muted)] sm:inline">
-              {roomId.slice(0, 14)}
             </span>
-            <span className="hidden rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1 text-[11px] text-[var(--color-text-secondary)] sm:inline-flex">
-              {initialIntent === 'create' ? '创建模式' : '加入模式'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <div
-              className={cn(
-                'h-2.5 w-2.5 rounded-full transition-colors',
-                isConnected ? 'bg-[var(--color-success)]' : 'bg-[var(--color-error)]',
-              )}
-            />
-            <span className="hidden text-[13px] text-[var(--color-text-secondary)] sm:inline">
-              {isConnected ? '已连接' : '连接中…'}
-            </span>
+            <LocaleToggle />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1240px] px-5 pb-10 pt-8 sm:px-8 sm:pb-12 lg:px-12 lg:pt-10">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
-          <div className="space-y-5">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <h1 className="font-display text-[38px] leading-[1.02] text-[var(--color-text-primary)] sm:text-[44px]">
-                  训练室配置
-                </h1>
-                <p className="mt-2 text-[15px] leading-[1.7] text-[var(--color-text-secondary)]">
-                  先安排玩家和机器人风格，开始前确保真人玩家全部准备。
-                </p>
-              </div>
-              {!roomState?.isPlaying && (
-                <span className="hidden rounded-full border border-white/12 bg-white/[0.03] px-3 py-1 text-[12px] text-[var(--color-text-muted)] sm:inline-flex">
-                  点击空位添加机器人
-                </span>
-              )}
-            </div>
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-4 sm:px-6 sm:py-6 lg:py-8">
+        <div className="mb-3 flex items-baseline justify-between gap-3 sm:mb-4">
+          <h1 className="font-index text-title font-bold tracking-[0.02em] text-text">
+            {t('lobby.room.title')}
+          </h1>
+          {!isPlaying && !isPracticeActive && (
+            <span className="text-body text-text-3">{t('lobby.room.hint')}</span>
+          )}
+        </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
-              {Array.from({ length: MAX_SEATS }, (_, seatIndex) => (
-                <RoomSeatCard
-                  key={seatIndex}
-                  seatIndex={seatIndex}
-                  player={playerBySeat.get(seatIndex) ?? null}
-                  currentUserId={playerId}
-                  isPlaying={roomState?.isPlaying ?? false}
-                  onAddBot={addBot}
-                  onRemoveBot={removeBot}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
+          <section aria-label={t('lobby.room.tableLabel')}>
+            <RoomTable
+              players={players}
+              currentUserId={playerId}
+              isPlaying={isPlaying || isPracticeActive}
+              onAddBot={addBot}
+              onRemoveBot={removeBot}
+            />
+          </section>
+
+          <aside
+            data-layout-box="room-panel"
+            className="overflow-hidden rounded-[var(--radius-panel)] border border-line bg-panel lg:sticky lg:top-6"
+          >
+            {isPracticeActive ? (
+              <PracticeProgress setup={practice} isConnected={isConnected} onManual={() => setPracticeAbandoned(true)} />
+            ) : (
+              <>
+                <RoomControlsCard
+                  isPlaying={isPlaying}
+                  isConnected={isConnected}
+                  isReady={isReady}
+                  canSelfStart={pageState.canSelfStart}
+                  canStart={pageState.canStart}
+                  hasEnoughPlayers={pageState.hasEnoughPlayers}
+                  allHumansReady={pageState.allHumansReady}
+                  isTableFinished={pageState.isTableFinished}
+                  onMarkReady={markReady}
+                  onStartGame={handleStartGame}
+                  onEnterGame={handleEnterGame}
                 />
-              ))}
-            </div>
-          </div>
-
-          <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-            <RoomStatusCard
-              playerCount={roomState?.playerCount ?? 0}
-              readyCount={readyHumanCount}
-              activeStackPlayerCount={pageState.activeStackPlayerCount}
-              isPlaying={roomState?.isPlaying ?? false}
-            />
-            <RoomControlsCard
-              roomId={roomId}
-              isPlaying={roomState?.isPlaying ?? false}
-              isConnected={isConnected}
-              isReady={isReady}
-              canSelfStart={pageState.canSelfStart}
-              canStart={pageState.canStart}
-              hasEnoughPlayers={pageState.hasEnoughPlayers}
-              allHumansReady={pageState.allHumansReady}
-              isTableFinished={pageState.isTableFinished}
-              onMarkReady={markReady}
-              onStartGame={handleStartGame}
-              onEnterGame={handleEnterGame}
-            />
+                <RoomInviteCard roomId={roomId} />
+              </>
+            )}
           </aside>
-        </section>
+        </div>
       </main>
     </div>
   );

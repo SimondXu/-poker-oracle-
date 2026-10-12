@@ -70,9 +70,7 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
   const shouldShowResultModal = shouldShowWinnerAnnouncement(input.handResult?.phase);
   const shouldRunAwardAnimation = shouldAnimatePotAward(input.handResult?.phase);
 
-  const potFromSettledPots = input.hand?.pots.reduce((sum, pot) => sum + pot.amount, 0) ?? 0;
-  const potFromCommitted = input.hand?.players.reduce((sum, player) => sum + player.handCommitted, 0) ?? 0;
-  const pot = Math.max(potFromSettledPots, potFromCommitted);
+  const pot = input.hand ? getHandPotTotal(input.hand) : 0;
   const championPlayerId = input.championInfo?.id;
   const championStack =
     championPlayerId
@@ -114,6 +112,17 @@ export function getGameScreenState(input: GetGameScreenStateInput): GameScreenSt
     payoutAmountsByPlayer,
     trainingData,
   };
+}
+
+/**
+ * Total chips in play this hand, including bets still in front of players.
+ * Server `pots` may lag behind live street bets, so take the larger of the
+ * settled pots and the sum of every player's `handCommitted`.
+ */
+export function getHandPotTotal(hand: Pick<HandState, 'pots' | 'players'>): number {
+  const potFromSettledPots = hand.pots.reduce((sum, pot) => sum + pot.amount, 0);
+  const potFromCommitted = hand.players.reduce((sum, player) => sum + player.handCommitted, 0);
+  return Math.max(potFromSettledPots, potFromCommitted);
 }
 
 export function canAdvanceToNextHand(input: {

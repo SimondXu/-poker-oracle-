@@ -4,11 +4,13 @@ import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { getSocket } from '@/lib/socket';
 import { useGameStore } from '@/stores/gameStore';
-import { getGameStartErrorMessage } from '../lib/game-start-errors';
+import { useT } from '@/i18n';
+import { getGameErrorKey } from '../lib/game-errors';
 import {
   canRequestNextHand,
   mapHandResultToStore,
   shouldIgnoreNextHandError,
+  startsNewHand,
   type NextHandRequestSource,
 } from '../lib/game-socket-controller';
 import { useGameSocketTransport } from './useGameSocketTransport';
@@ -24,6 +26,7 @@ export function useGameSocket(
   playerName: string,
   enabled = true,
 ) {
+  const t = useT();
   const seqRef = useRef(0);
   const setHandState = useGameStore((state) => state.setHandState);
   const setValidActions = useGameStore((state) => state.setValidActions);
@@ -51,7 +54,7 @@ export function useGameSocket(
       const hand = 'hand' in payload ? payload.hand : payload;
       const version = 'stateVersion' in payload ? payload.stateVersion : undefined;
 
-      if (hand.phase === 'betting_preflop') {
+      if (startsNewHand(useGameStore.getState().hand, hand)) {
         clearPhaseTimers();
         clearHandResult();
         clearNextHandRequested();
@@ -80,6 +83,7 @@ export function useGameSocket(
         mapHandResultToStore({
           result: payload,
           currentHand,
+          fallbackPlayerName: t('common.game.player.fallbackName'),
         }),
       );
       schedulePhaseTimers();
@@ -90,19 +94,21 @@ export function useGameSocket(
       clearValidActions,
       schedulePhaseTimers,
       setHandResult,
+      t,
     ],
   );
 
   const handleDisconnected = useCallback(() => {
     setConnectionStatus('disconnected');
     clearNextHandRequested();
-    toast.warning('连接断开，正在重连...', { id: 'reconnect' });
-  }, [clearNextHandRequested, setConnectionStatus]);
+    toast.warning(t('common.game.toast.reconnecting'), { id: 'reconnect' });
+  }, [clearNextHandRequested, setConnectionStatus, t]);
 
   const handleAuthError = useCallback(() => {
-    toast.error('会话初始化失败，请刷新重试');
-    setError('会话初始化失败');
-  }, [setError]);
+    const message = t('common.game.toast.sessionFailed');
+    toast.error(message);
+    setError(message);
+  }, [setError, t]);
 
   useEffect(() => {
     if (!enabled) {
@@ -125,7 +131,7 @@ export function useGameSocket(
     },
     onReconnected: () => {
       setConnectionStatus('connected');
-      toast.success('已重新连接', { id: 'reconnect' });
+      toast.success(t('common.game.toast.reconnected'), { id: 'reconnect' });
     },
     onGameState: handleGameState,
     onActionRequired: handleActionRequired,
@@ -141,7 +147,7 @@ export function useGameSocket(
   const sendAction = useCallback(
     (type: ActionType, amount?: number) => {
       if (!enabled || !playerId) {
-        toast.error('玩家身份无效，请返回大厅重试');
+        toast.error(t('common.game.toast.invalidPlayer'));
         return;
       }
 
@@ -162,7 +168,7 @@ export function useGameSocket(
         },
         (res: { ok: boolean; error?: string }) => {
           if (!res.ok) {
-            toast.error(res.error ?? '动作失败，请重试');
+            toast.error(t(getGameErrorKey(res.error, 'common.game.toast.actionFailed')));
             if (validActions) {
               useGameStore.setState({ validActions, timerStartedAt, timerDurationMs });
             }
@@ -170,7 +176,7 @@ export function useGameSocket(
         },
       );
     },
-    [enabled, playerId, roomId],
+    [enabled, playerId, roomId, t],
   );
 
   const startNextHand = useCallback(
@@ -190,7 +196,7 @@ export function useGameSocket(
             if (timeoutError || !res) {
               clearNextHandRequested();
               if (source === 'manual') {
-                toast.error('请求超时，请稍后重试');
+                toast.error(t('common.game.toast.requestTimeout'));
               }
               return;
             }
@@ -204,18 +210,18 @@ export function useGameSocket(
               return;
             }
 
-            toast.error(getGameStartErrorMessage(res.error, '开始下一手失败'));
+            toast.error(t(getGameErrorKey(res.error, 'common.game.toast.nextHandFailed')));
           },
         );
 
       return true;
     },
-    [clearNextHandRequested, enabled, markNextHandRequested, roomId],
+    [clearNextHandRequested, enabled, markNextHandRequested, roomId, t],
   );
 
   const spectateAfterElimination = useCallback(async (): Promise<boolean> => {
     if (!enabled || !playerId) {
-      toast.error('玩家身份无效，请返回大厅重试');
+      toast.error(t('common.game.toast.invalidPlayer'));
       return false;
     }
 
@@ -240,14 +246,17 @@ export function useGameSocket(
       return true;
     }
 
-    const message = result.error === 'timeout'
-      ? '进入观战超时，请稍后重试'
-      : result.error === 'not_eliminated'
-      ? '当前还不能进入观战'
-      : '进入观战失败，请稍后重试';
-    toast.error(message);
+    toast.error(
+      t(
+        result.error === 'timeout'
+          ? 'common.game.toast.spectateTimeout'
+          : result.error === 'not_eliminated'
+          ? 'common.game.toast.spectateNotAllowed'
+          : getGameErrorKey(result.error, 'common.game.toast.spectateFailed'),
+      ),
+    );
     return false;
-  }, [enabled, playerId, roomId]);
+  }, [enabled, playerId, roomId, t]);
 
   return { sendAction, startNextHand, spectateAfterElimination };
 }

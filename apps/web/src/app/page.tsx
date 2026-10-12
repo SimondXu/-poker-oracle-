@@ -1,9 +1,15 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { LocaleToggle } from '@/components/LocaleToggle';
+import { HomeScene } from '@/features/room/components/HomeScene';
+import { Wordmark } from '@/features/room/components/Wordmark';
+import { readLastUsername, saveLastUsername } from '@/features/room/lib/last-username';
+import { codeField, fieldLabel, primaryButtonLarge, secondaryButton, textField } from '@/features/room/lib/room-ui';
+import { useT } from '@/i18n';
 import { ensureGuestSession } from '@/lib/auth-session';
+import { cn } from '@/lib/utils';
 import {
   generateRoomCode,
   isValidRoomCode,
@@ -12,241 +18,202 @@ import {
 } from '@/lib/room-code';
 import { useAuthStore } from '@/stores/authStore';
 
-type PendingAction = 'create' | 'join' | null;
-
-function EntryCard({
-  title,
-  tag,
-  children,
-}: {
-  title: string;
-  tag: string;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      className="relative overflow-hidden rounded-[24px] border border-white/14 bg-[rgba(8,15,25,0.84)] p-6 sm:p-7"
-      style={{ boxShadow: 'var(--shadow-float), var(--shadow-hairline)' }}
-    >
-      <div className="pointer-events-none absolute inset-x-7 top-0 h-px bg-gradient-to-r from-transparent via-[var(--color-gold)]/40 to-transparent" />
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="font-display text-[36px] leading-[0.96] text-[var(--color-text-primary)] sm:text-[40px]">
-          {title}
-        </h2>
-        <span className="rounded-full border border-white/12 bg-white/[0.04] px-3 py-1 text-[11px] tracking-[0.12em] text-[var(--color-text-secondary)]">
-          {tag}
-        </span>
-      </div>
-      {children}
-    </section>
-  );
-}
+type PendingAction = 'practice' | 'create' | 'join' | null;
+type FormError = 'name' | 'network' | null;
 
 export default function HomePage() {
+  const t = useT();
   const router = useRouter();
-  const { user, setUser } = useAuthStore();
-  const [createName, setCreateName] = useState(user?.username ?? '');
-  const [joinName, setJoinName] = useState(user?.username ?? '');
-  const [joinRoomCodeInput, setJoinRoomCodeInput] = useState('');
-  const [joinRoomCodeTouched, setJoinRoomCodeTouched] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [codeTouched, setCodeTouched] = useState(false);
+  const [pending, setPending] = useState<PendingAction>(null);
+  const [formError, setFormError] = useState<FormError>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const practiceRef = useRef<HTMLButtonElement>(null);
+  const nameTouchedRef = useRef(false);
 
-  const normalizedJoinRoomCode = useMemo(
-    () => normalizeRoomCode(joinRoomCodeInput),
-    [joinRoomCodeInput],
-  );
-  const isJoinRoomCodeValid = isValidRoomCode(normalizedJoinRoomCode);
-  const canCreate = createName.trim().length > 0 && pendingAction === null;
-  const canJoin = joinName.trim().length > 0 && isJoinRoomCodeValid && pendingAction === null;
+  // Remember the last name. Loaded after mount so the server render and first client render match.
+  useEffect(() => {
+    const remembered = readLastUsername() ?? user?.username ?? '';
+    if (remembered && !nameTouchedRef.current) {
+      setName(remembered);
+    }
+    // Keyboard devices: land on the next step. Touch devices: do not pop the keyboard.
+    if (window.matchMedia('(pointer: fine)').matches) {
+      (remembered ? practiceRef.current : nameRef.current)?.focus({ preventScroll: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount
+  }, []);
 
-  const joinRoomCodeError =
-    joinRoomCodeTouched && normalizedJoinRoomCode.length > 0 && !isJoinRoomCodeValid
-      ? `房间号需为 ${ROOM_CODE_LENGTH} 位，且仅可使用大写字母和数字`
-      : null;
+  const isCodeValid = isValidRoomCode(code);
+  const codeError = codeTouched && !isCodeValid;
+  const busy = pending !== null;
 
-  const bootstrapGuest = useCallback(
-    async (username: string) => {
-      const guestUser = await ensureGuestSession(username);
-      setUser({ id: guestUser.id, username: guestUser.username, isGuest: true, chips: 1000 });
+  const enter = useCallback(
+    async (kind: Exclude<PendingAction, null>, targetCode: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        setFormError('name');
+        nameRef.current?.focus();
+        return;
+      }
+
+      setPending(kind);
+      setFormError(null);
+      try {
+        const guest = await ensureGuestSession(trimmed);
+        setUser({ id: guest.id, username: guest.username, isGuest: true, chips: 1000 });
+        saveLastUsername(trimmed);
+        const query = kind === 'join' ? 'intent=join' : kind === 'practice' ? 'intent=create&mode=practice' : 'intent=create';
+        router.push(`/room/${targetCode}?${query}`);
+      } catch {
+        setPending(null);
+        setFormError('network');
+      }
     },
-    [setUser],
+    [name, router, setUser],
   );
 
-  const handleCreateRoom = useCallback(async () => {
-    const trimmedName = createName.trim();
-    if (!trimmedName || pendingAction) return;
+  const onPractice = (event: FormEvent) => {
+    event.preventDefault();
+    if (!busy) void enter('practice', generateRoomCode());
+  };
 
-    setPendingAction('create');
-    try {
-      await bootstrapGuest(trimmedName);
-      const roomCode = generateRoomCode();
-      router.push(`/room/${roomCode}?intent=create`);
-    } finally {
-      setPendingAction(null);
-    }
-  }, [bootstrapGuest, createName, pendingAction, router]);
+  const onCreate = () => {
+    if (!busy) void enter('create', generateRoomCode());
+  };
 
-  const handleJoinRoom = useCallback(async () => {
-    const trimmedName = joinName.trim();
-    const roomCode = normalizeRoomCode(joinRoomCodeInput);
-    setJoinRoomCodeInput(roomCode);
-    setJoinRoomCodeTouched(true);
-
-    if (!trimmedName || !isValidRoomCode(roomCode) || pendingAction) {
-      return;
-    }
-
-    setPendingAction('join');
-    try {
-      await bootstrapGuest(trimmedName);
-      router.push(`/room/${roomCode}?intent=join`);
-    } finally {
-      setPendingAction(null);
-    }
-  }, [bootstrapGuest, joinName, joinRoomCodeInput, pendingAction, router]);
+  const onJoin = (event: FormEvent) => {
+    event.preventDefault();
+    setCodeTouched(true);
+    if (!busy && isCodeValid) void enter('join', code);
+  };
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 opacity-70">
-        <div className="absolute -left-28 top-20 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(255,215,0,0.2),transparent_70%)] blur-2xl" />
-        <div className="absolute -right-20 bottom-10 h-72 w-72 rounded-full bg-[radial-gradient(circle,rgba(54,107,175,0.2),transparent_72%)] blur-3xl" />
-      </div>
+    <div className="flex min-h-dvh flex-col bg-page">
+      <header className="border-b border-line bg-panel">
+        <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center justify-between px-4 sm:px-6">
+          <Wordmark />
+          <LocaleToggle />
+        </div>
+      </header>
 
-      <main className="mx-auto flex min-h-screen w-full max-w-[1260px] items-center px-6 py-14 sm:px-10 lg:px-14">
-        <section className="grid w-full gap-9 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-11">
-          <div className="space-y-8 lg:pr-4">
-            <span className="inline-flex rounded-full border border-[var(--color-gold)]/28 bg-[var(--color-gold)]/10 px-4 py-1.5 text-[11px] uppercase tracking-[0.22em] text-[var(--color-gold)]">
-              Free Mode Lobby
-            </span>
+      <main className="mx-auto grid w-full max-w-[1280px] flex-1 content-start gap-6 px-4 pb-10 pt-5 sm:px-6 sm:pt-8 lg:grid-cols-[minmax(380px,460px)_minmax(0,1fr)] lg:content-center lg:items-center lg:gap-14 lg:py-10">
+        <div className="lg:order-2">
+          <HomeScene />
+        </div>
 
-            <div className="space-y-4">
-              <h1 className="font-display text-[56px] leading-[0.9] text-[var(--color-text-primary)] sm:text-[66px]">
-                Ai<span className="text-[var(--color-gold)]">Poker</span>
-              </h1>
-              <p className="max-w-[35rem] text-[25px] leading-tight text-[#d5deea] sm:text-[30px]">
-                自由模式训练室，专注联机实战与连续对局。
-              </p>
-              <p className="max-w-[35rem] text-[17px] leading-[1.7] text-[#b4c0cf]">
-                当前版本只保留最直接的两种入口：创建房间，或输入房间号加入。输入后立即进入等待室，不需要登录注册流程。
-              </p>
+        <div data-layout-box="home-form" className="w-full max-w-[460px] justify-self-center lg:justify-self-start">
+          <h1 className="font-index text-balance text-title font-bold tracking-[0.005em] text-text sm:text-display">
+            {t('lobby.home.title')}
+          </h1>
+
+          <form onSubmit={onPractice} noValidate className="mt-section space-y-3">
+            <div className="space-y-snug">
+              <label htmlFor="home-name" className={fieldLabel}>
+                {t('lobby.home.nameLabel')}
+              </label>
+              <input
+                id="home-name"
+                ref={nameRef}
+                type="text"
+                value={name}
+                onChange={(event) => {
+                  nameTouchedRef.current = true;
+                  setName(event.target.value);
+                  if (formError === 'name') setFormError(null);
+                }}
+                placeholder={t('lobby.home.namePlaceholder')}
+                data-testid="home-username"
+                maxLength={20}
+                autoComplete="nickname"
+                autoCapitalize="words"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="go"
+                aria-invalid={formError === 'name' ? true : undefined}
+                aria-describedby={formError ? 'home-form-error' : undefined}
+                className={cn(textField, formError === 'name' && 'border-vermilion focus:border-vermilion')}
+              />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                {
-                  title: '入口 1：创建房间',
-                  desc: '输入用户名后生成 6 位房间号，作为本局邀请码。',
-                },
-                {
-                  title: '入口 2：加入房间',
-                  desc: '输入用户名 + 房间号加入；房间不存在会直接提示。',
-                },
-              ].map((item, index) => (
-                <article
-                  key={item.title}
-                  className="rounded-[18px] border border-white/10 bg-[rgba(16,24,34,0.74)] px-5 py-4"
-                  style={{
-                    boxShadow: 'var(--shadow-hairline)',
-                    animation: 'fade-in-up 440ms ease-out both',
-                    animationDelay: `${index * 120 + 120}ms`,
+            <p
+              id="home-form-error"
+              role="alert"
+              className={cn('text-body text-vermilion-hi', !formError && 'hidden')}
+            >
+              {formError === 'name' ? t('lobby.home.nameRequired') : formError === 'network' ? t('lobby.home.errorNetwork') : ''}
+            </p>
+
+            <div className="space-y-snug">
+              <button
+                ref={practiceRef}
+                type="submit"
+                disabled={busy}
+                data-testid="home-practice"
+                className={primaryButtonLarge}
+              >
+                {pending === 'practice' ? t('lobby.home.practicePending') : t('lobby.home.practice')}
+                {pending !== 'practice' && (
+                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+                    <path d="M3 9h11M10 4.5L14.5 9 10 13.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+              <p className="text-body text-text-3">{t('lobby.home.practiceCaption')}</p>
+            </div>
+          </form>
+
+          <div className="mt-6 space-y-gutter border-t border-brass/25 pt-6">
+            <button type="button" onClick={onCreate} disabled={busy} data-testid="home-submit" className={secondaryButton}>
+              {pending === 'create' ? t('lobby.home.createPending') : t('lobby.home.create')}
+            </button>
+
+            <form onSubmit={onJoin} noValidate className="space-y-snug">
+              <label htmlFor="home-code" className={fieldLabel}>
+                {t('lobby.home.join')}
+              </label>
+              <div className="flex gap-snug">
+                <input
+                  id="home-code"
+                  type="text"
+                  value={code}
+                  onChange={(event) => {
+                    const next = normalizeRoomCode(event.target.value);
+                    setCode(next);
+                    if (isValidRoomCode(next)) setCodeTouched(false);
                   }}
-                >
-                  <h2 className="text-[14px] font-semibold text-[#dce4ef]">{item.title}</h2>
-                  <p className="mt-1.5 text-[13px] leading-[1.65] text-[#9ca9bb]">{item.desc}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            <EntryCard title="创建房间" tag="入口 1">
-              <div className="space-y-4">
-                <label className="block space-y-2">
-                  <span className="block text-[11px] uppercase tracking-[0.18em] text-[#8594a8]">用户名</span>
-                  <input
-                    type="text"
-                    value={createName}
-                    onChange={(event) => setCreateName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        void handleCreateRoom();
-                      }
-                    }}
-                    placeholder="例如：Edison"
-                    maxLength={20}
-                    autoFocus
-                    className="h-[52px] w-full rounded-[14px] border border-white/15 bg-white/[0.05] px-4 text-[16px] text-[#edf3fb] outline-none transition-all placeholder:text-[#6f8097] focus:border-[var(--color-gold)]/60 focus:bg-white/[0.08]"
-                  />
-                </label>
-
-                <button
-                  onClick={() => void handleCreateRoom()}
-                  disabled={!canCreate}
-                  className="group flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] border border-[#f6d57a]/55 bg-gradient-to-r from-[#c6a33d] via-[#dfbe65] to-[#efcf7e] px-4 text-[16px] font-semibold tracking-[0.03em] text-[#241600] shadow-[0_10px_30px_rgba(214,178,84,0.25)] transition-all hover:brightness-105 hover:shadow-[0_16px_36px_rgba(214,178,84,0.35)] disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {pendingAction === 'create' ? '创建中...' : '创建并进入房间'}
-                  <span className="transition-transform group-hover:translate-x-0.5">→</span>
+                  onBlur={() => setCodeTouched(code.length > 0)}
+                  placeholder={t('lobby.home.joinPlaceholder')}
+                  maxLength={ROOM_CODE_LENGTH}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="go"
+                  aria-invalid={codeError ? true : undefined}
+                  aria-describedby="home-code-hint"
+                  className={cn(codeField, 'min-w-0 flex-1', codeError && 'border-vermilion focus:border-vermilion')}
+                />
+                <button type="submit" disabled={busy} className={cn(secondaryButton, 'w-[96px] shrink-0 px-3')}>
+                  {pending === 'join' ? t('lobby.home.joinPending') : t('lobby.home.joinSubmit')}
                 </button>
               </div>
-            </EntryCard>
-
-            <EntryCard title="加入房间" tag="入口 2">
-              <div className="space-y-4">
-                <label className="block space-y-2">
-                  <span className="block text-[11px] uppercase tracking-[0.18em] text-[#8594a8]">用户名</span>
-                  <input
-                    type="text"
-                    value={joinName}
-                    onChange={(event) => setJoinName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        void handleJoinRoom();
-                      }
-                    }}
-                    placeholder="例如：Alice"
-                    maxLength={20}
-                    className="h-[52px] w-full rounded-[14px] border border-white/15 bg-white/[0.05] px-4 text-[16px] text-[#edf3fb] outline-none transition-all placeholder:text-[#6f8097] focus:border-[var(--color-gold)]/60 focus:bg-white/[0.08]"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="block text-[11px] uppercase tracking-[0.18em] text-[#8594a8]">房间号</span>
-                  <input
-                    type="text"
-                    value={normalizedJoinRoomCode}
-                    onChange={(event) => {
-                      setJoinRoomCodeInput(event.target.value);
-                      setJoinRoomCodeTouched(true);
-                    }}
-                    onBlur={() => setJoinRoomCodeTouched(true)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        void handleJoinRoom();
-                      }
-                    }}
-                    placeholder="例如：A3K9Q2"
-                    maxLength={ROOM_CODE_LENGTH}
-                    autoComplete="off"
-                    className="h-[52px] w-full rounded-[14px] border border-white/15 bg-white/[0.05] px-4 font-mono text-[17px] tracking-[0.22em] text-[#edf3fb] uppercase outline-none transition-all placeholder:tracking-[0.08em] placeholder:text-[#6f8097] focus:border-[var(--color-gold)]/60 focus:bg-white/[0.08]"
-                  />
-                </label>
-
-                <p className="min-h-[20px] text-[12px] leading-[1.5] text-[#a7b4c6]">
-                  {joinRoomCodeError ?? `房间号为 ${ROOM_CODE_LENGTH} 位（自动大写）`}
-                </p>
-
-                <button
-                  onClick={() => void handleJoinRoom()}
-                  disabled={!canJoin}
-                  className="group flex h-[52px] w-full items-center justify-center gap-2 rounded-[14px] border border-white/18 bg-[linear-gradient(140deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] px-4 text-[16px] font-semibold tracking-[0.03em] text-[var(--color-text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_12px_28px_rgba(0,0,0,0.35)] transition-all hover:border-[var(--color-gold)]/38 hover:text-[var(--color-gold)] disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {pendingAction === 'join' ? '加入中...' : '加入房间'}
-                  <span className="transition-transform group-hover:translate-x-0.5">→</span>
-                </button>
-              </div>
-            </EntryCard>
+              <p
+                id="home-code-hint"
+                role={codeError ? 'alert' : undefined}
+                className={cn('text-body', codeError ? 'text-vermilion-hi' : 'text-text-3')}
+              >
+                {codeError
+                  ? t('lobby.home.joinError', { length: ROOM_CODE_LENGTH })
+                  : t('lobby.home.joinHint', { length: ROOM_CODE_LENGTH })}
+              </p>
+            </form>
           </div>
-        </section>
+        </div>
       </main>
     </div>
   );

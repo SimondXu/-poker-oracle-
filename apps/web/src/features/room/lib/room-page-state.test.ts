@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getRoomPageState } from './room-page-state.ts';
+import { getRoomPageState, getRoomStatusKey, type RoomStatusInput } from './room-page-state.ts';
 
 const tableSnapshot = {
   activeStackPlayerCount: 2,
@@ -53,4 +53,25 @@ test('getRoomPageState blocks start when the current player has been eliminated'
 
   assert.equal(state.canSelfStart, false);
   assert.equal(state.canStart, false);
+});
+
+const readyToStart: RoomStatusInput = {
+  isConnected: true,
+  isPlaying: false,
+  isTableFinished: false,
+  canSelfStart: true,
+  hasEnoughPlayers: true,
+  isReady: true,
+  allHumansReady: true,
+};
+
+test('getRoomStatusKey walks the waiting room steps in order', () => {
+  assert.equal(getRoomStatusKey(readyToStart), 'lobby.room.status.canStart');
+  assert.equal(getRoomStatusKey({ ...readyToStart, isConnected: false }), 'lobby.room.status.connecting');
+  assert.equal(getRoomStatusKey({ ...readyToStart, hasEnoughPlayers: false }), 'lobby.room.status.needPlayers');
+  assert.equal(getRoomStatusKey({ ...readyToStart, isReady: false, allHumansReady: false }), 'lobby.room.status.needReady');
+  assert.equal(getRoomStatusKey({ ...readyToStart, allHumansReady: false }), 'lobby.room.status.waitOthers');
+  assert.equal(getRoomStatusKey({ ...readyToStart, isPlaying: true }), 'lobby.room.status.playing');
+  assert.equal(getRoomStatusKey({ ...readyToStart, canSelfStart: false }), 'lobby.room.status.eliminated');
+  assert.equal(getRoomStatusKey({ ...readyToStart, isTableFinished: true }), 'lobby.room.status.finished');
 });

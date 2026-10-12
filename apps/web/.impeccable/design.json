@@ -1,0 +1,700 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-11T22:53:22.073Z",
+  "title": "Design System: Holdem Lab",
+  "extensions": {
+    "colorMeta": {
+      "ink-0": {
+        "role": "neutral",
+        "displayName": "Pressroom Black",
+        "canonical": "#0b1120",
+        "tonalRamp": [
+          "#0b1120",
+          "#0f1524",
+          "#141c2e",
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a"
+        ]
+      },
+      "ink-1": {
+        "role": "neutral",
+        "displayName": "Panel Ink (panel)",
+        "canonical": "#0f1524",
+        "tonalRamp": [
+          "#0b1120",
+          "#0f1524",
+          "#141c2e",
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Stage Ink (page)",
+        "canonical": "#141c2e",
+        "tonalRamp": [
+          "#0b1120",
+          "#0f1524",
+          "#141c2e",
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Raised Ink (panel-2, line)",
+        "canonical": "#1b2640",
+        "tonalRamp": [
+          "#0b1120",
+          "#0f1524",
+          "#141c2e",
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a"
+        ]
+      },
+      "ink-4": {
+        "role": "neutral",
+        "displayName": "Rule Ink (line-2)",
+        "canonical": "#2a3654",
+        "tonalRamp": [
+          "#0b1120",
+          "#0f1524",
+          "#141c2e",
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a"
+        ]
+      },
+      "ink-8": {
+        "role": "neutral",
+        "displayName": "Quiet Text (text-2)",
+        "canonical": "#a2a6b1",
+        "tonalRamp": [
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a",
+          "#a2a6b1",
+          "#c9c7c1",
+          "#ece7db"
+        ]
+      },
+      "ink-7": {
+        "role": "neutral",
+        "displayName": "Label Text (text-3)",
+        "canonical": "#7d869a",
+        "tonalRamp": [
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a",
+          "#a2a6b1",
+          "#c9c7c1",
+          "#ece7db"
+        ]
+      },
+      "ink-10": {
+        "role": "neutral",
+        "displayName": "Warm Ivory Text (text)",
+        "canonical": "#ece7db",
+        "tonalRamp": [
+          "#1b2640",
+          "#2a3654",
+          "#44506b",
+          "#606a82",
+          "#7d869a",
+          "#a2a6b1",
+          "#c9c7c1",
+          "#ece7db"
+        ]
+      },
+      "felt": {
+        "role": "tertiary",
+        "displayName": "Baize Felt",
+        "canonical": "#1d4a3c",
+        "oklch": "oklch(37.3% 0.056 170)",
+        "tonalRamp": [
+          "#001208",
+          "#002d21",
+          "#1f4c3d",
+          "#3f6c5c",
+          "#608d7d",
+          "#82b1a0",
+          "#a9d5c4",
+          "#d6f7ea"
+        ]
+      },
+      "felt-deep": {
+        "role": "tertiary",
+        "displayName": "Felt Deep",
+        "canonical": "#163b2f",
+        "oklch": "oklch(32.1% 0.048 169)",
+        "tonalRamp": [
+          "#001108",
+          "#052c21",
+          "#264a3e",
+          "#456a5d",
+          "#668c7d",
+          "#88afa0",
+          "#aed3c4",
+          "#daf6eb"
+        ]
+      },
+      "rail": {
+        "role": "tertiary",
+        "displayName": "Rail Green",
+        "canonical": "#0f2a21",
+        "oklch": "oklch(26.1% 0.037 169)",
+        "tonalRamp": [
+          "#001008",
+          "#102b22",
+          "#2d493f",
+          "#4c685e",
+          "#6d8a7e",
+          "#8fada1",
+          "#b4d1c5",
+          "#def5eb"
+        ]
+      },
+      "vermilion": {
+        "role": "primary",
+        "displayName": "Court Vermilion",
+        "canonical": "#c8372d",
+        "oklch": "oklch(55.5% 0.184 29)",
+        "tonalRamp": [
+          "#3c0000",
+          "#630000",
+          "#8a0000",
+          "#b21e18",
+          "#da493d",
+          "#ff6f5f",
+          "#ff9a88",
+          "#ffcdbd"
+        ]
+      },
+      "vermilion-hi": {
+        "role": "primary",
+        "displayName": "Vermilion Lifted",
+        "canonical": "#e5584c",
+        "oklch": "oklch(64.4% 0.178 28)",
+        "tonalRamp": [
+          "#3a0000",
+          "#610000",
+          "#880000",
+          "#b0231e",
+          "#d84c41",
+          "#ff7163",
+          "#ff9b8c",
+          "#ffcec0"
+        ]
+      },
+      "vermilion-ink": {
+        "role": "primary",
+        "displayName": "Vermilion Print",
+        "canonical": "#a8281f",
+        "oklch": "oklch(48.3% 0.166 29)",
+        "tonalRamp": [
+          "#380000",
+          "#5e0000",
+          "#840000",
+          "#ab2c22",
+          "#d35244",
+          "#fc7766",
+          "#ffa08e",
+          "#ffd1c2"
+        ]
+      },
+      "ivory": {
+        "role": "neutral",
+        "displayName": "Card Ivory",
+        "canonical": "#f2ece0",
+        "oklch": "oklch(94.4% 0.017 85)",
+        "tonalRamp": [
+          "#0f0b04",
+          "#29241c",
+          "#464138",
+          "#666156",
+          "#878277",
+          "#aaa499",
+          "#cec9be",
+          "#f2eee6"
+        ]
+      },
+      "ivory-shade": {
+        "role": "neutral",
+        "displayName": "Ivory Shade",
+        "canonical": "#d6cab0",
+        "oklch": "oklch(84.2% 0.038 86)",
+        "tonalRamp": [
+          "#120a00",
+          "#2d240e",
+          "#4b412b",
+          "#6b6049",
+          "#8c8169",
+          "#afa48b",
+          "#d3c8b0",
+          "#f6eedb"
+        ]
+      },
+      "ivory-edge": {
+        "role": "neutral",
+        "displayName": "Ivory Edge",
+        "canonical": "#cdbf9f",
+        "oklch": "oklch(80.8% 0.046 87)",
+        "tonalRamp": [
+          "#130900",
+          "#2f2307",
+          "#4c4124",
+          "#6c6043",
+          "#8e8163",
+          "#b1a485",
+          "#d5c8aa",
+          "#f8eed7"
+        ]
+      },
+      "on-ivory-2": {
+        "role": "neutral",
+        "displayName": "Ivory Secondary Ink",
+        "canonical": "#6b6450",
+        "oklch": "oklch(50.4% 0.032 91)",
+        "tonalRamp": [
+          "#100a00",
+          "#2b2513",
+          "#48422f",
+          "#68614d",
+          "#89826d",
+          "#aca58f",
+          "#d0c9b4",
+          "#f4eede"
+        ]
+      },
+      "brass": {
+        "role": "secondary",
+        "displayName": "Muted Brass",
+        "canonical": "#b89a5e",
+        "oklch": "oklch(70.0% 0.086 84)",
+        "tonalRamp": [
+          "#1b0400",
+          "#381f00",
+          "#573d00",
+          "#785c1e",
+          "#9b7e42",
+          "#bfa165",
+          "#e2c58d",
+          "#ffecc1"
+        ]
+      },
+      "suit-diamond": {
+        "role": "tertiary",
+        "displayName": "Card Blue",
+        "canonical": "#2a5db0",
+        "oklch": "oklch(49.0% 0.143 260)",
+        "tonalRamp": [
+          "#000046",
+          "#001968",
+          "#073c8c",
+          "#2b5eb1",
+          "#4c81d7",
+          "#6ea5fe",
+          "#95caff",
+          "#c7f0ff"
+        ]
+      },
+      "suit-club": {
+        "role": "tertiary",
+        "displayName": "Card Green",
+        "canonical": "#1f7a4a",
+        "oklch": "oklch(51.5% 0.113 155)",
+        "tonalRamp": [
+          "#001600",
+          "#003307",
+          "#005225",
+          "#157344",
+          "#409664",
+          "#65ba86",
+          "#90deac",
+          "#c5ffd8"
+        ]
+      },
+      "caution": {
+        "role": "state",
+        "displayName": "Caution Amber",
+        "canonical": "#d9a441",
+        "oklch": "oklch(75.1% 0.130 80)",
+        "tonalRamp": [
+          "#240000",
+          "#441600",
+          "#653500",
+          "#875600",
+          "#ab7800",
+          "#cf9b36",
+          "#f2c069",
+          "#ffe8a9"
+        ]
+      },
+      "positive": {
+        "role": "state",
+        "displayName": "Signal Green",
+        "canonical": "#5aa77a",
+        "oklch": "oklch(66.6% 0.103 157)",
+        "tonalRamp": [
+          "#001500",
+          "#00320d",
+          "#00512a",
+          "#217248",
+          "#479569",
+          "#6bb88b",
+          "#94dcb0",
+          "#c8fedb"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Coach strength figure, home headline (sm+), seated count (sm+). Index face."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Page titles, coach suggestion, invite code. Index face."
+      },
+      "value": {
+        "displayName": "Value",
+        "purpose": "Amounts and stats; tabular, right-aligned where they reconcile. Index face."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Control labels, wordmark, section heads. Index face, uppercase, tracking-caps-tight."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "Names, emphasised prose, small values. Prose face."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Status, notes, log rows, captions, tabs. Prose face."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Tracked caps labels beside a value or on a field; stamps. 11px legibility floor. Index face."
+      },
+      "kbd": {
+        "displayName": "Keyboard hint",
+        "purpose": "Exception: hint chips only (10px)."
+      },
+      "input": {
+        "displayName": "Input",
+        "purpose": "Exception: text inputs, 16px so iOS does not zoom."
+      },
+      "seat-micro": {
+        "displayName": "Seat micro (table)",
+        "purpose": "max(11px, 0.62 stage-em). Plate labels, personality and blind stamps, pot label."
+      },
+      "seat-tag": {
+        "displayName": "Seat tag (table)",
+        "purpose": "max(11px, 0.78 stage-em). Action stamps, hand names, dealer D."
+      },
+      "seat-name": {
+        "displayName": "Seat name (table)",
+        "purpose": "max(11px, 0.82 stage-em). Player names."
+      },
+      "seat-amount": {
+        "displayName": "Seat amount (table)",
+        "purpose": "max(11px, 0.92 stage-em). Bet amounts, winner payout."
+      },
+      "seat-stack": {
+        "displayName": "Seat stack (table)",
+        "purpose": "max(12px, 1.12 stage-em). Stacks, hero and opponents alike."
+      },
+      "seat-pot": {
+        "displayName": "Seat pot (table)",
+        "purpose": "max(16px, 1.56 stage-em). Pot amount."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-card",
+        "value": "0 0.05em 0.1em rgb(5 8 16 / 0.35), 0 0.16em 0.4em -0.06em rgb(5 8 16 / 0.45)",
+        "purpose": "Playing cards, dealer disc; in em of the card."
+      },
+      {
+        "name": "shadow-plate",
+        "value": "0 2px 3px rgb(5 8 16 / 0.32), 0 6px 14px -4px rgb(5 8 16 / 0.5)",
+        "purpose": "Seat plates, result banner."
+      },
+      {
+        "name": "shadow-float",
+        "value": "0 2px 6px rgb(5 8 16 / 0.4), 0 12px 28px -8px rgb(5 8 16 / 0.6)",
+        "purpose": "Popovers, tooltips, the side-panel sheet."
+      },
+      {
+        "name": "medallion-frame",
+        "value": "1px solid brass; inset 0 0 0 5px ground, inset 0 0 0 6px rgb(184 154 94 / 0.7), inset 0 0 0 9px ground, inset 0 0 0 10px rgb(184 154 94 / 0.35)",
+        "purpose": "Printed double rule for the pot medallion; same pattern on dock buttons and the result banner."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Default easing: press, hover, entrances."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.77, 0, 0.175, 1)",
+        "purpose": "On-screen movement."
+      },
+      {
+        "name": "duration-fast",
+        "value": "120ms",
+        "purpose": "Press and hover feedback."
+      },
+      {
+        "name": "duration-normal",
+        "value": "180ms",
+        "purpose": "Card highlight, banner and tag entry."
+      },
+      {
+        "name": "table-deal-in",
+        "value": "translate(--deal-dx, --deal-dy) scale(0.6) -> none, opacity 0 -> 1",
+        "purpose": "Card dealt from table center; caller sets delay."
+      },
+      {
+        "name": "table-timer-drain",
+        "value": "scaleX 1 -> 0; brass to vermilion at 75%",
+        "purpose": "Turn timer bar on the acting plate."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      },
+      {
+        "name": "portrait-only stage",
+        "value": "stage width < 560px"
+      }
+    ],
+    "stageGeometry": [
+      {
+        "name": "landscape",
+        "value": "16:9, em 1.45% of box width, max 20px"
+      },
+      {
+        "name": "square",
+        "value": "6:5, em 1.9%, max 20px"
+      },
+      {
+        "name": "portrait",
+        "value": "3:5, em 2.9%, max 16px, compact plate-only opponents"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Raise Button",
+      "kind": "button",
+      "refersTo": "action-raise",
+      "description": "Dock action in the one loud ink, with a printed double rule painted inside.",
+      "html": "<button class=\"ds-btn ds-btn-raise\">Raise <b>240</b></button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;border-radius:4px;font-family:var(--font-barlow),'Barlow Condensed',sans-serif;font-variant-numeric:tabular-nums lining-nums;text-transform:uppercase;letter-spacing:0.1em;font-size:18px;line-height:1;cursor:pointer;transition:filter 120ms cubic-bezier(0.23,1,0.32,1),transform 120ms cubic-bezier(0.23,1,0.32,1),background-color 120ms} .ds-btn:active{transform:scale(0.97)} .ds-btn:focus-visible{outline:2px solid #b89a5e;outline-offset:2px} .ds-btn-raise{height:56px;max-width:200px;padding:0 8px;gap:8px;border:0;background:#c8372d;color:#f2ece0;font-weight:600;box-shadow:inset 0 0 0 3px #c8372d,inset 0 0 0 4px rgb(242 236 224 / 0.4)} .ds-btn-raise b{font-weight:700;letter-spacing:0} .ds-btn-raise:hover{filter:brightness(1.1)}"
+    },
+    {
+      "name": "Call Button",
+      "kind": "button",
+      "refersTo": "action-call",
+      "description": "Outlined ink with ivory-grey text and a fine printed double rule.",
+      "html": "<button class=\"ds-btn ds-btn-call\">Call <b>120</b></button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;border-radius:4px;font-family:var(--font-barlow),'Barlow Condensed',sans-serif;font-variant-numeric:tabular-nums lining-nums;text-transform:uppercase;letter-spacing:0.1em;font-size:18px;line-height:1;cursor:pointer;transition:filter 120ms cubic-bezier(0.23,1,0.32,1),transform 120ms cubic-bezier(0.23,1,0.32,1),background-color 120ms} .ds-btn:active{transform:scale(0.97)} .ds-btn:focus-visible{outline:2px solid #b89a5e;outline-offset:2px} .ds-btn-call{height:56px;max-width:200px;padding:0 8px;gap:8px;border:1px solid rgb(236 231 219 / 0.55);background:#1b2640;color:#ece7db;font-weight:600;box-shadow:inset 0 0 0 3px #1b2640,inset 0 0 0 4px rgb(236 231 219 / 0.3)} .ds-btn-call b{font-weight:700;letter-spacing:0} .ds-btn-call:hover{filter:brightness(1.25)}"
+    },
+    {
+      "name": "Fold Button",
+      "kind": "button",
+      "refersTo": "action-fold",
+      "description": "Quiet outlined ink; the cheapest action looks the quietest.",
+      "html": "<button class=\"ds-btn ds-btn-fold\">Fold</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;border-radius:4px;font-family:var(--font-barlow),'Barlow Condensed',sans-serif;font-variant-numeric:tabular-nums lining-nums;text-transform:uppercase;letter-spacing:0.1em;font-size:18px;line-height:1;cursor:pointer;transition:filter 120ms cubic-bezier(0.23,1,0.32,1),transform 120ms cubic-bezier(0.23,1,0.32,1),background-color 120ms} .ds-btn:active{transform:scale(0.97)} .ds-btn:focus-visible{outline:2px solid #b89a5e;outline-offset:2px} .ds-btn-fold{height:56px;max-width:200px;padding:0 8px;border:1px solid #2a3654;background:transparent;color:#a2a6b1;font-weight:600} .ds-btn-fold:hover{background:#1b2640;color:#ece7db}"
+    },
+    {
+      "name": "Primary Button (lobby)",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Vermilion call to action on the home and waiting room.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Practice now</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;border-radius:4px;font-family:var(--font-barlow),'Barlow Condensed',sans-serif;font-variant-numeric:tabular-nums lining-nums;text-transform:uppercase;letter-spacing:0.1em;font-size:18px;line-height:1;cursor:pointer;transition:filter 120ms cubic-bezier(0.23,1,0.32,1),transform 120ms cubic-bezier(0.23,1,0.32,1),background-color 120ms} .ds-btn:active{transform:scale(0.97)} .ds-btn:focus-visible{outline:2px solid #b89a5e;outline-offset:2px} .ds-btn-primary{height:48px;max-width:240px;padding:0 16px;border:0;background:#c8372d;color:#f2ece0;font-weight:700;box-shadow:0 1px 0 rgb(255 255 255 / 0.12) inset,0 6px 16px -6px rgb(0 0 0 / 0.6)} .ds-btn-primary:hover{background:#e5584c}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "48px panel-ink field; focus turns the border brass, no ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Your name\" />",
+      "css": ".ds-input{height:48px;width:100%;max-width:280px;box-sizing:border-box;border-radius:4px;border:1px solid #2a3654;background:#0f1524;padding:0 14px;color:#ece7db;font:400 16px/1.25 var(--font-ui),Manrope,sans-serif;outline:none;transition:border-color 120ms} .ds-input::placeholder{color:#7d869a} .ds-input:focus{border-color:#b89a5e}"
+    },
+    {
+      "name": "Seat Plate",
+      "kind": "card",
+      "refersTo": "seat-plate",
+      "description": "Ivory stock with a fine inner rule: name, stack, state label. To-act adds a vermilion ring and a timer bar.",
+      "html": "<div class=\"ds-plate\"><div class=\"ds-plate-name\">Hero</div><div class=\"ds-plate-row\"><span class=\"ds-plate-state\">Stack</span><span class=\"ds-plate-stack\">1,000</span></div></div>",
+      "css": ".ds-plate{width:172px;box-sizing:border-box;padding:6px 10px;border-radius:6px;background:#f2ece0;color:#141c2e;display:flex;flex-direction:column;gap:2px;outline:3px solid #c8372d;outline-offset:2px;box-shadow:inset 0 0 0 1px #cdbf9f,inset 0 0 0 4px #f2ece0,inset 0 0 0 5px rgb(107 100 80 / 0.28),0 2px 3px rgb(5 8 16 / 0.32),0 6px 14px -4px rgb(5 8 16 / 0.5)} .ds-plate-name{font:600 14px/1.15 var(--font-ui),Manrope,sans-serif} .ds-plate-row{display:flex;justify-content:space-between;align-items:center;font-family:var(--font-barlow),\"Barlow Condensed\",sans-serif;font-variant-numeric:tabular-nums lining-nums} .ds-plate-state{font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:#6b6450} .ds-plate-stack{font-size:19px;font-weight:700}"
+    },
+    {
+      "name": "Playing Card",
+      "kind": "card",
+      "refersTo": "playing-card",
+      "description": "5:7 ivory stock, index in two mirrored corners, four-color suits. Shown at size md.",
+      "html": "<span class=\"ds-card\" role=\"img\" aria-label=\"Ace of hearts\"><span class=\"ds-card-idx\">A<svg viewBox=\"0 0 24 24\" width=\"10\" height=\"10\"><path d=\"M12 21C5 15.5 2.5 11.5 2.5 8.2 2.5 5.4 4.6 3.5 7.1 3.5c2 0 3.8 1.1 4.9 3 1.1-1.9 2.9-3 4.9-3 2.5 0 4.6 1.9 4.6 4.7C21.5 11.5 19 15.5 12 21z\" fill=\"currentColor\"/></svg></span></span>",
+      "css": ".ds-card{position:relative;display:inline-block;width:35px;height:49px;border-radius:0.24em;background:linear-gradient(172deg,#f9f6f0 0%,#f2ece0 38%,#e8dfce 100%);color:#c8372d;box-shadow:inset 0 0 0 1px #cdbf9f,0 1px 2px rgb(5 8 16 / 0.35),0 3px 6px -1px rgb(5 8 16 / 0.45);font-size:14px} .ds-card-idx{position:absolute;left:4px;top:4px;display:flex;flex-direction:column;align-items:center;font-family:var(--font-barlow),\"Barlow Condensed\",sans-serif;font-weight:700;font-size:15px;line-height:0.8}"
+    },
+    {
+      "name": "Action Stamp",
+      "kind": "chip",
+      "refersTo": "action-stamp-all-in",
+      "description": "Printed stamp on a plate: ivory with a hairline for ordinary actions; raise and all-in rotate -3deg, all-in is vermilion-filled.",
+      "html": "<span class=\"ds-stamp\">All in</span> <span class=\"ds-stamp ds-stamp-raise\">Raise 80</span>",
+      "css": ".ds-stamp{display:inline-block;padding:3px 7px;border:2px solid #c8372d;border-radius:2px;background:#c8372d;color:#f2ece0;font:700 13px/1 var(--font-barlow),\"Barlow Condensed\",sans-serif;letter-spacing:0.1em;text-transform:uppercase;transform:rotate(-3deg);box-shadow:0 1px 2px rgb(5 8 16 / 0.35)} .ds-stamp-raise{background:#f2ece0;color:#a8281f;border-color:#a8281f;margin-left:10px}"
+    },
+    {
+      "name": "Pot Medallion",
+      "kind": "custom",
+      "refersTo": "pot-medallion",
+      "description": "The signature. The pot printed inside the card-back medallion: lattice band between brass rules around a navy oval. Shown flat (the lattice is an SVG in the component).",
+      "html": "<div class=\"ds-medal\"><span class=\"ds-medal-label\">Pot</span><span class=\"ds-medal-amt\">1,240</span></div>",
+      "css": ".ds-medal{position:relative;width:168px;height:70px;border-radius:50%;background:#141c2e;border:1px solid #b89a5e;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:inset 0 0 0 4px #141c2e,inset 0 0 0 5px rgb(184 154 94 / 0.7),inset 0 0 0 8px #141c2e,inset 0 0 0 9px rgb(184 154 94 / 0.35)} .ds-medal-label{font:600 11px/1 var(--font-barlow),\"Barlow Condensed\",sans-serif;letter-spacing:0.24em;text-transform:uppercase;color:#b89a5e;padding-left:0.24em} .ds-medal-amt{margin-top:3px;font:700 30px/1 var(--font-barlow),\"Barlow Condensed\",sans-serif;font-variant-numeric:tabular-nums lining-nums;color:#ece7db}"
+    },
+    {
+      "name": "Room Code Chip",
+      "kind": "chip",
+      "refersTo": "room-code-chip",
+      "description": "Top-bar chip: tracked brass code on a brass hairline, copies on click.",
+      "html": "<button class=\"ds-code\"><span class=\"ds-code-l\">Room</span><span class=\"ds-code-v\">K7QX2M</span></button>",
+      "css": ".ds-code{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border-radius:2px;border:1px solid rgb(184 154 94 / 0.5);background:transparent;cursor:pointer;font-family:var(--font-barlow),\"Barlow Condensed\",sans-serif;transition:border-color 120ms} .ds-code:hover{border-color:#b89a5e} .ds-code:focus-visible{outline:2px solid #b89a5e;outline-offset:2px} .ds-code-l{font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:#7d869a} .ds-code-v{font-size:13px;font-weight:600;letter-spacing:0.24em;text-transform:uppercase;color:#b89a5e}"
+    },
+    {
+      "name": "Hand Result Banner",
+      "kind": "card",
+      "refersTo": "result-banner",
+      "description": "72px in-flow row in the dock: winner, hand name, hero line, gross pot in brass. Printed double rule, plate shadow.",
+      "html": "<div class=\"ds-banner\"><div class=\"ds-banner-t\"><b>Maya</b> wins<br><span>Full house, kings over fives</span></div><span class=\"ds-banner-amt\">1,240</span></div>",
+      "css": ".ds-banner{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;height:72px;max-width:420px;box-sizing:border-box;padding:0 16px;border-radius:6px;border:1px solid rgb(184 154 94 / 0.7);background:#0f1524;color:#ece7db;box-shadow:inset 0 0 0 3px #0f1524,inset 0 0 0 4px rgb(184 154 94 / 0.4),0 2px 3px rgb(5 8 16 / 0.32),0 6px 14px -4px rgb(5 8 16 / 0.5);font:400 13px/1.5 var(--font-ui),Manrope,sans-serif} .ds-banner-t b{font-weight:600} .ds-banner-t span{color:#a2a6b1} .ds-banner-amt{font:600 22px/1 var(--font-barlow),\"Barlow Condensed\",sans-serif;font-variant-numeric:tabular-nums lining-nums;color:#b89a5e}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Card-Room Print",
+    "overview": "The table is set like a premium printed deck: two inks (ink-navy and court-card vermilion), engraved line (brass hairlines, a guilloche rosette in the felt, the card-back lattice reused as the pot medallion), and index typography (a condensed face for every number and label). It refuses the category default of flat neon-green felt with white plates and yellow bubbles, and equally the navy-and-gold casino glow. Depth is printed, not glowed: double rules inset into surfaces, soft offset shadows under cards and plates, no halos.\n\nThe product is a training table played under a 30-second clock, so the system is built for reading at a glance. Everything neutral comes from one tinted navy ramp. One loud ink, vermilion, says \"act here\": the seat to act, the raise button, the timer's last quarter, the all-in stamp, errors. Everything on the table is sized in em of the stage, so the whole table scales as one print; chrome uses a fixed seven-step type scale.\n\nThe memorable moment is the pot printed inside a card-back medallion at table center, with the acting seat ringed in vermilion.",
+    "keyCharacteristics": [
+      "One 11-step tinted ink ramp for every neutral; semantic aliases (page, panel, line, text) are what components use.",
+      "Vermilion is the single loud ink; brass is the quiet one (hairlines, dealer disc, winner rule, focus ring).",
+      "Ivory card stock for playing cards, seat plates and action stamps; nothing else is ivory fill.",
+      "Condensed index face (Barlow Condensed, tabular lining numerals) for numbers and labels; Manrope for prose.",
+      "Seat state vocabulary is fixed: to-act (vermilion ring, timer, lifts), waiting (ivory), folded (sunk one ink step), all-in (vermilion stamp), winner (brass rule and payout).",
+      "Dark only (color-scheme: dark); no light theme exists."
+    ],
+    "rules": [
+      {
+        "name": "The One Loud Ink Rule",
+        "body": "Vermilion marks action and consequence: whose turn, what raises, what is wrong. It is not decoration and it is not a brand wash; on a quiet screen it should appear on one or two things.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink Ramp Rule",
+        "body": "Never introduce a grey. Every neutral is a step of the ink ramp or a semantic alias of one; a new surface picks the nearest step.",
+        "section": "colors"
+      },
+      {
+        "name": "The Stock Rule",
+        "body": "Ivory fill belongs to things that are printed paper: playing cards, seat plates, action stamps (and the hand-result mini cards). Ivory otherwise appears only as text on vermilion and as the slider thumb.",
+        "section": "colors"
+      },
+      {
+        "name": "The State-Only Color Rule",
+        "body": "Amber and signal green appear only where the state itself is the message, never as accents.",
+        "section": "colors"
+      },
+      {
+        "name": "The Index Face Rule",
+        "body": "Every number and every label is font-index. Prose is font-sans. A figure in the prose face is a defect.",
+        "section": "typography"
+      },
+      {
+        "name": "The Fixed Scale Rule",
+        "body": "Use a text-* step; do not write text-[13px]. The two exceptions (kbd, input) are the whole list. Reading-size floor: 11px.",
+        "section": "typography"
+      },
+      {
+        "name": "The Merge Rule",
+        "body": "src/lib/utils.ts registers every type, tracking and spacing token with tailwind-merge. A new token must be added there too, or cn('text-text-2', 'text-body') silently drops the color class.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Scale Rule",
+        "body": "The table is one print scaled by one number. Never position a table element in px or give it its own font-size outside the metrics in seat-layout.ts.",
+        "section": "layout"
+      },
+      {
+        "name": "The Dock Rule",
+        "body": "Anything the hero must act on or read between hands (actions, sizing, status, the result) lives in the dock. The felt shows the game; the dock shows the decision.",
+        "section": "layout"
+      },
+      {
+        "name": "The No Halo Rule",
+        "body": "No blurred colored glow, ever. State is carried by a ring, a rule, a lift, or a one-step ink change.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Engraved Rule",
+        "body": "A surface that should feel printed gets a double rule painted with inset box-shadow, which never changes the box size.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do take every neutral from the ink ramp through the semantic aliases (bg-panel, border-line, text-text-2).",
+      "Do set every number and label in font-index / label-index, and every sentence in font-sans.",
+      "Do use a text-* scale step and a spacing role (p-gutter, gap-snug); register any new token in src/lib/utils.ts.",
+      "Do keep the seat state vocabulary exact: vermilion ring and lift for to-act, sunk ivory-shade for folded, vermilion stamp for all-in, brass rule and payout for winner.",
+      "Do size every table element in em of the stage and place it in percent of the box via seat-layout.ts; add data-layout-box to anything new on the table or in the chrome.",
+      "Do keep text at 11px or more, and body text at 4.5:1 or better on its ground.",
+      "Do put decisions and the hand result in the dock, and keep keyboard parity: every action has a hotkey.",
+      "Do keep depth to offset-and-blur shadows and inset double rules."
+    ],
+    "donts": [
+      "Don't add flat neon-green felt, white plates, yellow chip bubbles, or navy-and-gold casino glow (the confirmed category defaults this system refuses).",
+      "Don't use vermilion as decoration or a second accent color; don't add a new hue for a new feature.",
+      "Don't put a blurred colored glow or halo on any state.",
+      "Don't render Unicode suit glyphs; use SuitIcon.",
+      "Don't use arbitrary pixel type (text-[13px]) or half-step spacing (p-1.5, px-2.5, px-3.5).",
+      "Don't lay a modal, toast, or floating banner over the felt; the felt is for the game.",
+      "Don't let the stage reserve space for the dock, or position table elements in px.",
+      "Don't use block as a spacing role; the 32px step is major."
+    ]
+  }
+}

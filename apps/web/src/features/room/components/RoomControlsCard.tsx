@@ -1,10 +1,11 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { getRoomStatusKey } from '../lib/room-page-state';
+import { primaryButton, secondaryButton } from '../lib/room-ui';
 
 interface RoomControlsCardProps {
-  roomId: string;
   isPlaying: boolean;
   isConnected: boolean;
   isReady: boolean;
@@ -19,7 +20,6 @@ interface RoomControlsCardProps {
 }
 
 export function RoomControlsCard({
-  roomId,
   isPlaying,
   isConnected,
   isReady,
@@ -32,91 +32,65 @@ export function RoomControlsCard({
   onStartGame,
   onEnterGame,
 }: RoomControlsCardProps) {
-  const statusMessage = isTableFinished
-    ? '本场已结束，当前房间不再继续自动开局'
-    : !canSelfStart
-      ? '你已淘汰，可进入牌桌观战或返回大厅重新建局。'
-      : !hasEnoughPlayers
-        ? '至少需要 2 名玩家（可添加机器人）'
-        : !allHumansReady
-          ? '等待所有真人玩家点击“我已准备”'
-          : '全部就绪，可直接开始游戏';
+  const t = useT();
+  const statusKey = getRoomStatusKey({
+    isConnected,
+    isPlaying,
+    isTableFinished,
+    canSelfStart,
+    hasEnoughPlayers,
+    isReady,
+    allHumansReady,
+  });
+  const isGo = statusKey === 'lobby.room.status.canStart';
 
   return (
-    <>
-      <section
-        className="rounded-[24px] border border-white/12 bg-[rgba(10,18,30,0.85)] p-5 sm:p-6"
-        style={{ boxShadow: 'var(--shadow-panel), var(--shadow-hairline)' }}
-      >
-        <h3 className="text-[12px] uppercase tracking-[0.2em] text-[var(--color-text-muted)]">开局控制</h3>
-        <div className="mt-4 space-y-3.5">
-          {isTableFinished && (
-            <div className="rounded-xl border border-[var(--color-gold)]/32 bg-[var(--color-gold)]/10 px-3 py-2 text-[12px] leading-[1.55] text-[var(--color-text-secondary)]">
-              本场已结束，请返回大厅重新建局。
-            </div>
-          )}
+    <section aria-label={t('lobby.room.title')} className="space-y-4 p-4 sm:p-5">
+      <p role="status" className="flex items-start gap-snug text-lead text-text">
+        <span
+          aria-hidden
+          className={cn('mt-[7px] size-2 shrink-0 rounded-full', isGo ? 'bg-positive' : isConnected ? 'bg-brass' : 'bg-vermilion')}
+        />
+        {t(statusKey)}
+      </p>
 
-          {!isPlaying && (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onMarkReady}
-              disabled={isReady || !isConnected || !canSelfStart}
-              className={cn(
-                'h-[50px] w-full rounded-[14px] border text-[15px] font-semibold transition-all',
-                isReady
-                  ? 'cursor-default border-[var(--color-success)]/45 bg-[var(--color-success-dim)] text-[var(--color-success)]'
-                  : 'border-[var(--color-success)]/30 bg-[rgba(76,175,80,0.1)] text-[var(--color-success)] hover:border-[var(--color-success)]/45 hover:bg-[rgba(76,175,80,0.16)]',
-                (!isConnected || !canSelfStart) && 'cursor-not-allowed opacity-50',
-              )}
-            >
-              {canSelfStart ? (isReady ? '✓ 已准备' : '我已准备') : '已淘汰'}
-            </motion.button>
-          )}
-
-          {!isPlaying ? (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onStartGame}
-              disabled={!canStart || !isConnected}
-              className={cn(
-                'h-[54px] w-full rounded-[14px] border text-[16px] font-semibold tracking-[0.01em] transition-all',
-                canStart && isConnected
-                  ? 'border-[#f3d27a]/55 bg-gradient-to-r from-[#c9a540] via-[#e0bf6a] to-[#f0d186] text-[#251800] shadow-[0_12px_32px_rgba(214,178,84,0.3)] hover:brightness-105'
-                  : 'cursor-not-allowed border-white/10 bg-white/[0.04] text-[var(--color-text-dim)]',
-              )}
-            >
-              开始游戏
-            </motion.button>
-          ) : (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onEnterGame}
-              className="h-[54px] w-full rounded-[14px] border border-[#f3d27a]/50 bg-gradient-to-r from-[#c9a540] via-[#e0bf6a] to-[#f0d186] text-[16px] font-semibold tracking-[0.01em] text-[#251800] shadow-[0_12px_32px_rgba(214,178,84,0.3)]"
-            >
-              进入游戏 →
-            </motion.button>
-          )}
-
-          {!isPlaying && !canSelfStart && (
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onEnterGame}
-              className="h-[42px] w-full rounded-[12px] border border-white/12 bg-white/[0.04] text-[13px] font-semibold text-[var(--color-text-secondary)] transition-all hover:border-[var(--color-gold)]/34 hover:text-[var(--color-text-primary)]"
-            >
-              进入牌桌观战
-            </motion.button>
-          )}
-
-          {!isPlaying && (
-            <p className="text-[13px] leading-[1.6] text-[var(--color-text-muted)]">{statusMessage}</p>
-          )}
+      {!isPlaying ? (
+        <div className="grid grid-cols-2 gap-snug">
+          <button
+            type="button"
+            onClick={onMarkReady}
+            data-testid="room-ready"
+            disabled={isReady || !isConnected || !canSelfStart}
+            className={cn(secondaryButton, isReady && canSelfStart && 'border-positive/60 text-positive disabled:opacity-100')}
+          >
+            {isReady && canSelfStart && (
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                <path d="M2.5 7.5l3 3 6-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+            {canSelfStart ? t(isReady ? 'lobby.room.readyDone' : 'lobby.room.ready') : t('lobby.room.eliminated')}
+          </button>
+          <button
+            type="button"
+            onClick={onStartGame}
+            disabled={!canStart || !isConnected}
+            data-testid="room-start"
+            className={primaryButton}
+          >
+            {t('lobby.room.start')}
+          </button>
         </div>
-      </section>
+      ) : (
+        <button type="button" onClick={onEnterGame} className={primaryButton}>
+          {t('lobby.room.enter')}
+        </button>
+      )}
 
-      <section className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-dim)]">房间编号</p>
-        <p className="mt-1.5 font-mono text-[13px] text-[var(--color-text-secondary)]">{roomId}</p>
-      </section>
-    </>
+      {!isPlaying && !canSelfStart && (
+        <button type="button" onClick={onEnterGame} className={secondaryButton}>
+          {t('lobby.room.spectate')}
+        </button>
+      )}
+    </section>
   );
 }

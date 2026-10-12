@@ -201,3 +201,5 @@ export function useGameScreenState({
     handleSpectate,
   };
 }
+
+export type GameScreen = ReturnType<typeof useGameScreenState>;

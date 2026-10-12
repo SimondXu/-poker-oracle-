@@ -185,6 +185,15 @@ function buildTrainingContext(
     phase,
     potTotal,
     myStack: actor.stack,
+    myStreetCommitted: actor.streetCommitted,
+    currentBetToMatch: hand.betting.currentBetToMatch,
+    lastFullRaiseSize: hand.betting.lastFullRaiseSize,
+    bigBlind: hand.bigBlind,
+    smallBlind: hand.smallBlind,
+    preflopLimpersCount: hand.phase === 'betting_preflop'
+      ? hand.actions.filter((action) => action.phase === hand.phase && action.type === 'call').length
+      : 0,
+    streetActionCount: hand.actions.filter((action) => action.phase === hand.phase).length,
     holeCards: [...actor.holeCards],
     communityCards: [...hand.communityCards],
     activePlayerCount: handPlayers.length,

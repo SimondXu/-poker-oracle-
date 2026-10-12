@@ -16,8 +16,8 @@ function createRoom(hand: RuntimeRoom['hand']): RuntimeRoom {
     actionTimeoutMs: 30_000,
     players: new Map([
       ['human-1', { id: 'human-1', name: 'Human', seatIndex: 0, stack: 950, isBot: false }],
-      ['bot-1', { id: 'bot-1', name: 'Bot', seatIndex: 1, stack: 900, isBot: true, botStrategy: 'fish' }],
-      ['bot-2', { id: 'bot-2', name: 'Bot 2', seatIndex: 2, stack: 300, isBot: true, botStrategy: 'tag' }],
+      ['bot-1', { id: 'bot-1', name: 'Bot', seatIndex: 1, stack: 900, isBot: true, botConfig: { kind: 'rule', personality: 'fish' } }],
+      ['bot-2', { id: 'bot-2', name: 'Bot 2', seatIndex: 2, stack: 300, isBot: true, botConfig: { kind: 'rule', personality: 'tag' } }],
     ]),
     readyPlayerIds: new Set(['human-1', 'bot-1', 'bot-2']),
     pendingDisconnectPlayerIds: new Set(),
@@ -96,7 +96,7 @@ test('buildBotDecisionContext maps position and betting state from the live hand
     seatIndex: 3,
     stack: 1000,
     isBot: true,
-    botStrategy: 'lag',
+    botConfig: { kind: 'rule', personality: 'lag' },
   });
   const unopenedContext = buildBotDecisionContext(unopenedRoom, 'bot-3');
 
@@ -117,7 +117,7 @@ test('buildBotDecisionContext maps position and betting state from the live hand
     seatIndex: 3,
     stack: 700,
     isBot: true,
-    botStrategy: 'lag',
+    botConfig: { kind: 'rule', personality: 'lag' },
   });
   const facingOpenContext = buildBotDecisionContext(facingOpenRoom, 'human-1');
 
@@ -157,7 +157,7 @@ test('buildBotDecisionContext keeps 3-handed preflop seat count after one player
 
   const room = createRoom(raised.value);
   room.players = new Map([
-    ['btn', { id: 'btn', name: 'Button', seatIndex: 0, stack: 900, isBot: true, botStrategy: 'tag' }],
+    ['btn', { id: 'btn', name: 'Button', seatIndex: 0, stack: 900, isBot: true, botConfig: { kind: 'rule', personality: 'tag' } }],
     ['sb', { id: 'sb', name: 'Small Blind', seatIndex: 1, stack: 950, isBot: false }],
     ['bb', { id: 'bb', name: 'Big Blind', seatIndex: 2, stack: 700, isBot: false }],
   ]);
@@ -192,7 +192,7 @@ test('buildBotDecisionContext classifies limped preflop pots separately from uno
   const room = createRoom(limped.value);
   room.players = new Map([
     ['btn', { id: 'btn', name: 'Button', seatIndex: 0, stack: 900, isBot: false }],
-    ['sb', { id: 'sb', name: 'Small Blind', seatIndex: 1, stack: 950, isBot: true, botStrategy: 'tag' }],
+    ['sb', { id: 'sb', name: 'Small Blind', seatIndex: 1, stack: 950, isBot: true, botConfig: { kind: 'rule', personality: 'tag' } }],
     ['bb', { id: 'bb', name: 'Big Blind', seatIndex: 2, stack: 900, isBot: false }],
   ]);
 
@@ -200,4 +200,43 @@ test('buildBotDecisionContext classifies limped preflop pots separately from uno
 
   assert.ok(context);
   assert.equal(context?.bettingState, 'facing_limpers');
+});
+
+test('buildBotDecisionContext exposes resolver and skill-runtime sizing fields', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'btn', seatIndex: 0, stack: 1000 },
+      { id: 'sb', seatIndex: 1, stack: 1000 },
+      { id: 'bb', seatIndex: 2, stack: 1000 },
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 50,
+    bigBlind: 100,
+    rng: () => 0.5,
+  });
+
+  assert.equal(initialized.ok, true);
+  if (!initialized.ok) return;
+
+  const limped = applyAction(initialized.value, { playerId: 'btn', type: 'call' }, { timestamp: 1 });
+  assert.equal(limped.ok, true);
+  if (!limped.ok) return;
+
+  const room = createRoom(limped.value);
+  room.players = new Map([
+    ['btn', { id: 'btn', name: 'Button', seatIndex: 0, stack: 900, isBot: false }],
+    ['sb', { id: 'sb', name: 'Small Blind', seatIndex: 1, stack: 950, isBot: true, botConfig: { kind: 'rule', personality: 'tag' } }],
+    ['bb', { id: 'bb', name: 'Big Blind', seatIndex: 2, stack: 900, isBot: false }],
+  ]);
+
+  const context = buildBotDecisionContext(room, 'sb');
+
+  assert.ok(context);
+  assert.equal(context?.smallBlind, 50);
+  assert.equal(context?.bigBlind, 100);
+  assert.equal(context?.myStreetCommitted, 50);
+  assert.equal(context?.currentBetToMatch, 100);
+  assert.equal(context?.lastFullRaiseSize, 100);
+  assert.equal(context?.preflopLimpersCount, 1);
+  assert.equal(context?.streetActionCount, 1);
 });

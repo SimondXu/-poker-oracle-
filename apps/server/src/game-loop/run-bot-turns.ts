@@ -1,5 +1,6 @@
 import { chooseBotAction } from '@aipoker/bot-engine';
 import { applyAction, type PlayerActionInput } from '@aipoker/game-engine';
+import { getRuleBotPersonality } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
 import {
@@ -59,11 +60,15 @@ export async function runBotTurns(
     if (!context) {
       return;
     }
+    const personality = actor.botConfig ? getRuleBotPersonality(actor.botConfig) : 'fish';
+    if (!personality) {
+      return;
+    }
     const isFirstPreflopDecision = context.phase === 'preflop' && isFirstPreflopDecisionForPlayer(room.hand, actor.id);
 
     const botAction = chooseBotAction(
       context,
-      actor.botStrategy ?? 'fish',
+      personality,
       runtime.rng,
       {
         preflopConsecutiveFolds: getBotPreflopFoldStreak(room, actor.id),

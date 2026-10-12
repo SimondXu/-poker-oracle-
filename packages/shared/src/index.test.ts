@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  getRuleBotPersonality,
   buildBotPositionMap,
   deriveBotBettingState,
   err,
@@ -85,4 +86,13 @@ test('deriveBotBettingState separates limp pots from unopened and raised pots', 
   assert.equal(deriveBotBettingState(0, true), 'facing_limpers');
   assert.equal(deriveBotBettingState(1, false), 'facing_open');
   assert.equal(deriveBotBettingState(3, false), 'facing_3bet_plus');
+});
+
+test('getRuleBotPersonality extracts rule-bot personalities and ignores llm bots', () => {
+  assert.equal(getRuleBotPersonality({ kind: 'rule', personality: 'tag' }), 'tag');
+  assert.equal(
+    getRuleBotPersonality({ kind: 'llm', model: 'claude', personaId: 'analyst' }),
+    null,
+  );
+  assert.equal(getRuleBotPersonality(undefined), null);
 });
