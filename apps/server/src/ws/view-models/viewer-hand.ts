@@ -59,14 +59,22 @@ function buildActions(hand: EngineHandState, room: RuntimeRoom): GameAction[] {
   return hand.actions.map((action, index) => buildClientAction(hand, room, action, index));
 }
 
+/** At hand end only players who reached a showdown (two or more still in) show their cards. */
+export function isShownAtShowdown(hand: EngineHandState, playerId: string): boolean {
+  if (hand.phase !== 'hand_end') {
+    return false;
+  }
+  const stillIn = hand.players.filter((player) => player.status !== 'folded');
+  return stillIn.length >= 2 && stillIn.some((player) => player.id === playerId);
+}
+
 function visibleHoleCards(
   hand: EngineHandState,
   playerId: string,
   viewerPlayerId: string | null,
   holeCards: Card[]
 ): Card[] {
-  const revealAll = hand.phase === 'hand_end';
-  if (revealAll || playerId === viewerPlayerId) {
+  if (playerId === viewerPlayerId || isShownAtShowdown(hand, playerId)) {
     return holeCards;
   }
 

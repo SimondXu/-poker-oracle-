@@ -1,18 +1,13 @@
 import type { Server } from 'socket.io';
 
-import type { RoomActionTimeouts } from './action-timeout.ts';
-import { clearRoomActionTimeout } from './action-timeout.ts';
-import type { RoomNextHandTimeouts } from './auto-next-hand.ts';
-import { clearRoomNextHandTimeout } from './auto-next-hand.ts';
+import { hasHumanPlayers } from '../rooms/room-store.ts';
 import type { RuntimeRoom } from '../rooms/types.ts';
 import { emitRoomState } from '../ws/emitters.ts';
 
 export function cleanupDisconnectedPlayersAfterHandEnd(
   io: Server,
   room: RuntimeRoom,
-  rooms: Map<string, RuntimeRoom>,
-  roomActionTimeouts: RoomActionTimeouts,
-  roomNextHandTimeouts: RoomNextHandTimeouts
+  deleteRoom: (roomId: string) => void
 ): void {
   if (!room.hand || room.hand.phase !== 'hand_end' || room.pendingDisconnectPlayerIds.size === 0) {
     return;
@@ -21,15 +16,14 @@ export function cleanupDisconnectedPlayersAfterHandEnd(
   for (const playerId of room.pendingDisconnectPlayerIds) {
     room.players.delete(playerId);
     room.readyPlayerIds.delete(playerId);
+    room.spectatingPlayerIds.delete(playerId);
     room.lastActionSeqByPlayer.delete(playerId);
   }
 
   room.pendingDisconnectPlayerIds.clear();
 
-  if (room.players.size === 0) {
-    clearRoomActionTimeout(roomActionTimeouts, room.id);
-    clearRoomNextHandTimeout(roomNextHandTimeouts, room.id);
-    rooms.delete(room.id);
+  if (!hasHumanPlayers(room)) {
+    deleteRoom(room.id);
     return;
   }
 

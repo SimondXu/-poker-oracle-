@@ -26,6 +26,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@aipoker/agent-engine':
+        specifier: workspace:*
+        version: link:../../packages/agent-engine
       '@aipoker/bot-engine':
         specifier: workspace:*
         version: link:../../packages/bot-engine

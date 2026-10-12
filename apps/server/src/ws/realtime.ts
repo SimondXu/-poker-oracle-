@@ -1,12 +1,18 @@
 import type { FastifyInstance } from 'fastify';
+import { createAgentTurnCoordinator, type AgentLlmClient } from '@aipoker/agent-engine';
 import { Server } from 'socket.io';
 
 import { DEFAULT_AUTH_COOKIE_NAME, parseCookies } from '../auth/cookies.ts';
 import { verifyGuestSessionToken } from '../auth/session-token.ts';
-import type { RoomActionTimeouts } from '../game-loop/action-timeout.ts';
-import type { RoomNextHandTimeouts } from '../game-loop/auto-next-hand.ts';
-import type { EmptyRoomTimeouts } from '../game-loop/empty-room-timeout.ts';
+import { createFixedWindowRateLimiter } from '../http/rate-limit.ts';
+import { clearRoomActionTimeout, type RoomActionTimeouts } from '../game-loop/action-timeout.ts';
+import { clearRoomNextHandTimeout, type RoomNextHandTimeouts } from '../game-loop/auto-next-hand.ts';
+import { clearEmptyRoomTimeout, type EmptyRoomTimeouts } from '../game-loop/empty-room-timeout.ts';
 import { DEFAULT_BOT_RUNTIME_DEPS, type BotRuntimeDeps } from '../game-loop/bot-support.ts';
+import {
+  createRealtimeLlmAgentRunner,
+  type RealtimeLlmDecisionResult,
+} from '../game-loop/llm-agent-runtime.ts';
 import type { RoomTaskQueues } from '../rooms/room-queue.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { registerGameEvents } from './handlers/game-events.ts';
@@ -17,15 +23,30 @@ interface AttachRealtimeOptions {
   authSecret?: string;
   authCookieName?: string;
   authStrict?: boolean;
+  corsOrigin?: string;
   emptyRoomTtlMs?: number;
   nowMs?: () => number;
   botRuntime?: Partial<BotRuntimeDeps>;
+  llmAgent?: {
+    enabled?: boolean;
+    apiKey?: string | null;
+    baseUrl?: string;
+    httpReferer?: string | null;
+    appTitle?: string;
+    maxCompletionTokens?: number;
+    maxPromptTokens?: number;
+    roomCostLimitUsd?: number;
+    maxToolRoundsRealtime?: number;
+    realtimeTimeoutMs?: number;
+    fetch?: typeof globalThis.fetch;
+    llmClient?: AgentLlmClient;
+  };
 }
 
 export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOptions = {}): Server {
   const io = new Server(app.server, {
     cors: {
-      origin: '*'
+      origin: options.corsOrigin ?? 'http://localhost:3000'
     }
   });
 
@@ -39,12 +60,41 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
     ...DEFAULT_BOT_RUNTIME_DEPS,
     ...(options.botRuntime ?? {}),
   };
+  const llmAgentRunner = createRealtimeLlmAgentRunner({
+    enabled: options.llmAgent?.enabled ?? false,
+    apiKey: options.llmAgent?.apiKey ?? null,
+    maxCompletionTokens: options.llmAgent?.maxCompletionTokens ?? 600,
+    maxToolRoundsRealtime: options.llmAgent?.maxToolRoundsRealtime ?? 1,
+    realtimeTimeoutMs: options.llmAgent?.realtimeTimeoutMs ?? 8_000,
+    roomCostLimitUsd: options.llmAgent?.roomCostLimitUsd ?? 1,
+    rng: botRuntime.rng,
+    ...(options.llmAgent?.maxPromptTokens !== undefined ? { maxPromptTokens: options.llmAgent.maxPromptTokens } : {}),
+    ...(options.llmAgent?.baseUrl ? { baseUrl: options.llmAgent.baseUrl } : {}),
+    ...(options.llmAgent?.httpReferer ? { httpReferer: options.llmAgent.httpReferer } : {}),
+    ...(options.llmAgent?.appTitle ? { appTitle: options.llmAgent.appTitle } : {}),
+    ...(options.llmAgent?.fetch ? { fetch: options.llmAgent.fetch } : {}),
+    ...(options.llmAgent?.llmClient ? { llmClient: options.llmAgent.llmClient } : {}),
+  });
+  const llmTurnCoordinator = createAgentTurnCoordinator<RealtimeLlmDecisionResult>({
+    setTimeout,
+    clearTimeout,
+  });
   const rooms = new Map<string, RuntimeRoom>();
   const memberships = new Map<string, RoomMembership>();
   const roomActionTimeouts: RoomActionTimeouts = new Map();
   const roomNextHandTimeouts: RoomNextHandTimeouts = new Map();
   const emptyRoomTimeouts: EmptyRoomTimeouts = new Map();
   const roomTaskQueues: RoomTaskQueues = new Map();
+  const roomRateLimit = createFixedWindowRateLimiter();
+
+  function deleteRoom(roomId: string): void {
+    clearRoomActionTimeout(roomActionTimeouts, roomId);
+    clearRoomNextHandTimeout(roomNextHandTimeouts, roomId);
+    clearEmptyRoomTimeout(emptyRoomTimeouts, roomId);
+    llmTurnCoordinator.cancelRoom(roomId);
+    llmAgentRunner.releaseRoom(roomId);
+    rooms.delete(roomId);
+  }
 
   io.use((socket, next) => {
     const cookies = parseCookies(socket.handshake.headers.cookie);
@@ -68,13 +118,13 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       socket,
       rooms,
       memberships,
-      roomActionTimeouts,
-      roomNextHandTimeouts,
       emptyRoomTimeouts,
       authStrict,
       actionTimeoutMs,
       emptyRoomTtlMs,
       nowMs,
+      deleteRoom,
+      rateLimit: roomRateLimit,
     });
 
     registerGameEvents({
@@ -88,6 +138,9 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       actionTimeoutMs,
       nowMs,
       botRuntime,
+      llmAgentRunner,
+      llmTurnCoordinator,
+      deleteRoom,
     });
   });
 

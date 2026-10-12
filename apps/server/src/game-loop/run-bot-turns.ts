@@ -1,6 +1,6 @@
 import { chooseBotAction } from '@aipoker/bot-engine';
-import { applyAction, type PlayerActionInput } from '@aipoker/game-engine';
-import { getRuleBotPersonality } from '@aipoker/shared';
+import { applyAction, getValidActions, type PlayerActionInput } from '@aipoker/game-engine';
+import { getRuleBotPersonality, type BotDecisionContext } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
 import {
@@ -10,8 +10,9 @@ import {
   trackBotPreflopEntryDecision,
   type BotRuntimeDeps,
 } from './bot-support.ts';
+import { selectEmergencyBotActionInput } from './realtime-bot-fallback.ts';
 import { syncRoomPlayersFromHand } from '../rooms/room-store.ts';
-import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
+import type { RoomMembership, RuntimePlayer, RuntimeRoom } from '../rooms/types.ts';
 import { emitGameState } from '../ws/emitters.ts';
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
@@ -36,6 +37,14 @@ function buildActionInput(
   }
 }
 
+export interface StartRealtimeLlmTurnInput {
+  room: RuntimeRoom;
+  actor: RuntimePlayer;
+  context: BotDecisionContext;
+}
+
+export type StartRealtimeLlmTurn = (input: StartRealtimeLlmTurnInput) => void;
+
 /**
  * Runs all consecutive bot turns asynchronously, with a simulated thinking
  * delay between each action. Stops when the current actor is a human or the
@@ -46,6 +55,7 @@ export async function runBotTurns(
   room: RuntimeRoom,
   memberships: Map<string, RoomMembership>,
   runtime: BotRuntimeDeps,
+  startRealtimeLlmTurn?: StartRealtimeLlmTurn,
 ): Promise<void> {
   while (room.hand && room.hand.currentActorSeat !== null) {
     const seatIndex = room.hand.currentActorSeat;
@@ -60,6 +70,15 @@ export async function runBotTurns(
     if (!context) {
       return;
     }
+    if (actor.botConfig?.kind === 'llm') {
+      startRealtimeLlmTurn?.({
+        room,
+        actor,
+        context,
+      });
+      return;
+    }
+
     const personality = actor.botConfig ? getRuleBotPersonality(actor.botConfig) : 'fish';
     if (!personality) {
       return;
@@ -89,9 +108,15 @@ export async function runBotTurns(
 
     const actionInput = buildActionInput(actor.id, botAction);
     const handBeforeAction = room.hand;
-    const result = applyAction(handBeforeAction, actionInput, { timestamp: runtime.nowMs() });
+    let result = applyAction(handBeforeAction, actionInput, { timestamp: runtime.nowMs() });
     if (!result.ok) {
-      return;
+      // An illegal heuristic choice must not stall the table; fall back to the safest legal action.
+      console.error('rule bot chose an illegal action', { roomId: room.id, playerId: actor.id, action: actionInput });
+      const emergencyAction = selectEmergencyBotActionInput(actor.id, getValidActions(handBeforeAction, actor.id));
+      result = applyAction(handBeforeAction, emergencyAction, { timestamp: runtime.nowMs() });
+      if (!result.ok) {
+        return;
+      }
     }
     trackBotPreflopEntryDecision(room, handBeforeAction, actor.id, botAction.type);
 

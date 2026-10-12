@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@aipoker/agent-engine": "workspace:*",
     "@aipoker/bot-engine": "workspace:*",
     "@aipoker/game-engine": "workspace:*",
     "@aipoker/shared": "workspace:*",

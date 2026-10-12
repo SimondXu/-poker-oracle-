@@ -99,6 +99,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     authSecret: serverConfig.authSecret,
     authCookieName: serverConfig.authCookieName,
     authStrict: serverConfig.authStrict,
+    corsOrigin: serverConfig.corsOrigin,
+    llmAgent: {
+      enabled: serverConfig.llmAgentEnabled,
+      apiKey: serverConfig.openRouterApiKey,
+      baseUrl: serverConfig.openRouterBaseUrl,
+      httpReferer: serverConfig.openRouterHttpReferer,
+      appTitle: serverConfig.openRouterAppTitle,
+      maxCompletionTokens: serverConfig.llmAgentMaxCompletionTokens,
+      maxPromptTokens: serverConfig.llmAgentMaxPromptTokens,
+      roomCostLimitUsd: serverConfig.llmAgentRoomCostLimitUsd,
+      maxToolRoundsRealtime: serverConfig.llmAgentMaxToolRoundsRealtime,
+      realtimeTimeoutMs: serverConfig.llmAgentRealtimeTimeoutMs,
+    },
     ...(options.nowMs ? { nowMs: options.nowMs } : {})
   };
   const io =

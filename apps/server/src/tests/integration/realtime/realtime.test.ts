@@ -1434,8 +1434,9 @@ test('game:hand_result is broadcast when hand reaches hand_end', async (t) => {
   assert.equal(bobSnapshot?.name, 'Bob');
   assert.equal(Array.isArray(aliceSnapshot?.holeCards), true);
   assert.equal(Array.isArray(bobSnapshot?.holeCards), true);
-  assert.equal(aliceSnapshot?.holeCards.length, 2);
-  assert.equal(bobSnapshot?.holeCards.length, 2);
+  // Won without a showdown: nobody's hole cards are revealed in the room-wide result.
+  assert.equal(aliceSnapshot?.holeCards.length, 0);
+  assert.equal(bobSnapshot?.holeCards.length, 0);
   assert.deepEqual(bobHandResult, aliceHandResult);
 });
 
@@ -1977,9 +1978,12 @@ test('disconnected in-hand player is removed after hand_end so next hand can sta
   assert.deepEqual(nextStartAck, { ok: true });
 });
 
-test('bots-only table auto-starts next hand after hand_end', async (t) => {
+test('bots-only table is deleted once the last human disconnects and the hand ends', async (t) => {
   const app = createServer({ nowMs: () => 42 });
-  const io = attachRealtime(app, { actionTimeoutMs: 40 });
+  const io = attachRealtime(app, {
+    actionTimeoutMs: 40,
+    botRuntime: { sleep: async () => {} }
+  });
 
   t.after(async () => {
     await new Promise<void>((resolve) => io.close(() => resolve()));
@@ -1991,49 +1995,29 @@ test('bots-only table auto-starts next hand after hand_end', async (t) => {
   const url = `http://127.0.0.1:${address.port}`;
 
   const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
-  const observer = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  const prober = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
 
   t.after(() => {
     alice.close();
-    observer.close();
+    prober.close();
   });
 
   await once(alice, 'connect');
-  await once(observer, 'connect');
+  await once(prober, 'connect');
 
-  await emitWithAck(alice, 'room:create', {
-    roomId: 'AAAAAV',
-    smallBlind: 10,
-    bigBlind: 20
-  });
-
-  await emitWithAck(alice, 'room:join', {
-    roomId: 'AAAAAV',
-    playerId: 'p0',
-    playerName: 'Alice',
-    seatIndex: 0,
-    stack: 1000
-  });
-
-  await emitWithAck(observer, 'room:join', {
-    roomId: 'AAAAAV',
-    playerId: 'bot-1',
-    playerName: 'Fish Bot 1',
-    seatIndex: 1,
-    stack: 1000,
-    isBot: true,
-    botStrategy: 'fish'
-  });
-
-  await emitWithAck(observer, 'room:join', {
-    roomId: 'AAAAAV',
-    playerId: 'bot-2',
-    playerName: 'Fish Bot 2',
-    seatIndex: 2,
-    stack: 1000,
-    isBot: true,
-    botStrategy: 'fish'
-  });
+  await emitWithAck(alice, 'room:create', { roomId: 'AAAAAV', smallBlind: 10, bigBlind: 20 });
+  await emitWithAck(alice, 'room:join', { roomId: 'AAAAAV', playerId: 'p0', playerName: 'Alice', seatIndex: 0, stack: 1000 });
+  for (const seatIndex of [1, 2]) {
+    await emitWithAck(alice, 'room:join', {
+      roomId: 'AAAAAV',
+      playerId: `bot-${seatIndex}`,
+      playerName: `Fish Bot ${seatIndex}`,
+      seatIndex,
+      stack: 1000,
+      isBot: true,
+      botStrategy: 'fish'
+    });
+  }
 
   const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
     roomId: 'AAAAAV',
@@ -2043,29 +2027,22 @@ test('bots-only table auto-starts next hand after hand_end', async (t) => {
 
   alice.close();
 
-  const firstHandResult = await waitForHandResult(
-    observer,
-    (payload) => payload.roomId === 'AAAAAV' && payload.phase === 'hand_end' && payload.stateVersion >= 1,
-    20_000
-  );
-  assert.equal(firstHandResult.table.isBotsOnlyContinuation, true);
-  assert.equal(firstHandResult.table.activeHumanStackPlayerCount, 0);
-
-  const unauthorizedStartAck = await emitWithAck<{ ok: boolean; error?: string }>(observer, 'game:start', {
-    roomId: 'AAAAAV',
-    buttonMarkerSeat: 0
-  });
-  assert.deepEqual(unauthorizedStartAck, { ok: false, error: 'not_room_member' });
-
-  const nextHandState = await waitForState(
-    observer,
-    (payload) =>
-      payload.roomId === 'AAAAAV'
-      && payload.hand.handNumber >= 2
-      && payload.hand.phase !== 'hand_end',
-    20_000
-  );
-  assert.equal(nextHandState.hand.handNumber >= 2, true);
+  // Bots alone must not keep playing (and spending) forever: the room goes away at hand end.
+  const deadline = Date.now() + 3000;
+  let probeAck: { ok: boolean; error?: string } = { ok: true };
+  while (Date.now() < deadline) {
+    probeAck = await emitWithAck<{ ok: boolean; error?: string }>(prober, 'room:join', {
+      roomId: 'AAAAAV',
+      playerId: 'prober',
+      playerName: 'Prober'
+    });
+    if (!probeAck.ok) {
+      break;
+    }
+    await emitWithAck(prober, 'room:leave', {});
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.deepEqual(probeAck, { ok: false, error: 'room_not_found' });
 });
 
 test('game:start rotates button to the next stack-positive seat on the next hand', async (t) => {
@@ -2154,96 +2131,6 @@ test('game:start rotates button to the next stack-positive seat on the next hand
   assert.equal(secondHandState.hand.currentActorSeat, 1);
 });
 
-test('bots-only auto-next rotates button with injected bot runtime deps', async (t) => {
-  const app = createServer({ nowMs: () => 42 });
-  const io = attachRealtime(app, {
-    actionTimeoutMs: 40,
-    botRuntime: {
-      rng: () => 0.99,
-      sleep: async () => {},
-      nowMs: () => 42
-    }
-  } as any);
-
-  t.after(async () => {
-    await new Promise<void>((resolve) => io.close(() => resolve()));
-    await app.close();
-  });
-
-  await app.listen({ host: '127.0.0.1', port: 0 });
-  const address = app.server.address() as AddressInfo;
-  const url = `http://127.0.0.1:${address.port}`;
-
-  const alice = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
-  const observer = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
-
-  t.after(() => {
-    observer.close();
-  });
-
-  await once(alice, 'connect');
-  await once(observer, 'connect');
-
-  await emitWithAck(alice, 'room:create', {
-    roomId: 'AAAAAX',
-    smallBlind: 10,
-    bigBlind: 20
-  });
-  await emitWithAck(alice, 'room:join', {
-    roomId: 'AAAAAX',
-    playerId: 'p0',
-    playerName: 'Alice',
-    seatIndex: 0,
-    stack: 1000
-  });
-  await emitWithAck(observer, 'room:join', {
-    roomId: 'AAAAAX',
-    playerId: 'bot-1',
-    playerName: 'Bot 1',
-    seatIndex: 1,
-    stack: 1000,
-    isBot: true,
-    botStrategy: 'fish'
-  });
-  await emitWithAck(observer, 'room:join', {
-    roomId: 'AAAAAX',
-    playerId: 'bot-2',
-    playerName: 'Bot 2',
-    seatIndex: 2,
-    stack: 1000,
-    isBot: true,
-    botStrategy: 'tag'
-  });
-  await emitWithAck(observer, 'room:join', {
-    roomId: 'AAAAAX',
-    playerId: 'bot-3',
-    playerName: 'Bot 3',
-    seatIndex: 3,
-    stack: 1000,
-    isBot: true,
-    botStrategy: 'lag'
-  });
-
-  const startAck = await emitWithAck<{ ok: boolean; error?: string }>(alice, 'game:start', {
-    roomId: 'AAAAAX',
-    buttonMarkerSeat: 0
-  });
-  assert.deepEqual(startAck, { ok: true });
-
-  alice.close();
-
-  const nextHandState = await waitForState(
-    observer,
-    (payload) =>
-      payload.roomId === 'AAAAAX'
-      && payload.hand.handNumber >= 2
-      && payload.hand.phase !== 'hand_end'
-      && payload.hand.buttonMarkerSeat === 1,
-    2400
-  );
-  assert.equal(nextHandState.hand.buttonMarkerSeat, 1);
-});
-
 test('eliminated human must explicitly spectate before bots-only auto-next resumes', async (t) => {
   const rng = sequenceRng(123);
   const app = createServer({ nowMs: () => 42 });
@@ -2266,15 +2153,12 @@ test('eliminated human must explicitly spectate before bots-only auto-next resum
   const url = `http://127.0.0.1:${address.port}`;
 
   const human = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
-  const observer = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
 
   t.after(() => {
     human.close();
-    observer.close();
   });
 
   await once(human, 'connect');
-  await once(observer, 'connect');
 
   await emitWithAck(human, 'room:create', {
     roomId: 'AAAABY',
@@ -2288,7 +2172,7 @@ test('eliminated human must explicitly spectate before bots-only auto-next resum
     seatIndex: 0,
     stack: 10,
   });
-  await emitWithAck(observer, 'room:join', {
+  await emitWithAck(human, 'room:join', {
     roomId: 'AAAABY',
     playerId: 'bot-1',
     playerName: 'Bot 1',
@@ -2297,7 +2181,7 @@ test('eliminated human must explicitly spectate before bots-only auto-next resum
     isBot: true,
     botStrategy: 'fish',
   });
-  await emitWithAck(observer, 'room:join', {
+  await emitWithAck(human, 'room:join', {
     roomId: 'AAAABY',
     playerId: 'bot-2',
     playerName: 'Bot 2',
@@ -2332,9 +2216,9 @@ test('eliminated human must explicitly spectate before bots-only auto-next resum
       autoContinued = true;
     }
   };
-  observer.on('game:state', observeUnexpectedNextHand);
+  human.on('game:state', observeUnexpectedNextHand);
   await sleep(1_900);
-  observer.off('game:state', observeUnexpectedNextHand);
+  human.off('game:state', observeUnexpectedNextHand);
   assert.equal(autoContinued, false);
 
   const spectateAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:spectate', {
@@ -2343,7 +2227,7 @@ test('eliminated human must explicitly spectate before bots-only auto-next resum
   assert.deepEqual(spectateAck, { ok: true });
 
   const nextHandState = await waitForState(
-    observer,
+    human,
     (payload) =>
       payload.roomId === 'AAAABY'
       && payload.hand.handNumber >= 2
@@ -2760,7 +2644,7 @@ test('game loop auto-runs bot turns and returns control to human or ends hand', 
     seatIndex: 0,
     stack: 1000
   });
-  await emitWithAck(botClient, 'room:join', {
+  await emitWithAck(human, 'room:join', {
     roomId: 'AAAAAK',
     playerId: 'bot-1',
     playerName: 'Bot',
@@ -2841,7 +2725,7 @@ test('injected bot runtime makes bot turns deterministic and immediate', async (
     seatIndex: 0,
     stack: 1000
   });
-  await emitWithAck(botClient, 'room:join', {
+  await emitWithAck(human, 'room:join', {
     roomId: 'AAAAAY',
     playerId: 'bot-1',
     playerName: 'Bot',

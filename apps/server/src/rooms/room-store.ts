@@ -70,3 +70,8 @@ export function syncRoomPlayersFromHand(room: RuntimeRoom): void {
     }
   }
 }
+
+// Bots never keep a room alive on their own; it is deleted once no human is seated.
+export function hasHumanPlayers(room: RuntimeRoom): boolean {
+  return [...room.players.values()].some((player) => !player.isBot);
+}

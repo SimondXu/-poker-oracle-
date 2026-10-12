@@ -1,18 +1,18 @@
-import type { BotPersonality } from '@aipoker/shared';
+import type { AgentModel, AgentPersonaId, BotConfig, BotPersonality } from '@aipoker/shared';
 import type { Server, Socket } from 'socket.io';
 
 import type { GuestSession } from '../../auth/session-token.ts';
-import { clearRoomActionTimeout, type RoomActionTimeouts } from '../../game-loop/action-timeout.ts';
-import { clearRoomNextHandTimeout, type RoomNextHandTimeouts } from '../../game-loop/auto-next-hand.ts';
+import type { FixedWindowRateLimiter } from '../../http/rate-limit.ts';
 import {
   clearEmptyRoomTimeout,
   scheduleEmptyRoomTimeout,
   type EmptyRoomTimeouts,
 } from '../../game-loop/empty-room-timeout.ts';
-import { getOrCreateRoom, pickSeatIndex } from '../../rooms/room-store.ts';
+import { getOrCreateRoom, hasHumanPlayers, pickSeatIndex } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameStateToSocket, emitRoomState } from '../emitters.ts';
 import {
+  MAX_SEATS,
   joinRoomPayloadSchema,
   roomLeavePayloadSchema,
   roomCreatePayloadSchema,
@@ -23,23 +23,26 @@ import {
   type RoomCreateAck,
   type RoomReadyAck
 } from '../schemas.ts';
+import { toAck } from '../ack.ts';
 
 interface RegisterRoomEventsInput {
   io: Server;
   socket: Socket;
   rooms: Map<string, RuntimeRoom>;
   memberships: Map<string, RoomMembership>;
-  roomActionTimeouts: RoomActionTimeouts;
-  roomNextHandTimeouts: RoomNextHandTimeouts;
   emptyRoomTimeouts: EmptyRoomTimeouts;
   authStrict: boolean;
   actionTimeoutMs: number;
   emptyRoomTtlMs: number;
   nowMs: () => number;
+  deleteRoom: (roomId: string) => void;
+  // Shared across sockets so reconnecting does not reset the budget.
+  rateLimit: FixedWindowRateLimiter;
 }
 
-const CREATE_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_CREATES_PER_WINDOW = 10;
+const MAX_BOT_JOINS_PER_WINDOW = 30;
+const BOT_ID_PREFIX = 'bot-';
 
 function toRuleBotConfig(personality: BotPersonality | undefined) {
   return {
@@ -48,21 +51,41 @@ function toRuleBotConfig(personality: BotPersonality | undefined) {
   };
 }
 
+function toBotConfig(input: {
+  botStrategy: BotPersonality | undefined;
+  botModel: AgentModel | undefined;
+  botPersonaId: AgentPersonaId | undefined;
+}): BotConfig | undefined {
+  if (input.botModel) {
+    return {
+      kind: 'llm',
+      model: input.botModel,
+      personaId: input.botPersonaId ?? 'analyst',
+    };
+  }
+
+  if (input.botStrategy) {
+    return toRuleBotConfig(input.botStrategy);
+  }
+
+  return undefined;
+}
+
 export function registerRoomEvents(input: RegisterRoomEventsInput): void {
   const {
     io,
     socket,
     rooms,
     memberships,
-    roomActionTimeouts,
-    roomNextHandTimeouts,
     emptyRoomTimeouts,
     authStrict,
     actionTimeoutMs,
     emptyRoomTtlMs,
     nowMs,
+    deleteRoom,
+    rateLimit,
   } = input;
-  const createTimestamps: number[] = [];
+  const clientKey = socket.handshake.address;
 
   function shouldKeepSeatDuringHand(room: RuntimeRoom, playerId: string): boolean {
     return (
@@ -91,51 +114,40 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     room.spectatingPlayerIds.delete(playerId);
   }
 
-  function deleteRoom(roomId: string): void {
-    clearRoomActionTimeout(roomActionTimeouts, roomId);
-    clearRoomNextHandTimeout(roomNextHandTimeouts, roomId);
-    clearEmptyRoomTimeout(emptyRoomTimeouts, roomId);
-    rooms.delete(roomId);
+  function isRateLimited(action: string, maxPerWindow: number): boolean {
+    return !rateLimit(`${action}:${clientKey}`, nowMs(), maxPerWindow).allowed;
   }
 
-  function isCreateRateLimited(): boolean {
-    const now = nowMs();
-    while (createTimestamps.length > 0) {
-      const oldest = createTimestamps[0];
-      if (oldest === undefined || now - oldest < CREATE_RATE_LIMIT_WINDOW_MS) {
-        break;
-      }
-      createTimestamps.shift();
+  function deleteRoomIfNoHumans(room: RuntimeRoom): boolean {
+    if (hasHumanPlayers(room)) {
+      return false;
     }
 
-    if (createTimestamps.length >= MAX_CREATES_PER_WINDOW) {
-      return true;
-    }
-
-    createTimestamps.push(now);
-    return false;
+    deleteRoom(room.id);
+    return true;
   }
 
-  socket.on('room:create', (payload: unknown, ack?: (result: RoomCreateAck) => void) => {
+  socket.on('room:create', (payload: unknown, rawAck?: unknown) => {
+    const ack = toAck<RoomCreateAck>(rawAck);
     const parsed = roomCreatePayloadSchema.safeParse(payload);
     if (!parsed.success || parsed.data.bigBlind < parsed.data.smallBlind) {
-      ack?.({ ok: false, error: 'invalid_payload' });
+      ack({ ok: false, error: 'invalid_payload' });
       return;
     }
 
     const authSession = (socket.data.authSession ?? null) as GuestSession | null;
     if (authStrict && !authSession) {
-      ack?.({ ok: false, error: 'unauthorized' });
+      ack({ ok: false, error: 'unauthorized' });
       return;
     }
 
-    if (isCreateRateLimited()) {
-      ack?.({ ok: false, error: 'rate_limited' });
+    if (isRateLimited('create', MAX_CREATES_PER_WINDOW)) {
+      ack({ ok: false, error: 'rate_limited' });
       return;
     }
 
     if (rooms.has(parsed.data.roomId)) {
-      ack?.({ ok: false, error: 'room_already_exists' });
+      ack({ ok: false, error: 'room_already_exists' });
       return;
     }
 
@@ -153,14 +165,15 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       deleteRoom(room.id);
     });
 
-    ack?.({ ok: true, roomId: room.id });
+    ack({ ok: true, roomId: room.id });
     emitRoomState(io, room);
   });
 
-  socket.on('room:join', async (payload: unknown, ack?: (result: JoinRoomAck) => void) => {
+  socket.on('room:join', async (payload: unknown, rawAck?: unknown) => {
+    const ack = toAck<JoinRoomAck>(rawAck);
     const parsed = joinRoomPayloadSchema.safeParse(payload);
     if (!parsed.success) {
-      ack?.({ ok: false, error: 'invalid_payload' });
+      ack({ ok: false, error: 'invalid_payload' });
       return;
     }
 
@@ -168,43 +181,83 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     const isBot = parsed.data.isBot === true;
     const authSession = (socket.data.authSession ?? null) as GuestSession | null;
     if (!isBot && authStrict && !authSession) {
-      ack?.({ ok: false, error: 'unauthorized' });
+      ack({ ok: false, error: 'unauthorized' });
       return;
     }
 
     const resolvedPlayerId = isBot ? parsed.data.playerId : (authSession?.userId ?? parsed.data.playerId);
     const resolvedPlayerName = isBot ? parsed.data.playerName : (parsed.data.playerName ?? authSession?.username);
     if (!resolvedPlayerId || !resolvedPlayerName) {
-      ack?.({ ok: false, error: 'invalid_payload' });
+      ack({ ok: false, error: 'invalid_payload' });
       return;
     }
 
     if (!isBot && authSession && parsed.data.playerId && parsed.data.playerId !== authSession.userId) {
-      ack?.({ ok: false, error: 'unauthorized' });
+      ack({ ok: false, error: 'unauthorized' });
+      return;
+    }
+
+    // Bot and human ids live in separate namespaces so neither can take over the other's seat.
+    if (isBot !== resolvedPlayerId.startsWith(BOT_ID_PREFIX)) {
+      ack({ ok: false, error: 'invalid_payload' });
       return;
     }
 
     const room = rooms.get(roomId);
     if (!room) {
-      ack?.({ ok: false, error: 'room_not_found' });
+      ack({ ok: false, error: 'room_not_found' });
       return;
     }
-    clearEmptyRoomTimeout(emptyRoomTimeouts, room.id);
+
+    const previousMembership = memberships.get(socket.id);
+    const existingPlayer = room.players.get(resolvedPlayerId);
+    if (isBot) {
+      // Only a seated member of this room may add or reconfigure its bots.
+      if (!previousMembership || previousMembership.roomId !== roomId || !room.players.has(previousMembership.playerId)) {
+        ack({ ok: false, error: 'not_room_member' });
+        return;
+      }
+      if (existingPlayer && !existingPlayer.isBot) {
+        ack({ ok: false, error: 'invalid_payload' });
+        return;
+      }
+      if (!existingPlayer && isRateLimited('bot_join', MAX_BOT_JOINS_PER_WINDOW)) {
+        ack({ ok: false, error: 'rate_limited' });
+        return;
+      }
+    }
+
+    if (!existingPlayer && room.players.size >= MAX_SEATS) {
+      ack({ ok: false, error: 'room_full' });
+      return;
+    }
 
     const normalizedName = resolvedPlayerName.trim().toLowerCase();
     const hasNameConflict = [...room.players.values()].some(
       (player) => player.id !== resolvedPlayerId && player.name.trim().toLowerCase() === normalizedName
     );
     if (hasNameConflict) {
-      ack?.({ ok: false, error: 'player_name_taken' });
+      ack({ ok: false, error: 'player_name_taken' });
       return;
     }
 
-    const previousMembership = memberships.get(socket.id);
+    const requestedSeat = parsed.data.seatIndex;
+    const seatTakenByOther =
+      requestedSeat !== undefined
+        && !existingPlayer
+        ? [...room.players.values()].some((player) => player.seatIndex === requestedSeat && player.id !== resolvedPlayerId)
+        : false;
+    if (seatTakenByOther) {
+      ack({ ok: false, error: 'invalid_payload' });
+      return;
+    }
 
-    if (previousMembership && previousMembership.roomId !== roomId) {
+    // All checks pass; everything below mutates synchronously so no other handler can interleave
+    // between validation and the seat being taken.
+    clearEmptyRoomTimeout(emptyRoomTimeouts, room.id);
+    if (!isBot && previousMembership && previousMembership.roomId !== roomId) {
       const previousRoom = rooms.get(previousMembership.roomId);
-      await socket.leave(previousMembership.roomId);
+      void socket.leave(previousMembership.roomId);
       if (previousRoom) {
         const hasOtherSockets = hasOtherSocketForPlayer(previousMembership.roomId, previousMembership.playerId);
         if (!hasOtherSockets) {
@@ -213,37 +266,32 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
           } else {
             removePlayerFromRoom(previousRoom, previousMembership.playerId);
           }
-          if (previousRoom.players.size === 0) {
-            deleteRoom(previousMembership.roomId);
+          if (!deleteRoomIfNoHumans(previousRoom)) {
+            emitRoomState(io, previousRoom);
           }
-          emitRoomState(io, previousRoom);
         }
       }
     }
 
-    const existingPlayer = room.players.get(resolvedPlayerId);
-    const requestedSeat = parsed.data.seatIndex;
-    const seatTakenByOther =
-      requestedSeat !== undefined
-        && !existingPlayer
-        ? [...room.players.values()].some((player) => player.seatIndex === requestedSeat && player.id !== resolvedPlayerId)
-        : false;
-    if (seatTakenByOther) {
-      ack?.({ ok: false, error: 'invalid_payload' });
-      return;
-    }
+    const botConfig = isBot
+      ? toBotConfig({
+          botStrategy: parsed.data.botStrategy,
+          botModel: parsed.data.botModel,
+          botPersonaId: parsed.data.botPersonaId,
+        })
+      : undefined;
 
     const nextPlayer =
       existingPlayer
       ?? (
-        isBot && parsed.data.botStrategy
+        isBot && botConfig
           ? {
               id: resolvedPlayerId,
               name: resolvedPlayerName,
               seatIndex: requestedSeat ?? pickSeatIndex(room),
               stack: parsed.data.stack ?? 1000,
               isBot: true,
-              botConfig: { kind: 'rule' as const, personality: parsed.data.botStrategy },
+              botConfig,
             }
           : {
               id: resolvedPlayerId,
@@ -254,9 +302,9 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
             }
       );
 
-    const ruleBotConfig = toRuleBotConfig(parsed.data.botStrategy);
-    if (existingPlayer && isBot && ruleBotConfig) {
-      existingPlayer.botConfig = ruleBotConfig;
+    // Reconfiguring a bot that is mid-hand would orphan its pending turn, so only do it between hands.
+    if (existingPlayer && botConfig && !shouldKeepSeatDuringHand(room, existingPlayer.id)) {
+      existingPlayer.botConfig = botConfig;
     }
 
     room.players.set(resolvedPlayerId, nextPlayer);
@@ -281,33 +329,34 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     }
     await socket.join(roomId);
 
-    ack?.({ ok: true, roomId, playerCount: room.players.size });
+    ack({ ok: true, roomId, playerCount: room.players.size });
     emitRoomState(io, room);
     // Re-entry or late join should receive an immediate hand snapshot without re-broadcasting turn prompts.
     emitGameStateToSocket(io, socket.id, room, memberships);
   });
 
-  socket.on('room:ready', (payload: unknown, ack?: (result: RoomReadyAck) => void) => {
+  socket.on('room:ready', (payload: unknown, rawAck?: unknown) => {
+    const ack = toAck<RoomReadyAck>(rawAck);
     const parsed = roomReadyPayloadSchema.safeParse(payload ?? {});
     if (!parsed.success) {
-      ack?.({ ok: false, error: 'invalid_payload' });
+      ack({ ok: false, error: 'invalid_payload' });
       return;
     }
 
     const membership = memberships.get(socket.id);
     if (!membership) {
-      ack?.({ ok: false, error: 'not_room_member' });
+      ack({ ok: false, error: 'not_room_member' });
       return;
     }
 
     const room = rooms.get(membership.roomId);
     if (!room || !room.players.has(membership.playerId)) {
-      ack?.({ ok: false, error: 'not_room_member' });
+      ack({ ok: false, error: 'not_room_member' });
       return;
     }
 
     room.readyPlayerIds.add(membership.playerId);
-    ack?.({
+    ack({
       ok: true,
       roomId: room.id,
       readyCount: room.readyPlayerIds.size,
@@ -316,52 +365,54 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     emitRoomState(io, room);
   });
 
-  socket.on('room:remove_player', (payload: unknown, ack?: (result: { ok: boolean; error?: string }) => void) => {
+  socket.on('room:remove_player', (payload: unknown, rawAck?: unknown) => {
+    const ack = toAck<{ ok: boolean; error?: string }>(rawAck);
     const parsed = roomRemovePlayerPayloadSchema.safeParse(payload);
     if (!parsed.success) {
-      ack?.({ ok: false, error: 'invalid_payload' });
+      ack({ ok: false, error: 'invalid_payload' });
       return;
     }
 
     const membership = memberships.get(socket.id);
     if (!membership || membership.roomId !== parsed.data.roomId) {
-      ack?.({ ok: false, error: 'not_room_member' });
+      ack({ ok: false, error: 'not_room_member' });
       return;
     }
 
     const room = rooms.get(parsed.data.roomId);
     if (!room) {
-      ack?.({ ok: false, error: 'room_not_found' });
+      ack({ ok: false, error: 'room_not_found' });
       return;
     }
 
     const target = room.players.get(parsed.data.playerId);
     if (!target || !target.isBot) {
-      ack?.({ ok: false, error: 'not_a_bot' });
+      ack({ ok: false, error: 'not_a_bot' });
       return;
     }
 
     // Don't allow removing bots during an active hand
     if (room.hand && room.hand.phase !== 'hand_end') {
-      ack?.({ ok: false, error: 'hand_in_progress' });
+      ack({ ok: false, error: 'hand_in_progress' });
       return;
     }
 
     removePlayerFromRoom(room, parsed.data.playerId);
-    ack?.({ ok: true });
+    ack({ ok: true });
     emitRoomState(io, room);
   });
 
-  socket.on('room:leave', async (payload: unknown, ack?: (result: RoomLeaveAck) => void) => {
+  socket.on('room:leave', async (payload: unknown, rawAck?: unknown) => {
+    const ack = toAck<RoomLeaveAck>(rawAck);
     const parsed = roomLeavePayloadSchema.safeParse(payload ?? {});
     if (!parsed.success) {
-      ack?.({ ok: false, error: 'invalid_payload' });
+      ack({ ok: false, error: 'invalid_payload' });
       return;
     }
 
     const membership = memberships.get(socket.id);
     if (!membership) {
-      ack?.({ ok: false, error: 'not_room_member' });
+      ack({ ok: false, error: 'not_room_member' });
       return;
     }
 
@@ -370,28 +421,27 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
     const room = rooms.get(membership.roomId);
     if (!room) {
-      ack?.({ ok: false, error: 'not_room_member' });
+      ack({ ok: false, error: 'not_room_member' });
       return;
     }
 
     if (hasOtherSocketForPlayer(membership.roomId, membership.playerId)) {
       room.pendingDisconnectPlayerIds.delete(membership.playerId);
-      ack?.({ ok: true, roomId: room.id, playerCount: room.players.size });
+      ack({ ok: true, roomId: room.id, playerCount: room.players.size });
       return;
     }
 
     if (shouldKeepSeatDuringHand(room, membership.playerId)) {
       room.pendingDisconnectPlayerIds.add(membership.playerId);
-      ack?.({ ok: true, roomId: room.id, playerCount: room.players.size });
+      ack({ ok: true, roomId: room.id, playerCount: room.players.size });
       emitRoomState(io, room);
       return;
     }
 
     removePlayerFromRoom(room, membership.playerId);
-    ack?.({ ok: true, roomId: room.id, playerCount: room.players.size });
+    ack({ ok: true, roomId: room.id, playerCount: room.players.size });
 
-    if (room.players.size === 0) {
-      deleteRoom(membership.roomId);
+    if (deleteRoomIfNoHumans(room)) {
       return;
     }
 
@@ -422,8 +472,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     }
 
     removePlayerFromRoom(room, membership.playerId);
-    if (room.players.size === 0) {
-      deleteRoom(membership.roomId);
+    if (deleteRoomIfNoHumans(room)) {
       return;
     }
 

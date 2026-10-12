@@ -6,6 +6,7 @@
     "allowImportingTsExtensions": true,
     "rootDir": "../../",
     "paths": {
+      "@aipoker/agent-engine": ["packages/agent-engine/src/index.ts"],
       "@aipoker/shared": ["packages/shared/src/index.ts"],
       "@aipoker/game-engine": ["packages/game-engine/src/index.ts"],
       "@aipoker/bot-engine": ["packages/bot-engine/src/index.ts"],
