@@ -74,20 +74,26 @@ function detectStraightState(
   return { hasStraight, oesd: outs.size >= 2, gutshot: outs.size === 1 };
 }
 
-function hasBackdoorStraightPotential(cards: readonly Card[]): boolean {
-  const rankSet = new Set<number>(cards.map((card) => rankValue(card)));
-  if (rankSet.has(14)) {
-    rankSet.add(1);
-  }
+function hasBackdoorStraightPotential(holeCards: readonly Card[], communityCards: readonly Card[]): boolean {
+  const toRankSet = (cards: readonly Card[]) => {
+    const rankSet = new Set<number>(cards.map((card) => rankValue(card)));
+    if (rankSet.has(14)) {
+      rankSet.add(1);
+    }
+    return rankSet;
+  };
+  const allRanks = toRankSet([...holeCards, ...communityCards]);
+  const boardRanks = toRankSet(communityCards);
 
   for (let start = 1; start <= 11; start += 1) {
     let present = 0;
+    let presentOnBoard = 0;
     for (let offset = 0; offset < 4; offset += 1) {
-      if (rankSet.has(start + offset)) {
-        present += 1;
-      }
+      present += allRanks.has(start + offset) ? 1 : 0;
+      presentOnBoard += boardRanks.has(start + offset) ? 1 : 0;
     }
-    if (present >= 3) {
+    // A hole card has to add a rank to the window, or the "draw" is the board's.
+    if (present >= 3 && present > presentOnBoard) {
       return true;
     }
   }
@@ -174,7 +180,7 @@ function buildPostflopFeatures(context: BotDecisionContext, madeHandRank: number
     madeHandRank < 5
     && !flushDraw
     && context.communityCards.length === 3
-    && [...suitCounts.values()].some((count) => count === 3);
+    && [...suitCounts.entries()].some(([suit, count]) => count === 3 && holeSuits.has(suit));
   const boardValues = [...boardRankCounts.keys()].sort((left, right) => left - right);
   const boardSpan = boardValues.length > 0 ? (boardValues.at(-1)! - boardValues[0]!) : 0;
   const boardConnected = context.communityCards.length >= 3 && (boardSpan <= 4 || detectStraightState(context.communityCards).oesd);
@@ -186,7 +192,7 @@ function buildPostflopFeatures(context: BotDecisionContext, madeHandRank: number
     && !straightState.hasStraight
     && !straightState.oesd
     && !straightState.gutshot
-    && hasBackdoorStraightPotential(allCards);
+    && hasBackdoorStraightPotential(context.holeCards, context.communityCards);
 
   return {
     flushDraw,
