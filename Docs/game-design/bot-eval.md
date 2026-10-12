@@ -17,19 +17,23 @@ pnpm simulate:bots --mode duplicate-hu --a tag --b station --hands 3000 --seed 2
 
 ## Results (seed 20261011, 3000 deals each)
 
-| A vs B | Baseline (equity vs random) | Range equity |
-|---|---|---|
-| tag vs tag-random | n/a | +78 ± 51 |
-| tag vs station | +1132 ± 70 | +1516 ± 81 |
-| tag vs overbettor | +337 ± 111 | +153 ± 103 |
-| tag vs fish | +30 ± 63 | −5 ± 47 |
-| lag vs tag | −138 ± 73 | −82 ± 54 |
-| tag vs maniac-shove | +206 ± 127 | +206 ± 127 |
+| A vs B | Baseline `b1df0c1` | Range equity `c98bb70` | + Price check, opponent model |
+|---|---|---|---|
+| tag vs tag-random | n/a | +78 ± 51 | +120 ± 45 |
+| tag vs station | +1132 ± 70 | +1516 ± 81 | +1698 ± 85 |
+| tag vs overbettor | +337 ± 111 | +153 ± 103 | +404 ± 110 |
+| tag vs maniac-shove | +206 ± 127 | +206 ± 127 | +588 ± 119 |
+| lag vs tag | −138 ± 73 | −82 ± 54 | −39 ± 45 |
+| tag vs fish | +30 ± 63 | −5 ± 47 | +1 ± 38 |
+| fish vs station | n/a | +1606 ± 82 | +568 ± 56 |
 
-Baseline is commit `b1df0c1`. Range equity: postflop equity is computed against each opponent's likely hands (preflop range from the TAG baseline mixes for their action, narrowed street by street by bet size, with a balanced bluff share of s/(1+2s) of each bet).
+- **Baseline**: equity against random hands.
+- **Range equity**: postflop equity against each opponent's likely hands (preflop range from the TAG baseline mixes for their action, narrowed street by street by bet size, with a balanced bluff share of s/(1+2s) of each bet).
+- **Price check, opponent model**: preflop calls (and calls for all the chips) are checked against equity versus the raiser's range, with raises far over a standard size read as a narrower range; position comes from who acts last after the flop; a deep near-lock bets instead of shoving. Each player's tendencies (VPIP, raise and shove rates, postflop aggression, fold to a bet) are counted hand by hand and smoothed with a Beta prior worth a dozen TAG-like hands; a player shown to be more aggressive or stickier than that gets a wider range, and a player who almost never folds gets no bluffs and bigger value bets. Fish ignores opponents' history on purpose.
 
 ## Reading the numbers
 
-- Range equity beats the old TAG head to head (+78 ± 51) and extracts much more from a calling station. It stops calling down with bottom pair against three streets of betting.
-- It does worse against `overbettor`: the range model assumes every bettor plays like a TAG, so a player who bets 1.5x pot with any two cards gets credited with a strong range and is folded to too often. Fixing that is the job of opponent modelling (adjusting each player's range from what they have shown), which is the next step.
-- `tag` vs `fish` is within noise in both versions: the fish bot plays too much like the TAG bot to separate them.
+- TAG now wins more than the baseline did against every probe opponent, beyond the confidence intervals, and beats its pre-range self by +120 ± 45. Against Fish it is unchanged within noise.
+- The preflop price check alone (before the opponent model) made the bots fold to a player who shoves every hand: TAG vs `maniac-shove` fell to −23 ± 45. A real player could exploit that by shoving every hand, so the price check only ships together with the opponent model, which reads a habitual shover's range as any two cards.
+- Fish against a calling station dropped from +1606 to +568 because Fish doesn't adapt: it keeps bluffing the station and doesn't size up its value bets. That is the intended difference between Fish and the adaptive personalities.
+- `tag` vs `fish` stays within noise. Their preflop ranges are too similar to separate them in heads-up play.

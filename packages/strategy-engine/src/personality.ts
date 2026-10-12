@@ -13,6 +13,7 @@ export const PERSONALITY_PROFILES: Record<BotPersonality, PersonalityProfile> = 
     barrelFreq: 0.08,
     riverThinValueMinEquity: 0.78,
     thinkingRange: [900, 1700],
+    adaptsToOpponents: false,
   },
   tag: {
     valueBetMinEquity: 0.62,
@@ -23,6 +24,7 @@ export const PERSONALITY_PROFILES: Record<BotPersonality, PersonalityProfile> = 
     barrelFreq: 0.20,
     riverThinValueMinEquity: 0.68,
     thinkingRange: [1100, 2100],
+    adaptsToOpponents: true,
   },
   lag: {
     valueBetMinEquity: 0.56,
@@ -33,5 +35,6 @@ export const PERSONALITY_PROFILES: Record<BotPersonality, PersonalityProfile> = 
     barrelFreq: 0.31,
     riverThinValueMinEquity: 0.60,
     thinkingRange: [950, 1800],
+    adaptsToOpponents: true,
   },
 };

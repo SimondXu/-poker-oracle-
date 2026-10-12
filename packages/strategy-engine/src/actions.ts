@@ -7,6 +7,10 @@ import type { ActionIntent, BotActionWithoutThinking, BotRng, Mix, PersonalityPr
 import { PERSONALITY_PROFILES } from './personality.ts';
 import { clamp01 } from './cards.ts';
 import { getPreflopTablePosition, getStackBucket, normalizePreflopScenario } from './preflop-hands.ts';
+import { lowestFoldToBetRate } from './range.ts';
+
+/** Below this fold-to-bet rate an opponent is treated as a calling station: no bluffs, bigger value bets. */
+export const STICKY_FOLD_TO_BET_RATE = 0.2;
 
 export function calcThinkingDelay(rng: BotRng, personality: BotPersonality): number {
   const [minimum, maximum] = PERSONALITY_PROFILES[personality].thinkingRange;
@@ -104,8 +108,16 @@ export function finalizeIntent(
   return resolvePassiveAction(context);
 }
 
-export function isLikelyInPosition(position: BotPosition): boolean {
-  return position === 'btn' || position === 'co' || position === 'hj';
+// Order of action after the flop; heads-up the button is last too.
+const POSTFLOP_ACTION_ORDER: readonly BotPosition[] = ['sb', 'bb', 'utg', 'hj', 'co', 'btn'];
+
+/** In position means acting after every opponent still in the hand on the later streets. */
+export function isLikelyInPosition(context: BotDecisionContext): boolean {
+  if (!context.opponents || context.opponents.length === 0) {
+    return context.position === 'btn' || context.position === 'co' || context.position === 'hj';
+  }
+  const heroOrder = POSTFLOP_ACTION_ORDER.indexOf(context.position);
+  return context.opponents.every((opponent) => POSTFLOP_ACTION_ORDER.indexOf(opponent.position) < heroOrder);
 }
 
 export function getPreflopRaiseTo(context: BotDecisionContext): number {
@@ -128,11 +140,11 @@ export function getPreflopRaiseTo(context: BotDecisionContext): number {
   }
 
   if (scenario === 'facing_3bet_plus') {
-    const multiplier = isLikelyInPosition(context.position) ? 2.2 : 2.5;
+    const multiplier = isLikelyInPosition(context) ? 2.2 : 2.5;
     return Math.round(context.minRaiseTo * multiplier);
   }
 
-  const multiplier = isLikelyInPosition(context.position) ? 2.0 : 2.5;
+  const multiplier = isLikelyInPosition(context) ? 2.0 : 2.5;
   return Math.round(context.minRaiseTo * multiplier);
 }
 
@@ -161,7 +173,9 @@ function selectPostflopSizeFraction(
   profile: PersonalityProfile
 ): number {
   const boardWet = analysis.features.boardConnected || analysis.features.boardMonotone || analysis.features.boardPaired;
-  if (context.spr <= 1 || analysis.equity >= 0.85) {
+  // Someone who almost never folds pays a big bet as readily as a small one.
+  const sticky = (lowestFoldToBetRate(context) ?? 1) < STICKY_FOLD_TO_BET_RATE && analysis.equity >= profile.valueBetMinEquity;
+  if (context.spr <= 1 || analysis.equity >= 0.85 || sticky) {
     return 1.0;
   }
   if (boardWet || context.opponentCount > 1 || analysis.features.flushDraw || analysis.features.oesd) {

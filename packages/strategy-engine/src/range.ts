@@ -1,9 +1,10 @@
 import { evaluateBestSevenCards } from '@aipoker/game-engine';
-import type { BotDecisionContext, BotOpponentAction, BotOpponentView, Card } from '@aipoker/shared';
+import type { BotDecisionContext, BotOpponentAction, BotOpponentView, BotPlayerStats, Card } from '@aipoker/shared';
 
 import type { BotRng, RankVector } from './types.ts';
 import { compareRankVectors, detectStraightState, FULL_DECK, remainingDeck, sampleWithoutReplacement } from './cards.ts';
-import { canonicalizeHoleCards } from './preflop-hands.ts';
+import { OVERSIZED_RAISE_SIZE_OF_POT } from './context.ts';
+import { canonicalizeHoleCards, evaluatePreflopPercentile } from './preflop-hands.ts';
 import { getPreflopMix } from './preflop-mixes.ts';
 
 type Combo = readonly [Card, Card];
@@ -16,7 +17,7 @@ export const ALL_COMBOS: readonly Combo[] = FULL_DECK.flatMap((first, index) =>
 );
 
 // Nobody plays the TAG baseline exactly, so every hand keeps a little weight.
-const RANGE_NOISE = 0.03;
+const RANGE_NOISE = 0.01;
 // Share of a bettor's range, from the top, that bets for value at each size (fraction of pot).
 const VALUE_SHARE_BY_SIZE: ReadonlyArray<readonly [number, number]> = [[1, 0.3], [0.6, 0.4], [0, 0.55]];
 const DRAW_WEIGHT_WHEN_BETTING = 0.6;
@@ -28,7 +29,64 @@ const STREET_BOARD_SIZE = { flop: 3, turn: 4, river: 5 } as const;
 
 const rangeCache = new Map<string, WeightedRange>();
 
-function preflopWeights(view: BotOpponentView, action: BotOpponentAction, context: BotDecisionContext): Map<string, number> {
+// Beta priors for the opponent model: a dozen hands of a TAG-like player.
+const PRIOR_WEIGHT = 12;
+const PRIOR_PREFLOP_RAISE_RATE = 0.2;
+const PRIOR_OVERSIZED_RAISE_RATE = 0.02;
+const PRIOR_POSTFLOP_AGGRESSION = 0.3;
+const PRIOR_VPIP = 0.25;
+const PRIOR_FOLD_TO_BET = 0.4;
+// A caller keeps at least this much of their range from the top; the rest would have folded.
+const MIN_CALLING_SHARE = 0.7;
+
+interface Tendencies {
+  vpip: number;
+  preflopRaiseRate: number;
+  oversizedRaiseRate: number;
+  postflopAggression: number;
+  foldToBet: number;
+}
+
+function smoothedRate(count: number, opportunities: number, prior: number): number {
+  return (count + prior * PRIOR_WEIGHT) / (opportunities + PRIOR_WEIGHT);
+}
+
+/** Posterior mean rates from the player's history, rounded so near-identical histories share a cached range. */
+function estimateTendencies(stats: BotPlayerStats | undefined): Tendencies {
+  const round = (value: number) => Math.round(value * 50) / 50;
+  return {
+    vpip: round(smoothedRate(stats?.preflopVoluntary ?? 0, stats?.hands ?? 0, PRIOR_VPIP)),
+    foldToBet: round(smoothedRate(stats?.postflopFoldsToBets ?? 0, stats?.postflopFacingBets ?? 0, PRIOR_FOLD_TO_BET)),
+    preflopRaiseRate: round(smoothedRate(stats?.preflopRaises ?? 0, stats?.hands ?? 0, PRIOR_PREFLOP_RAISE_RATE)),
+    oversizedRaiseRate: round(smoothedRate(stats?.preflopOversizedRaises ?? 0, stats?.hands ?? 0, PRIOR_OVERSIZED_RAISE_RATE)),
+    postflopAggression: round(smoothedRate(stats?.postflopAggressive ?? 0, stats?.postflopActions ?? 0, PRIOR_POSTFLOP_AGGRESSION)),
+  };
+}
+
+/** A player shown to be more aggressive than the prior raises at least the top `rate` of their hands. */
+function widenedShare(rate: number, prior: number): number {
+  return rate > prior ? rate : 0;
+}
+
+/**
+ * The mixes don't say how big a raise is, so a raise well over a standard size (about 1-2x the
+ * pot) is read as coming from only the strongest hands: the top 25% / sqrt(size / 2) of starting
+ * hands, about the top 4% for a 100bb shove.
+ */
+function oversizedRaiseCutoff(sizeOfPot: number): number {
+  return sizeOfPot <= OVERSIZED_RAISE_SIZE_OF_POT ? 1 : 0.25 / Math.sqrt(sizeOfPot / OVERSIZED_RAISE_SIZE_OF_POT);
+}
+
+function preflopWeights(
+  view: BotOpponentView,
+  action: BotOpponentAction,
+  context: BotDecisionContext,
+  tendencies: Tendencies,
+): Map<string, number> {
+  const oversized = action.sizeOfPot > OVERSIZED_RAISE_SIZE_OF_POT;
+  const observedShare = oversized
+    ? widenedShare(tendencies.oversizedRaiseRate, PRIOR_OVERSIZED_RAISE_RATE)
+    : widenedShare(tendencies.preflopRaiseRate, PRIOR_PREFLOP_RAISE_RATE);
   const byKey = new Map<string, number>();
   for (const combo of ALL_COMBOS) {
     const key = canonicalizeHoleCards(combo);
@@ -38,7 +96,12 @@ function preflopWeights(view: BotOpponentView, action: BotOpponentAction, contex
     const mix = getPreflopMix('tag', context.effectiveStackBb, action.facing, view.position, combo, context.activePlayerCount);
     const aggressive = mix.raise + mix.jam;
     // Checking the big blind option is what a hand that didn't want to raise does.
-    const weight = action.type === 'call' ? mix.call : action.type === 'check' ? 1 - aggressive : aggressive;
+    const percentile = evaluatePreflopPercentile(combo);
+    const raiseWeight = percentile <= observedShare
+      ? 1
+      : percentile <= oversizedRaiseCutoff(action.sizeOfPot) ? aggressive : 0;
+    const callWeight = percentile <= widenedShare(tendencies.vpip, PRIOR_VPIP) ? 1 : mix.call;
+    const weight = action.type === 'call' ? callWeight : action.type === 'check' ? 1 - aggressive : raiseWeight;
     byKey.set(key, weight);
   }
   return byKey;
@@ -63,7 +126,12 @@ function balancedBluffShare(sizeOfPot: number): number {
 }
 
 /** Re-weights a range for one postflop action, by where each hand sits in the range on that board. */
-function narrowForPostflopAction(range: WeightedRange, action: BotOpponentAction, board: readonly Card[]): void {
+function narrowForPostflopAction(
+  range: WeightedRange,
+  action: BotOpponentAction,
+  board: readonly Card[],
+  tendencies: Tendencies,
+): void {
   const boardSet = new Set(board);
   const ranked: Array<{ index: number; rank: RankVector }> = [];
   let total = 0;
@@ -76,7 +144,11 @@ function narrowForPostflopAction(range: WeightedRange, action: BotOpponentAction
   ranked.sort((left, right) => compareRankVectors(right.rank, left.rank));
 
   const isAggressive = action.type === 'raise_to' || action.type === 'all_in';
-  const valueShare = VALUE_SHARE_BY_SIZE.find(([size]) => action.sizeOfPot >= size)?.[1] ?? 0.55;
+  // A player who bets more often than most keeps more of their range when they bet.
+  const valueShare = Math.max(
+    VALUE_SHARE_BY_SIZE.find(([size]) => action.sizeOfPot >= size)?.[1] ?? 0.55,
+    widenedShare(tendencies.postflopAggression, PRIOR_POSTFLOP_AGGRESSION),
+  );
   const air: number[] = [];
   let valueWeight = 0;
   let drawWeight = 0;
@@ -98,8 +170,9 @@ function narrowForPostflopAction(range: WeightedRange, action: BotOpponentAction
         airWeight += weight;
       }
     } else if (action.type === 'call') {
-      // The very top would usually have raised; the bottom would usually have folded.
-      range[index] = weight * (shareAbove < 0.1 ? 0.5 : shareAbove < 0.7 || isStrongDraw(combo, board) ? 1 : 0.15);
+      // The very top would usually have raised; the bottom would usually have folded, unless they rarely fold.
+      const callingShare = Math.max(MIN_CALLING_SHARE, 1 - tendencies.foldToBet);
+      range[index] = weight * (shareAbove < 0.1 ? 0.5 : shareAbove < callingShare || isStrongDraw(combo, board) ? 1 : 0.15);
     } else {
       range[index] = weight * (shareAbove < 0.15 ? 0.5 : 1);
     }
@@ -118,7 +191,9 @@ function narrowForPostflopAction(range: WeightedRange, action: BotOpponentAction
 
 /** The hands this opponent is likely to hold, given everything they did this hand. */
 export function buildOpponentRange(view: BotOpponentView, context: BotDecisionContext): WeightedRange {
+  const tendencies = estimateTendencies(view.stats);
   const cacheKey = JSON.stringify([
+    tendencies,
     view.position,
     view.actions,
     context.communityCards,
@@ -133,12 +208,12 @@ export function buildOpponentRange(view: BotOpponentView, context: BotDecisionCo
   const range = new Float64Array(ALL_COMBOS.length).fill(1);
   for (const action of view.actions) {
     if (action.phase === 'preflop') {
-      const weights = preflopWeights(view, action, context);
+      const weights = preflopWeights(view, action, context, tendencies);
       ALL_COMBOS.forEach((combo, index) => {
         range[index] = (range[index] ?? 0) * (RANGE_NOISE + (1 - RANGE_NOISE) * (weights.get(canonicalizeHoleCards(combo)) ?? 0));
       });
     } else {
-      narrowForPostflopAction(range, action, context.communityCards.slice(0, STREET_BOARD_SIZE[action.phase]));
+      narrowForPostflopAction(range, action, context.communityCards.slice(0, STREET_BOARD_SIZE[action.phase]), tendencies);
     }
   }
 
@@ -245,4 +320,10 @@ export function enumerateRiverRangeEquity(context: BotDecisionContext, range: We
     total += weight;
   });
   return total > 0 ? equity / total : null;
+}
+
+/** How often the stickiest live opponent folds to a bet, from their history; null without one. */
+export function lowestFoldToBetRate(context: BotDecisionContext): number | null {
+  const rates = (context.opponents ?? []).filter((opponent) => opponent.stats).map((opponent) => estimateTendencies(opponent.stats).foldToBet);
+  return rates.length > 0 ? Math.min(...rates) : null;
 }

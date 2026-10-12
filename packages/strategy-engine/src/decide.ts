@@ -8,8 +8,13 @@ import { PERSONALITY_PROFILES } from './personality.ts';
 import { clamp01 } from './cards.ts';
 import { canonicalizeHoleCards, classifyHand, getPreflopTablePosition, normalizePreflopScenario } from './preflop-hands.ts';
 import { getPreflopMix, nudgeMix, scaleMixDelta } from './preflop-mixes.ts';
-import { calcThinkingDelay, computePotOdds, finalizeIntent, getPostflopRaiseTo, getPreflopRaiseTo, isLikelyInPosition, resolvePassiveAction, sampleIntent } from './actions.ts';
+import { calcThinkingDelay, computePotOdds, STICKY_FOLD_TO_BET_RATE, finalizeIntent, getPostflopRaiseTo, getPreflopRaiseTo, isLikelyInPosition, resolvePassiveAction, sampleIntent } from './actions.ts';
 import { analyzePostflop } from './postflop-analysis.ts';
+import { buildOpponentRange, lowestFoldToBetRate, simulateRangeEquity } from './range.ts';
+
+const MAX_SPR_FOR_VALUE_JAM = 3;
+// These decisions can be for the whole stack, so they get more samples than a postflop street.
+const PREFLOP_PRICE_ITERATIONS = 400;
 
 export function shouldJamPostflop(
   context: BotDecisionContext,
@@ -22,7 +27,10 @@ export function shouldJamPostflop(
   if (context.effectiveStackBb <= 12 || context.spr <= 1) {
     return analysis.equity >= profile.semiBluffMinEquity;
   }
-  return analysis.equity >= 0.9;
+  // Deeper than this, a near-lock bets a pot-sized amount instead of shoving many pots in,
+  // unless the opponent almost never folds to a bet; then the shove is the most they will pay.
+  const sticky = (lowestFoldToBetRate(context) ?? 1) < STICKY_FOLD_TO_BET_RATE;
+  return (sticky || context.spr <= MAX_SPR_FOR_VALUE_JAM) && analysis.equity >= 0.9;
 }
 
 function isSmallPostflopBet(context: BotDecisionContext): boolean {
@@ -43,7 +51,7 @@ function shouldFloatSmallBet(
     || context.phase !== 'flop'
     || context.opponentCount !== 1
     || !context.canCall
-    || !isLikelyInPosition(context.position)
+    || !isLikelyInPosition(context)
     || !isSmallPostflopBet(context)
   ) {
     return false;
@@ -127,8 +135,36 @@ function decidePreflop(
     });
   }
   const intent = sampleIntent(mixValue, rng);
+  // The mixes don't know the size of the bet, so any call (including a raise that can only call) checks the price.
+  const callsOnly = intent === 'call' || (intent !== 'fold' && !context.canRaise);
+  if (callsOnly && context.callAmount > 0 && preflopCallHasPrice(context, personality, rng) === false) {
+    return resolvePassiveAction(context);
+  }
+  // Calling for all the chips is pure equity against the price, with no later streets to play badly.
+  const callIsAllIn = context.canCall && (!context.canRaise || context.callAmount >= context.myStack);
+  if (intent === 'fold' && callIsAllIn && preflopCallHasPrice(context, personality, rng) === true) {
+    return { type: 'call', amount: context.callAmount };
+  }
   const targetTo = getPreflopRaiseTo(context);
   return finalizeIntent(context, intent, targetTo);
+}
+
+/**
+ * Whether equity against the ranges of the players who put chips in voluntarily covers what the call
+ * costs; null when nobody's actions are known.
+ */
+function preflopCallHasPrice(context: BotDecisionContext, personality: BotPersonality, rng: BotRng): boolean | null {
+  const contesting = context.opponents?.filter((opponent) => opponent.actions.some((action) => action.type !== 'check'));
+  if (!contesting || contesting.length === 0) {
+    return null;
+  }
+  const equity = simulateRangeEquity(
+    context,
+    contesting.map((opponent) => buildOpponentRange(opponent, context)),
+    rng,
+    PREFLOP_PRICE_ITERATIONS,
+  );
+  return equity >= clamp01(computePotOdds(context) + PERSONALITY_PROFILES[personality].callBuffer);
 }
 
 function decidePostflop(
@@ -155,9 +191,11 @@ function decidePostflop(
     }
 
     const cbetFrequency = boardWet ? profile.cbetFreqWet : profile.cbetFreqDry;
+    // A pure bluff c-bet into someone who never folds just burns chips.
+    const opponentFolds = (lowestFoldToBetRate(context) ?? 1) >= STICKY_FOLD_TO_BET_RATE;
     if (
       (context.isPreflopAggressor || context.isLastStreetAggressor)
-      && (analysis.equity >= profile.semiBluffMinEquity || rng() < cbetFrequency)
+      && (analysis.equity >= profile.semiBluffMinEquity || (opponentFolds && rng() < cbetFrequency))
     ) {
       return finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
     }
@@ -190,6 +228,13 @@ function decidePostflop(
   return resolvePassiveAction(context);
 }
 
+/** A player who doesn't adapt still sees what happened this hand, but not anyone's history. */
+function withoutOpponentHistory(context: BotDecisionContext): BotDecisionContext {
+  return context.opponents
+    ? { ...context, opponents: context.opponents.map(({ stats: _stats, ...opponent }) => opponent) }
+    : context;
+}
+
 export function chooseBotAction(
   context: BotDecisionContext,
   personality: BotPersonality = 'fish',
@@ -197,9 +242,10 @@ export function chooseBotAction(
   options: ChooseBotActionOptions = {},
 ): BotAction {
   const thinkingDelayMs = calcThinkingDelay(rng, personality);
-  const decided = context.phase === 'preflop'
-    ? decidePreflop(context, personality, rng, options)
-    : decidePostflop(context, personality, rng);
+  const seen = PERSONALITY_PROFILES[personality].adaptsToOpponents ? context : withoutOpponentHistory(context);
+  const decided = seen.phase === 'preflop'
+    ? decidePreflop(seen, personality, rng, options)
+    : decidePostflop(seen, personality, rng);
 
   switch (decided.type) {
     case 'call':

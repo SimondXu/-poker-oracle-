@@ -45,6 +45,8 @@ export interface PersonalityProfile {
   barrelFreq: number;
   riverThinValueMinEquity: number;
   thinkingRange: [number, number];
+  // Whether this player reads opponents' history (stations, maniacs) or plays the same against everyone.
+  adaptsToOpponents: boolean;
 }
 
 export interface Mix {
