@@ -404,6 +404,14 @@ export interface GameActionRequiredEvent {
   timeoutMs: number;
 }
 
+/** The current human actor's coach advice, sent only to their own sockets right after game:action_required. */
+export interface GameCoachEvent {
+  roomId: string;
+  playerId: string;
+  stateVersion: number;
+  advice: CoachAdvice;
+}
+
 export interface HandResultPayout {
   potIndex: number;
   playerId: string;

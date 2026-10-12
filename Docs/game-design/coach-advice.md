@@ -209,7 +209,7 @@ Only facts that a branch in `decide.ts` actually uses get a code. Each code is r
 
 ### 5. Where advice is computed
 
-New file `apps/server/src/game-loop/coach.ts`, and `strategy-engine/src/coach.ts`:
+`strategy-engine/src/coach.ts` builds the advice. On the server, `apps/server/src/ws/view-models/hero-coach.ts` projects the viewer hand (`toDecisionView`) and builds the event (`buildHeroCoachEvent`); `ws/emitters.ts` schedules it. The event type `GameCoachEvent` is in `packages/shared`.
 
 ```ts
 // strategy-engine: no RuntimeRoom, no engine state.

@@ -11,6 +11,7 @@ import type { Server } from 'socket.io';
 import { getTableLifecycleSnapshot } from '../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildHandResultPayload } from './view-models/hand-result.ts';
+import { buildHeroCoachEvent } from './view-models/hero-coach.ts';
 import { buildClientAction, buildViewerHand } from './view-models/viewer-hand.ts';
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
@@ -75,12 +76,37 @@ function emitActionRequired(io: Server, room: RuntimeRoom, memberships: Map<stri
     return;
   }
 
+  const actorSocketIds: string[] = [];
   for (const socketId of roomSocketIds) {
     const payload = buildActionRequiredPayloadForSocket(socketId, room, memberships);
     if (payload) {
       io.to(socketId).emit('game:action_required', payload);
+      actorSocketIds.push(socketId);
     }
   }
+  scheduleCoachAdvice(io, room, actorSocketIds);
+}
+
+/**
+ * Sends the actor's coach advice on the next tick, so their controls never wait for the Monte Carlo.
+ * The sockets are the ones just sent game:action_required, so advice reaches only the actor.
+ */
+function scheduleCoachAdvice(io: Server, room: RuntimeRoom, actorSocketIds: string[]): void {
+  if (actorSocketIds.length === 0) {
+    return;
+  }
+  const stateVersion = room.stateVersion;
+  setImmediate(() => {
+    if (room.stateVersion !== stateVersion) {
+      return;
+    }
+    const event = buildHeroCoachEvent(room);
+    if (event) {
+      for (const socketId of actorSocketIds) {
+        io.to(socketId).emit('game:coach', event);
+      }
+    }
+  });
 }
 
 function emitHandResult(io: Server, room: RuntimeRoom): void {
@@ -203,6 +229,7 @@ export function emitGameStateToSocket(
   const actionRequiredPayload = buildActionRequiredPayloadForSocket(socketId, room, memberships);
   if (actionRequiredPayload) {
     io.to(socketId).emit('game:action_required', actionRequiredPayload);
+    scheduleCoachAdvice(io, room, [socketId]);
   }
 
   if (room.hand.phase === 'hand_end') {
