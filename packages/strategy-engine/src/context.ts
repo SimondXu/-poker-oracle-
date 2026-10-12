@@ -167,16 +167,15 @@ function replayActions(hand: DecisionHand): ReplayedAction[] {
   return replayed;
 }
 
-/** Records, for each live opponent, every voluntary action and what it faced. */
-function buildOpponentViews(
+/** Records, for the actor and each live opponent, every voluntary action and what it faced. */
+function buildPlayerViews(
   hand: DecisionHand,
-  actorId: string,
   positionMap: Map<number, BotPosition>,
   statsById: ReadonlyMap<string, BotPlayerStats> | undefined,
-): BotOpponentView[] {
+): Map<string, BotOpponentView> {
   const views = new Map<string, BotOpponentView>();
   for (const player of hand.players) {
-    if (player.id !== actorId && player.status !== 'folded' && isSeated(player)) {
+    if (player.status !== 'folded' && isSeated(player)) {
       const stats = statsById?.get(player.id);
       views.set(player.id, {
         id: player.id,
@@ -201,7 +200,7 @@ function buildOpponentViews(
     });
   }
 
-  return [...views.values()];
+  return views;
 }
 
 /** Adds one finished hand to every seated player's running tendencies. */
@@ -260,6 +259,8 @@ export function buildDecisionContext(
   const effectiveStackBb = hand.bigBlind > 0 ? effectiveStack / hand.bigBlind : 0;
   // SPR compares the stack to the pot as the street began; preflop that pot is empty, so use the blinds in it.
   const potAtStreetStart = hand.potTotal - hand.players.reduce((sum, player) => sum + player.streetCommitted, 0);
+  const views = buildPlayerViews(hand, positionMap, statsById);
+  const selfView = views.get(actor.id);
   const potBaseForSpr = potAtStreetStart > 0 ? potAtStreetStart : hand.potTotal > 0 ? hand.potTotal : hand.bigBlind;
 
   return {
@@ -288,6 +289,7 @@ export function buildDecisionContext(
     ),
     isPreflopAggressor: preflopAggressiveActions.at(-1)?.playerId === actor.id,
     isLastStreetAggressor: previousStreetAggressiveActions.at(-1)?.playerId === actor.id,
-    opponents: buildOpponentViews(hand, actor.id, positionMap, statsById),
+    opponents: [...views.values()].filter((view) => view.id !== actor.id),
+    ...(selfView ? { selfView } : {}),
   };
 }

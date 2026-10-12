@@ -3,7 +3,7 @@ import type { BotAction, BotDecisionContext } from '@aipoker/shared';
 
 export type Policy = (context: BotDecisionContext, rng: () => number) => BotAction;
 
-export const POLICY_NAMES = ['fish', 'tag', 'lag', 'tag-random', 'station', 'maniac-shove', 'overbettor'] as const;
+export const POLICY_NAMES = ['fish', 'tag', 'lag', 'tag-random', 'station', 'maniac-shove', 'overbettor', 'size-reader'] as const;
 export type PolicyName = (typeof POLICY_NAMES)[number];
 
 const OVERBET_POT_FRACTION = 1.5;
@@ -38,6 +38,21 @@ const overbettor: Policy = (context) => {
   return { type: 'raise_to', amount: raiseTo, thinkingDelayMs: 0 };
 };
 
+// Plays TAG, but reads bet sizes as strength: folds to near-pot bets, raises bets of a third of the pot or less.
+const sizeReader: Policy = (context, rng) => {
+  if (context.phase !== 'preflop' && context.callAmount > 0) {
+    const betFraction = context.callAmount / Math.max(1, context.potTotal - context.callAmount);
+    if (betFraction >= 0.9) {
+      return passive({ ...context, canCall: false });
+    }
+    if (betFraction <= 0.4 && context.canRaise) {
+      const raiseTo = Math.min(context.maxRaiseTo, Math.max(context.minRaiseTo, context.currentBetToMatch + context.potTotal + context.callAmount));
+      return { type: 'raise_to', amount: raiseTo, thinkingDelayMs: 0 };
+    }
+  }
+  return chooseBotAction(context, 'tag', rng);
+};
+
 export const POLICIES: Record<PolicyName, Policy> = {
   fish: (context, rng) => chooseBotAction(context, 'fish', rng),
   tag: (context, rng) => chooseBotAction(context, 'tag', rng),
@@ -51,6 +66,7 @@ export const POLICIES: Record<PolicyName, Policy> = {
   station,
   'maniac-shove': maniacShove,
   overbettor,
+  'size-reader': sizeReader,
 };
 
 export function parsePolicyName(value: string | undefined): PolicyName {

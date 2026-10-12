@@ -8,11 +8,21 @@ import { PERSONALITY_PROFILES } from './personality.ts';
 import { clamp01 } from './cards.ts';
 import { canonicalizeHoleCards, classifyHand, getPreflopTablePosition, normalizePreflopScenario } from './preflop-hands.ts';
 import { getPreflopMix, nudgeMix, scaleMixDelta } from './preflop-mixes.ts';
-import { calcThinkingDelay, computePotOdds, STICKY_FOLD_TO_BET_RATE, finalizeIntent, getPostflopRaiseTo, getPreflopRaiseTo, isLikelyInPosition, resolvePassiveAction, sampleIntent } from './actions.ts';
+import { calcThinkingDelay, computePotOdds, STICKY_FOLD_TO_BET_RATE, finalizeIntent, getPostflopRaiseTo, getPreflopRaiseTo, isLikelyInPosition, resolvePassiveAction, sampleIntent, selectPostflopSizeFraction } from './actions.ts';
 import { analyzePostflop } from './postflop-analysis.ts';
-import { buildOpponentRange, lowestFoldToBetRate, simulateRangeEquity } from './range.ts';
+import { buildOpponentRange, lowestFoldToBetRate, readOwnRange, simulateRangeEquity } from './range.ts';
 
 const MAX_SPR_FOR_VALUE_JAM = 3;
+// A hand in the value part of its range still needs to be ahead of what calls to bet for value.
+const MIN_VALUE_BET_EQUITY = 0.5;
+// Only near-locks slowplay, and only heads-up.
+const SLOWPLAY_MIN_EQUITY = 0.8;
+// How often a strong draw bets when it has the initiative, before the personality's bluff scale.
+const DRAW_BET_FREQUENCY = 0.6;
+// A value hand facing a bet raises this often and calls the rest, so calls aren't all weak.
+const VALUE_RAISE_FREQUENCY = 0.7;
+// Equity margin over which a call goes from about 27% to 73% likely.
+const CALL_MIX_WIDTH = 0.025;
 // These decisions can be for the whole stack, so they get more samples than a postflop street.
 const PREFLOP_PRICE_ITERATIONS = 400;
 
@@ -174,54 +184,95 @@ function decidePostflop(
 ): BotActionWithoutThinking {
   const profile = PERSONALITY_PROFILES[personality];
   const analysis = analyzePostflop(context, rng);
-  const potOdds = computePotOdds(context);
-  const requiredCallEquity = clamp01(potOdds + profile.callBuffer);
-  const boardWet = analysis.features.boardConnected || analysis.features.boardMonotone || analysis.features.boardPaired;
 
   if (shouldJamPostflop(context, analysis, profile)) {
     return finalizeIntent(context, 'jam', context.maxRaiseTo);
   }
 
-  if (context.bettingState === 'unopened' && context.canRaise) {
-    if (
-      analysis.equity >= profile.valueBetMinEquity
-      || (analysis.madeHandRank >= 2 && context.phase === 'river' && analysis.equity >= profile.riverThinValueMinEquity)
-    ) {
-      return finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
-    }
+  return context.bettingState === 'unopened' && context.canRaise
+    ? decideUnopenedPostflop(context, analysis, profile, rng)
+    : decideFacingBetPostflop(context, analysis, profile, personality, rng);
+}
 
-    const cbetFrequency = boardWet ? profile.cbetFreqWet : profile.cbetFreqDry;
-    // A pure bluff c-bet into someone who never folds just burns chips.
-    const opponentFolds = (lowestFoldToBetRate(context) ?? 1) >= STICKY_FOLD_TO_BET_RATE;
-    if (
-      (context.isPreflopAggressor || context.isLastStreetAggressor)
-      && (analysis.equity >= profile.semiBluffMinEquity || (opponentFolds && rng() < cbetFrequency))
-    ) {
-      return finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
-    }
+/** Bet the value part of the range, some draws, and enough air to keep the bets balanced; check the rest. */
+function decideUnopenedPostflop(
+  context: BotDecisionContext,
+  analysis: PostflopAnalysis,
+  profile: PersonalityProfile,
+  rng: BotRng,
+): BotActionWithoutThinking {
+  const bet = () => finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
+  // A pure bluff into someone who never folds just burns chips.
+  const opponentFolds = (lowestFoldToBetRate(context) ?? 1) >= STICKY_FOLD_TO_BET_RATE;
+  const hasInitiative = context.isPreflopAggressor || context.isLastStreetAggressor;
+  const checkedToInPosition = context.streetActionCount > 0 && isLikelyInPosition(context);
+  const drawBetFrequency = Math.min(1, DRAW_BET_FREQUENCY * profile.bluffScale);
+  const read = readOwnRange(context, selectPostflopSizeFraction(context, analysis, profile), drawBetFrequency);
 
+  if (!read) {
+    // No record of our own line: fall back to betting by equity alone.
+    const cbetFrequency = analysis.features.boardConnected || analysis.features.boardMonotone || analysis.features.boardPaired
+      ? profile.cbetFreqWet
+      : profile.cbetFreqDry;
+    if (analysis.equity >= profile.valueBetMinEquity
+      || (analysis.madeHandRank >= 2 && context.phase === 'river' && analysis.equity >= profile.riverThinValueMinEquity)) {
+      return bet();
+    }
+    if (hasInitiative && (analysis.equity >= profile.semiBluffMinEquity || (opponentFolds && rng() < cbetFrequency))) {
+      return bet();
+    }
     return resolvePassiveAction(context);
   }
 
+  // Against a player who calls everything, every hand that is ahead bets: there is no one to bluff
+  // and no point checking a strong hand to someone who won't bet it for us.
+  const isValue = opponentFolds
+    ? read.shareAbove < read.valueShare && analysis.equity >= MIN_VALUE_BET_EQUITY
+    : analysis.equity >= MIN_VALUE_BET_EQUITY;
+  if (isValue) {
+    const slowplay = opponentFolds
+      && analysis.equity >= SLOWPLAY_MIN_EQUITY
+      && context.opponentCount === 1
+      && rng() < profile.slowplayFreq;
+    return slowplay ? resolvePassiveAction(context) : bet();
+  }
+  if (!hasInitiative && !checkedToInPosition) {
+    return resolvePassiveAction(context);
+  }
+  if (read.isDraw) {
+    return rng() < drawBetFrequency ? bet() : resolvePassiveAction(context);
+  }
+  return opponentFolds && rng() < read.airBetFrequency * profile.bluffScale ? bet() : resolvePassiveAction(context);
+}
+
+function decideFacingBetPostflop(
+  context: BotDecisionContext,
+  analysis: PostflopAnalysis,
+  profile: PersonalityProfile,
+  personality: BotPersonality,
+  rng: BotRng,
+): BotActionWithoutThinking {
+  const raise = () => finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
+  if (context.canRaise && analysis.equity >= profile.valueBetMinEquity && rng() < VALUE_RAISE_FREQUENCY) {
+    return raise();
+  }
   if (
     context.canRaise
-    && (
-      analysis.equity >= profile.valueBetMinEquity
-      || (
-        (analysis.features.flushDraw || analysis.features.oesd || analysis.features.pairPlusDraw)
-        && analysis.equity >= profile.semiBluffMinEquity
-        && rng() < profile.barrelFreq
-      )
-    )
+    && (analysis.features.flushDraw || analysis.features.oesd || analysis.features.pairPlusDraw)
+    && analysis.equity >= profile.semiBluffMinEquity
+    && rng() < profile.barrelFreq
   ) {
-    return finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
+    return raise();
   }
 
   if (shouldFloatSmallBet(context, analysis, personality)) {
     return { type: 'call', amount: context.callAmount };
   }
 
-  if (context.canCall && analysis.equity >= requiredCallEquity) {
+  // Near the price the call is mixed rather than a hard cut-off, so the line can't be read off one number.
+  const requiredCallEquity = clamp01(computePotOdds(context) + profile.callBuffer);
+  const callProbability = 1 / (1 + Math.exp(-(analysis.equity - requiredCallEquity) / CALL_MIX_WIDTH));
+  if (context.canCall && rng() < callProbability) {
     return { type: 'call', amount: context.callAmount };
   }
 

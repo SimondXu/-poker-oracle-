@@ -28,6 +28,30 @@ const RANGE_CACHE_LIMIT = 512;
 const STREET_BOARD_SIZE = { flop: 3, turn: 4, river: 5 } as const;
 
 const rangeCache = new Map<string, WeightedRange>();
+const boardRankCache = new Map<string, ReadonlyArray<{ index: number; rank: RankVector }>>();
+
+/** Every starting hand that doesn't clash with the board, strongest first. The same for every player. */
+function rankedOnBoard(board: readonly Card[]): ReadonlyArray<{ index: number; rank: RankVector }> {
+  const key = board.join('');
+  const cached = boardRankCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const boardSet = new Set(board);
+  const ranked: Array<{ index: number; rank: RankVector }> = [];
+  ALL_COMBOS.forEach((combo, index) => {
+    if (!boardSet.has(combo[0]) && !boardSet.has(combo[1])) {
+      ranked.push({ index, rank: evaluateBestSevenCards([...combo, ...board]).rank });
+    }
+  });
+  ranked.sort((left, right) => compareRankVectors(right.rank, left.rank));
+  if (boardRankCache.size >= RANGE_CACHE_LIMIT) {
+    boardRankCache.delete(boardRankCache.keys().next().value!);
+  }
+  boardRankCache.set(key, ranked);
+  return ranked;
+}
 
 // Beta priors for the opponent model: a dozen hands of a TAG-like player.
 const PRIOR_WEIGHT = 12;
@@ -132,16 +156,8 @@ function narrowForPostflopAction(
   board: readonly Card[],
   tendencies: Tendencies,
 ): void {
-  const boardSet = new Set(board);
-  const ranked: Array<{ index: number; rank: RankVector }> = [];
-  let total = 0;
-  ALL_COMBOS.forEach((combo, index) => {
-    if ((range[index] ?? 0) > 0 && !boardSet.has(combo[0]) && !boardSet.has(combo[1])) {
-      ranked.push({ index, rank: evaluateBestSevenCards([...combo, ...board]).rank });
-      total += range[index] ?? 0;
-    }
-  });
-  ranked.sort((left, right) => compareRankVectors(right.rank, left.rank));
+  const ranked = rankedOnBoard(board).filter(({ index }) => (range[index] ?? 0) > 0);
+  const total = ranked.reduce((sum, { index }) => sum + (range[index] ?? 0), 0);
 
   const isAggressive = action.type === 'raise_to' || action.type === 'all_in';
   // A player who bets more often than most keeps more of their range when they bet.
@@ -326,4 +342,63 @@ export function enumerateRiverRangeEquity(context: BotDecisionContext, range: We
 export function lowestFoldToBetRate(context: BotDecisionContext): number | null {
   const rates = (context.opponents ?? []).filter((opponent) => opponent.stats).map((opponent) => estimateTendencies(opponent.stats).foldToBet);
   return rates.length > 0 ? Math.min(...rates) : null;
+}
+
+export interface OwnRangeRead {
+  /** Where the acting player's hand sits in their own range on this board: 0 is the very top. */
+  shareAbove: number;
+  /** The top share of the range that bets for value at this size. */
+  valueShare: number;
+  isDraw: boolean;
+  /** How often a hand with no value and no draw bets, so that bluffs make up the balanced share of all bets. */
+  airBetFrequency: number;
+}
+
+/**
+ * Reads the acting player's own range the way an opponent would and splits it into value, draws and
+ * air at this bet size. Null when the context has no record of the player's own actions.
+ */
+export function readOwnRange(context: BotDecisionContext, sizeOfPot: number, drawBetFrequency: number): OwnRangeRead | null {
+  if (!context.selfView || context.communityCards.length < 3) {
+    return null;
+  }
+
+  const range = buildOpponentRange(context.selfView, context);
+  const board = context.communityCards;
+  const ranked = rankedOnBoard(board).filter(({ index }) => (range[index] ?? 0) > 0);
+  const total = ranked.reduce((sum, { index }) => sum + (range[index] ?? 0), 0);
+  if (total <= 0) {
+    return null;
+  }
+
+  const valueShare = VALUE_SHARE_BY_SIZE.find(([size]) => sizeOfPot >= size)?.[1] ?? 0.55;
+  const heroRank = evaluateBestSevenCards([...context.holeCards, ...board]).rank;
+  let above = 0;
+  let heroAbove = 0;
+  let valueWeight = 0;
+  let drawWeight = 0;
+  let airWeight = 0;
+  for (const { index, rank } of ranked) {
+    const weight = range[index] ?? 0;
+    if (compareRankVectors(rank, heroRank) > 0) {
+      heroAbove += weight;
+    }
+    if (above / total < valueShare) {
+      valueWeight += weight;
+    } else if (isStrongDraw(ALL_COMBOS[index]!, board)) {
+      drawWeight += weight;
+    } else {
+      airWeight += weight;
+    }
+    above += weight;
+  }
+
+  const bluffShare = balancedBluffShare(sizeOfPot);
+  const airTarget = (bluffShare * valueWeight) / (1 - bluffShare) - drawWeight * drawBetFrequency;
+  return {
+    shareAbove: heroAbove / total,
+    valueShare,
+    isDraw: isStrongDraw([context.holeCards[0]!, context.holeCards[1]!], board),
+    airBetFrequency: airWeight > 0 ? Math.min(1, Math.max(0, airTarget / airWeight)) : 0,
+  };
 }

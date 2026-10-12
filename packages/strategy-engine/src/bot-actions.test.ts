@@ -643,3 +643,41 @@ test('no bluff c-bets into a player who never folds to a bet', () => {
   assert.ok((countActions(missedFlop, 'tag', 100).raise_to ?? 0) > 0);
   assert.equal(countActions(versusStation, 'tag', 100).raise_to ?? 0, 0);
 });
+
+test('postflop bets mix value and bluffs at one size per spot', () => {
+  const cbetSpot = (holeCards: BotDecisionContext['holeCards']) => makeContext({
+    phase: 'flop',
+    holeCards,
+    communityCards: ['Kd', '7c', '2s'],
+    bettingState: 'unopened',
+    canCheck: true,
+    canCall: false,
+    callAmount: 0,
+    currentBetToMatch: 0,
+    potTotal: 600,
+    minRaiseTo: 100,
+    maxRaiseTo: 9_700,
+    myStack: 9_700,
+    effectiveStack: 9_700,
+    effectiveStackBb: 97,
+    spr: 16,
+    isPreflopAggressor: true,
+    opponentCount: 1,
+    activePlayerCount: 2,
+    position: 'btn',
+    selfView: { id: 'hero', position: 'btn', actions: [{ phase: 'preflop', type: 'raise_to', facing: 'unopened', sizeOfPot: 1 }] },
+    opponents: [{ id: 'bb', position: 'bb', actions: [{ phase: 'preflop', type: 'call', facing: 'facing_open', sizeOfPot: 0 }] }],
+  });
+  const actions = (holeCards: BotDecisionContext['holeCards']) => {
+    const rng = sequenceRng(11);
+    return Array.from({ length: 200 }, () => chooseBotAction(cbetSpot(holeCards), 'tag', rng));
+  };
+  const set = actions(['Kh', 'Kc']);
+  const air = actions(['5h', '4d']);
+  const betSizes = new Set([...set, ...air].flatMap((action) => (action.type === 'raise_to' ? [action.amount] : [])));
+  const betShare = (sample: ReturnType<typeof actions>) => sample.filter((action) => action.type === 'raise_to').length / sample.length;
+
+  assert.equal(betSizes.size, 1, `one bet size for the spot, got ${[...betSizes].join(', ')}`);
+  assert.ok(betShare(set) > 0.7 && betShare(set) < 1, `the set bets mostly but sometimes slowplays: ${betShare(set)}`);
+  assert.ok(betShare(air) > 0 && betShare(air) < betShare(set), `air bluffs sometimes: ${betShare(air)}`);
+});

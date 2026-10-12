@@ -47,6 +47,10 @@ export interface PersonalityProfile {
   thinkingRange: [number, number];
   // Whether this player reads opponents' history (stations, maniacs) or plays the same against everyone.
   adaptsToOpponents: boolean;
+  // Multiplier on the balanced bluffing frequency: below 1 under-bluffs, above 1 over-bluffs.
+  bluffScale: number;
+  // How often a very strong hand checks instead of betting when it could bet.
+  slowplayFreq: number;
 }
 
 export interface Mix {

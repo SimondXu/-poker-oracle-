@@ -196,6 +196,8 @@ export interface BotDecisionContext {
   isLastStreetAggressor: boolean;
   // Opponents still in the hand and what they did, so equity can be computed against their likely range.
   opponents?: BotOpponentView[];
+  // The acting player's own actions this hand, read the same way, so it can reason about its own range.
+  selfView?: BotOpponentView;
 }
 
 export interface BotOpponentAction {

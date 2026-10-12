@@ -167,24 +167,25 @@ export function computePotOdds(context: BotDecisionContext): number {
   return getPotOdds(context.callAmount, context.potTotal);
 }
 
-function selectPostflopSizeFraction(
+export function selectPostflopSizeFraction(
   context: BotDecisionContext,
   analysis: PostflopAnalysis,
   profile: PersonalityProfile
 ): number {
-  const boardWet = analysis.features.boardConnected || analysis.features.boardMonotone || analysis.features.boardPaired;
   // Someone who almost never folds pays a big bet as readily as a small one.
   const sticky = (lowestFoldToBetRate(context) ?? 1) < STICKY_FOLD_TO_BET_RATE && analysis.equity >= profile.valueBetMinEquity;
-  if (context.spr <= 1 || analysis.equity >= 0.85 || sticky) {
+  if (context.spr <= 1 || sticky) {
     return 1.0;
   }
-  if (boardWet || context.opponentCount > 1 || analysis.features.flushDraw || analysis.features.oesd) {
-    return 0.66;
+  // Otherwise the size depends only on the spot, never on the hand, so it gives nothing away.
+  if (context.callAmount > 0) {
+    return 0.75;
   }
-  if (context.isPreflopAggressor && analysis.equity >= profile.semiBluffMinEquity) {
-    return 0.33;
+  if (context.phase === 'river') {
+    return 0.75;
   }
-  return 0.33;
+  const boardWet = analysis.features.boardConnected || analysis.features.boardMonotone || analysis.features.boardPaired;
+  return boardWet || context.opponentCount > 1 ? 0.66 : 0.33;
 }
 
 export function getPostflopRaiseTo(
