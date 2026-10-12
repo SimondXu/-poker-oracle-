@@ -16,8 +16,8 @@ import { contestingOpponents, once, preflopEquityVsCallers, type Equities } from
 import { enumerateDecision, type DecisionOutcome } from './enumerate.ts';
 import { PERSONALITY_PROFILES } from './personality.ts';
 import { analyzePostflop } from './postflop-analysis.ts';
-import { evaluatePreflopPercentile, getStackBucket, normalizePreflopScenario } from './preflop-hands.ts';
-import { getPreflopMix } from './preflop-mixes.ts';
+import { evaluatePreflopPercentile, normalizePreflopScenario } from './preflop-hands.ts';
+import { getPreflopMix, preflopChartKey } from './preflop-mixes.ts';
 import { ALL_COMBOS } from './range.ts';
 
 /** Per street; mean standard error about 0.0115 (see Docs/game-design/coach-advice.md, step 1e). */
@@ -161,7 +161,7 @@ const playShareCache = new Map<string, number>();
  * the same table the bots play, summed over every combo.
  */
 export function preflopPlayShare(context: Pick<BotDecisionContext, 'effectiveStackBb' | 'activePlayerCount'>, scenario: BotBettingState, position: BotPosition): number {
-  const key = [getStackBucket(context.effectiveStackBb), normalizePreflopScenario(scenario), position, context.activePlayerCount === 2].join('|');
+  const key = [preflopChartKey(context.effectiveStackBb, context.activePlayerCount), normalizePreflopScenario(scenario), position].join('|');
   let share = playShareCache.get(key);
   if (share === undefined) {
     const played = ALL_COMBOS.reduce((sum, combo) => {

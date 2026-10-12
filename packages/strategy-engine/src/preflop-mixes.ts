@@ -435,12 +435,13 @@ function mix(fold: number, call: number, raise: number, jam: number): Mix {
   return { fold, call, raise, jam };
 }
 
-// TAG's cutoff plays its good hands like the button but opens far fewer of the weakest ones,
-// which made it as wide as the button (about 29% of hands, not 44%). The rest goes to folds.
-const TAG_CUTOFF_KEEP: Partial<Record<HandClass, number>> = { marginal: 0.65, trash: 0.2 };
-// TAG's big blind closes the action at a discount, so it defends an open with more hands (about 37%, not 24%);
-// the price check still folds the calls that don't have the price against the opener's range.
-const TAG_BIG_BLIND_DEFENSE: Partial<Record<HandClass, number>> = { playable: 0.3, speculative: 0.3, marginal: 0.3, trash: 0.06 };
+/**
+ * Everything besides the seat, scenario and cards that getPreflopMix reads from the table: the stack
+ * bucket, and heads-up or not. A cache of anything built from the charts must key on exactly this.
+ */
+export function preflopChartKey(effectiveStackBb: number, activePlayerCount: number): string {
+  return `${getStackBucket(effectiveStackBb)}|${activePlayerCount === 2 ? 'heads-up' : 'ring'}`;
+}
 
 export function getPreflopMix(
   personality: BotPersonality,
@@ -458,42 +459,20 @@ export function getPreflopMix(
   const handClass = activePlayerCount === 2
     ? widenHandClassForHeadsUp(classifyHand(canonicalKey))
     : classifyHand(canonicalKey);
-  const ringTag = personality === 'tag' && activePlayerCount > 2;
-
-  const mixValue = chartMix(personality, stackBucket, scenario, preflopPosition, canonicalKey, handClass);
-  const keep = ringTag && scenario === 'unopened' && preflopPosition === 'co' ? TAG_CUTOFF_KEEP[handClass] : undefined;
-  if (keep !== undefined) {
-    return mix(1 - (1 - mixValue.fold) * keep, mixValue.call * keep, mixValue.raise * keep, mixValue.jam * keep);
-  }
-  const defense = ringTag && scenario === 'facing_open' && preflopPosition === 'bb' ? TAG_BIG_BLIND_DEFENSE[handClass] ?? 0 : 0;
-  if (defense > 0) {
-    const moved = Math.min(defense, mixValue.fold);
-    return mix(mixValue.fold - moved, mixValue.call + moved, mixValue.raise, mixValue.jam);
-  }
-  return mixValue;
-}
-
-function chartMix(
-  personality: BotPersonality,
-  stackBucket: StackBucket,
-  scenario: PreflopScenario,
-  position: PreflopPosition,
-  canonicalKey: string,
-  handClass: HandClass,
-): Mix {
-  const baseMix = PRELOP_MIXES[scenario][personality][stackBucket][position][handClass];
+  const baseMix = PRELOP_MIXES[scenario][personality][stackBucket][preflopPosition][handClass];
   const detailAdjusted = adjustPreflopMixForHandDetail(baseMix, {
     detail: getHandDetail(canonicalKey),
     personality,
     scenario,
-    position,
+    position: preflopPosition,
   });
   return rebalancePreflopMixForPersonality(detailAdjusted, {
     personality,
     scenario,
-    position,
+    position: preflopPosition,
     handClass,
     stackBucket,
+    headsUp: activePlayerCount === 2,
   });
 }
 
@@ -776,6 +755,13 @@ function adjustPreflopMixForHandDetail(
   return adjusted;
 }
 
+// TAG's cutoff plays its good hands like the button but opens far fewer of the weakest ones,
+// which made it as wide as the button (about 29% of hands, not 44%). The rest goes to folds.
+const TAG_CUTOFF_KEEP: Partial<Record<HandClass, number>> = { marginal: 0.65, trash: 0.2 };
+// TAG's big blind closes the action at a discount, so it defends an open with more hands (about 37%, not 24%);
+// the price check still folds the calls that don't have the price against the opener's range.
+const TAG_BIG_BLIND_DEFENSE: Partial<Record<HandClass, number>> = { playable: 0.3, speculative: 0.3, marginal: 0.3, trash: 0.06 };
+
 function rebalancePreflopMixForPersonality(
   base: Mix,
   input: {
@@ -784,6 +770,7 @@ function rebalancePreflopMixForPersonality(
     position: PreflopPosition;
     handClass: HandClass;
     stackBucket: StackBucket;
+    headsUp: boolean;
   }
 ): Mix {
   let adjusted = base;
@@ -978,5 +965,17 @@ function rebalancePreflopMixForPersonality(
     }
   }
 
+
+  if (input.personality === 'tag' && !input.headsUp) {
+    const keep = input.scenario === 'unopened' && input.position === 'co' ? TAG_CUTOFF_KEEP[input.handClass] : undefined;
+    if (keep !== undefined) {
+      adjusted = mix(1 - (1 - adjusted.fold) * keep, adjusted.call * keep, adjusted.raise * keep, adjusted.jam * keep);
+    }
+    const defense = input.scenario === 'facing_open' && input.position === 'bb' ? TAG_BIG_BLIND_DEFENSE[input.handClass] ?? 0 : 0;
+    if (defense > 0) {
+      const moved = Math.min(defense, adjusted.fold);
+      adjusted = mix(adjusted.fold - moved, adjusted.call + moved, adjusted.raise, adjusted.jam);
+    }
+  }
   return adjusted;
 }
