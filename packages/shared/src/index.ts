@@ -451,7 +451,7 @@ export type GameEvent = GameActionAppliedEvent;
 export type HandClass = 'premium' | 'strong' | 'playable' | 'speculative' | 'marginal' | 'trash';
 
 /** Bump when decide.ts behaviour changes, so stored advice and golden sets can tell which policy they came from. */
-export const COACH_POLICY_VERSION = '2026-10-12.1';
+export const COACH_POLICY_VERSION = '2026-10-12.2';
 
 /** Shared by advice options and the hero's recorded action, so the review compares like with like. */
 export type CoachActionKind = 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'all_in';

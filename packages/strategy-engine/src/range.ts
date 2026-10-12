@@ -4,7 +4,7 @@ import type { BotDecisionContext, BotOpponentAction, BotOpponentView, BotPlayerS
 import type { BotRng, RankVector } from './types.ts';
 import { compareRankVectors, detectStraightState, FULL_DECK, remainingDeck, sampleWithoutReplacement } from './cards.ts';
 import { OVERSIZED_RAISE_SIZE_OF_POT } from './context.ts';
-import { canonicalizeHoleCards, evaluatePreflopPercentile } from './preflop-hands.ts';
+import { canonicalizeHoleCards, evaluatePreflopPercentile, getStackBucket } from './preflop-hands.ts';
 import { getPreflopMix } from './preflop-mixes.ts';
 
 type Combo = readonly [Card, Card];
@@ -213,7 +213,8 @@ export function buildOpponentRange(view: BotOpponentView, context: BotDecisionCo
     view.position,
     view.actions,
     context.communityCards,
-    Math.round(context.effectiveStackBb),
+    // The preflop charts read the stack only through its bucket.
+    getStackBucket(context.effectiveStackBb),
     context.activePlayerCount,
   ]);
   const cached = rangeCache.get(cacheKey);
