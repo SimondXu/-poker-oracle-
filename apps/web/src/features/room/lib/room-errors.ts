@@ -14,6 +14,7 @@ const ROOM_ERROR_KEYS: Record<string, MessageKey> = {
   starter_not_active: 'lobby.room.error.starterOut',
   table_finished: 'lobby.room.error.tableFinished',
   not_room_member: 'lobby.room.error.notMember',
+  not_room_host: 'lobby.room.error.notHost',
   room_full: 'lobby.room.error.roomFull',
   too_many_players: 'lobby.room.error.tooManyPlayers',
 };

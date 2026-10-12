@@ -15,6 +15,8 @@ interface RoomSeatCardProps {
   isPlaying: boolean;
   menuOpen: boolean;
   onOpenMenu: (anchor: HTMLElement) => void;
+  /** Only the room host may remove bots; others never see the control. */
+  canRemoveBots: boolean;
   onRemoveBot: (playerId: string) => void;
 }
 
@@ -22,7 +24,7 @@ const PLATE_SIZE = 'w-[100px] min-[380px]:w-[104px] sm:w-[152px]';
 
 /** One seat on the mini table: an ivory plate when taken, a dashed brass slot when open. */
 export const RoomSeatCard = forwardRef<HTMLDivElement, RoomSeatCardProps>(function RoomSeatCard(
-  { seatNumber, player, currentUserId, isPlaying, menuOpen, onOpenMenu, onRemoveBot },
+  { seatNumber, player, currentUserId, isPlaying, menuOpen, onOpenMenu, canRemoveBots, onRemoveBot },
   ref,
 ) {
   const t = useT();
@@ -109,7 +111,7 @@ export const RoomSeatCard = forwardRef<HTMLDivElement, RoomSeatCardProps>(functi
         )}
       </div>
 
-      {player.isBot && !isPlaying && (
+      {player.isBot && !isPlaying && canRemoveBots && (
         <button
           type="button"
           onClick={() => onRemoveBot(player.id)}

@@ -92,6 +92,7 @@ const en = {
   'room.error.join': "Couldn't join the room.",
   'room.error.create': "Couldn't create the room.",
   'room.error.addBot': "Couldn't add the bot.",
+  'room.error.removeBot': "Couldn't remove the bot.",
   'room.error.ready': "Couldn't mark you ready.",
   'room.error.start': "Couldn't start the game.",
   'room.error.session': "Couldn't start your session. Refresh and try again.",
@@ -101,6 +102,7 @@ const en = {
   'room.error.starterOut': 'You are out. Watch the table or go home.',
   'room.error.tableFinished': 'This table is finished. Go home to start a new one.',
   'room.error.notMember': 'You are not in this room. Re-enter it.',
+  'room.error.notHost': 'Only the room host can do that.',
   'room.error.roomFull': 'This table is full (9 seats). Create a new one.',
   'room.error.tooManyPlayers': 'A table seats at most 9 players. Remove a player or bot, then start again.',
 };
@@ -196,6 +198,7 @@ const zh: Translation<typeof en> = {
   'room.error.join': '加入房间失败。',
   'room.error.create': '创建房间失败。',
   'room.error.addBot': '添加机器人失败。',
+  'room.error.removeBot': '移除机器人失败。',
   'room.error.ready': '准备失败。',
   'room.error.start': '开始游戏失败。',
   'room.error.session': '会话初始化失败，请刷新后重试。',
@@ -205,6 +208,7 @@ const zh: Translation<typeof en> = {
   'room.error.starterOut': '你已淘汰，请进入牌桌观战或返回首页。',
   'room.error.tableFinished': '本场已结束，请返回首页重新开局。',
   'room.error.notMember': '你不在该房间内，请重新进入。',
+  'room.error.notHost': '只有房主可以这样做。',
   'room.error.roomFull': '这张牌桌已满（9 个座位），请新建一张。',
   'room.error.tooManyPlayers': '一张牌桌最多 9 名玩家。请移除一名玩家或机器人后再开始。',
 };

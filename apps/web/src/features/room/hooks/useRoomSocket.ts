@@ -191,9 +191,13 @@ export function useRoomSocket(
   const removeBot = useCallback(
     (botPlayerId: string) => {
       const socket = getSocket();
-      socket.emit('room:remove_player', { roomId, playerId: botPlayerId }, () => {});
+      socket.emit('room:remove_player', { roomId, playerId: botPlayerId }, (res: { ok: boolean; error?: string }) => {
+        if (!res.ok) {
+          toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.removeBot')));
+        }
+      });
     },
-    [roomId],
+    [roomId, t],
   );
 
   const markReady = useCallback(() => {

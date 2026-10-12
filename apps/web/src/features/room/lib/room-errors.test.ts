@@ -7,7 +7,7 @@ import { getRoomErrorKey } from './room-errors.ts';
 const FALLBACK = 'lobby.room.error.join';
 
 test('room_full and too_many_players map to their own copy, in both locales', () => {
-  for (const code of ['room_full', 'too_many_players', 'not_room_member', 'rate_limited']) {
+  for (const code of ['room_full', 'too_many_players', 'not_room_member', 'rate_limited', 'not_room_host']) {
     const key = getRoomErrorKey(code, FALLBACK);
     assert.notEqual(key, FALLBACK, code);
     for (const locale of ['en', 'zh'] as const) {

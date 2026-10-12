@@ -15,6 +15,7 @@ interface RoomTableProps {
   currentUserId: string;
   isPlaying: boolean;
   onAddBot: (strategy: BotPersonality, seatIndex: number) => void;
+  canRemoveBots: boolean;
   onRemoveBot: (playerId: string) => void;
 }
 
@@ -24,7 +25,7 @@ interface OpenMenu {
 }
 
 /** Mini felt table: six seats around the rail, the player at the bottom, seat count in the middle. */
-export function RoomTable({ players, currentUserId, isPlaying, onAddBot, onRemoveBot }: RoomTableProps) {
+export function RoomTable({ players, currentUserId, isPlaying, onAddBot, canRemoveBots, onRemoveBot }: RoomTableProps) {
   const t = useT();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const playerBySeat = new Map(players.map((player) => [player.seatIndex, player]));
@@ -92,6 +93,7 @@ export function RoomTable({ players, currentUserId, isPlaying, onAddBot, onRemov
                 anchorRef.current = anchor;
                 setMenu({ seatIndex, anchor });
               }}
+              canRemoveBots={canRemoveBots}
               onRemoveBot={onRemoveBot}
             />
           </div>

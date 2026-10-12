@@ -16,6 +16,7 @@ export interface RoomState {
   readyCount: number;
   isPlaying: boolean;
   table: TableLifecycleSnapshot;
+  hostPlayerId: string | null;
 }
 
 export interface RoomSocketViewState {
@@ -47,6 +48,7 @@ export function toRoomState(state: RoomStateEvent): RoomState {
     readyCount: state.readyCount,
     isPlaying: state.isPlaying,
     table: state.table,
+    hostPlayerId: state.hostPlayerId,
   };
 }
 

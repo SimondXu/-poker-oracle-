@@ -68,3 +68,7 @@ test('roomSocketViewReducer derives ready state from the current player', () => 
     isReady: true,
   });
 });
+
+test('toRoomState keeps the host so host-only controls can be gated', () => {
+  assert.equal(roomState.hostPlayerId, 'p0');
+});
