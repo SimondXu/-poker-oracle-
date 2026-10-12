@@ -272,6 +272,20 @@ test('straight draws must use a hole card', () => {
   assert.equal(gutshot.gutshot, true);
 });
 
+test('backdoor draws must use a hole card', () => {
+  const analyze = (holeCards: BotDecisionContext['holeCards'], communityCards: BotDecisionContext['communityCards']) =>
+    analyzePostflop(
+      makeContext({ phase: 'flop', holeCards, communityCards, opponentCount: 1 }),
+      createStableAnalysisRng('backdoor-draw'),
+    ).features;
+
+  assert.equal(analyze(['6c', '5d'], ['Kh', '9h', '2h']).backdoorFlushDraw, false);
+  assert.equal(analyze(['Ah', '5d'], ['Kh', '9h', '2c']).backdoorFlushDraw, true);
+
+  assert.equal(analyze(['2c', '4d'], ['9s', 'Td', 'Jh']).backdoorStraightDraw, false);
+  assert.equal(analyze(['8c', '2d'], ['9s', 'Td', '3h']).backdoorStraightDraw, true);
+});
+
 test('A-2-3-4 and J-Q-K-A are one-ended draws, not open-ended', () => {
   const analyze = (holeCards: BotDecisionContext['holeCards'], communityCards: BotDecisionContext['communityCards']) =>
     analyzePostflop(

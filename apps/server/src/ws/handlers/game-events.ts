@@ -20,6 +20,7 @@ import {
 } from '../../game-loop/llm-agent-runtime.ts';
 import { selectEmergencyBotActionInput } from '../../game-loop/realtime-bot-fallback.ts';
 import {
+  recordFinishedHandStats,
   resolveButtonMarkerSeatForNextHand,
   type BotRuntimeDeps,
 } from '../../game-loop/bot-support.ts';
@@ -120,6 +121,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       emitBotStatus(io, room, botStatusEvent);
     }
     await runBotTurns(io, room, memberships, botRuntime, startRealtimeLlmTurn);
+    recordFinishedHandStats(room);
     cleanupDisconnectedPlayersAfterHandEnd(io, room, deleteRoom);
     syncActionTimeout(room.id);
     syncBotsOnlyAutoNext(room);

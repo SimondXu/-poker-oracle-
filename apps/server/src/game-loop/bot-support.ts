@@ -1,15 +1,6 @@
 import { getValidActions, type HandActionRecord, type HandPhase, type HandState } from '@aipoker/game-engine';
-import {
-  buildBotPositionMap,
-  deriveBotBettingState,
-  hasPreflopLimpers,
-  type BotBettingState,
-  type BotDecisionContext,
-  type BotDecisionPhase,
-  type BotPosition,
-  type Card,
-  type BotAction,
-} from '@aipoker/shared';
+import type { BotAction, BotDecisionContext } from '@aipoker/shared';
+import { buildDecisionContext, recordHandStats, type DecisionHand } from '@aipoker/strategy-engine';
 
 import type { RuntimeRoom } from '../rooms/types.ts';
 
@@ -84,21 +75,6 @@ function getStackPositivePlayers(room: RuntimeRoom): EligibleRoomPlayer[] {
     .sort((left, right) => left.seatIndex - right.seatIndex);
 }
 
-function mapHandPhase(phase: HandPhase): BotDecisionPhase | null {
-  switch (phase) {
-    case 'betting_preflop':
-      return 'preflop';
-    case 'betting_flop':
-      return 'flop';
-    case 'betting_turn':
-      return 'turn';
-    case 'betting_river':
-      return 'river';
-    default:
-      return null;
-  }
-}
-
 export function getAggressiveActionsForPhase(hand: HandState, phase: HandPhase): HandActionRecord[] {
   let currentMax = phase === 'betting_preflop' ? hand.blinds.bigBlind : 0;
   const aggressiveActions: HandActionRecord[] = [];
@@ -114,107 +90,6 @@ export function getAggressiveActionsForPhase(hand: HandState, phase: HandPhase):
   }
 
   return aggressiveActions;
-}
-
-function getAggressiveActionsForStreet(
-  room: RuntimeRoom,
-  phase: HandPhase
-): Array<HandActionRecord & { seatIndex: number }> {
-  if (!room.hand) {
-    return [];
-  }
-
-  return getAggressiveActionsForPhase(room.hand, phase).flatMap((action) => {
-    const seatIndex = room.players.get(action.playerId)?.seatIndex;
-    return seatIndex === undefined ? [] : [{ ...action, seatIndex }];
-  });
-}
-
-function getPreviousBettingPhase(phase: HandPhase): HandPhase | null {
-  switch (phase) {
-    case 'betting_flop':
-      return 'betting_preflop';
-    case 'betting_turn':
-      return 'betting_flop';
-    case 'betting_river':
-      return 'betting_turn';
-    default:
-      return null;
-  }
-}
-
-function deriveBettingState(
-  room: RuntimeRoom,
-  aggressiveActions: Array<HandActionRecord & { seatIndex: number }>,
-): BotBettingState {
-  const hand = room.hand;
-  if (!hand) {
-    return 'unopened';
-  }
-
-  return deriveBotBettingState(
-    aggressiveActions.length,
-    hasPreflopLimpers(hand.actions, hand.phase, hand.blinds.bigBlind),
-  );
-}
-
-function countPreflopLimpers(room: RuntimeRoom): number {
-  const hand = room.hand;
-  if (!hand || hand.phase !== 'betting_preflop') {
-    return 0;
-  }
-
-  let currentMax = hand.blinds.bigBlind;
-  let limperCount = 0;
-
-  for (const action of hand.actions) {
-    if (action.phase !== hand.phase) {
-      continue;
-    }
-
-    if ((action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax) {
-      currentMax = action.toAmount;
-      continue;
-    }
-
-    if (currentMax === hand.blinds.bigBlind && action.type === 'call') {
-      limperCount += 1;
-    }
-  }
-
-  return limperCount;
-}
-
-function buildPositionMap(room: RuntimeRoom): Map<number, BotPosition> {
-  const hand = room.hand;
-  if (!hand) {
-    return new Map();
-  }
-
-  return buildBotPositionMap(hand.players.map((player) => player.seatIndex), hand.buttonMarkerSeat);
-}
-
-function getEffectiveStack(room: RuntimeRoom, actorId: string): number {
-  const hand = room.hand;
-  if (!hand) {
-    return 0;
-  }
-
-  const actor = hand.players.find((player) => player.id === actorId);
-  if (!actor) {
-    return 0;
-  }
-
-  const actorTotal = actor.stack + actor.handCommitted;
-  const opponentTotals = hand.players
-    .filter((player) => player.id !== actorId && player.status !== 'folded')
-    .map((player) => Math.min(actorTotal, player.stack + player.handCommitted));
-
-  if (opponentTotals.length === 0) {
-    return actorTotal;
-  }
-
-  return Math.max(...opponentTotals);
 }
 
 export function getNextButtonMarkerSeat(room: RuntimeRoom): number {
@@ -261,63 +136,26 @@ export function resolveButtonMarkerSeatForNextHand(
 
 export function buildBotDecisionContext(room: RuntimeRoom, actorId: string): BotDecisionContext | null {
   const hand = room.hand;
-  if (!hand || hand.currentActorSeat === null) {
+  const actor = hand?.players.find((player) => player.id === actorId);
+  if (!hand || hand.currentActorSeat === null || !actor || actor.seatIndex !== hand.currentActorSeat) {
     return null;
   }
 
-  const actor = hand.players.find((player) => player.id === actorId);
-  if (!actor || actor.seatIndex !== hand.currentActorSeat) {
-    return null;
+  return buildDecisionContext(toDecisionHand(hand), actor.id, getValidActions(hand, actor.id), room.playerStats);
+}
+
+function toDecisionHand(hand: HandState): DecisionHand {
+  return { ...hand, smallBlind: hand.blinds.smallBlind, bigBlind: hand.blinds.bigBlind };
+}
+
+const HANDS_IN_PLAYER_STATS = new WeakSet<HandState>();
+
+/** Counts a finished hand toward every player's tendencies, once however often it is called. */
+export function recordFinishedHandStats(room: RuntimeRoom): void {
+  const hand = room.hand;
+  if (!hand || hand.phase !== 'hand_end' || HANDS_IN_PLAYER_STATS.has(hand)) {
+    return;
   }
-
-  const phase = mapHandPhase(hand.phase);
-  if (!phase) {
-    return null;
-  }
-
-  const valid = getValidActions(hand, actor.id);
-  const activePlayers = hand.players.filter((player) => player.status !== 'folded');
-  const effectiveStack = getEffectiveStack(room, actor.id);
-  const aggressiveActions = getAggressiveActionsForStreet(room, hand.phase);
-  const previousPhase = getPreviousBettingPhase(hand.phase);
-  const previousStreetAggressiveActions = previousPhase ? getAggressiveActionsForStreet(room, previousPhase) : [];
-  const preflopAggressiveActions = hand.phase === 'betting_preflop'
-    ? aggressiveActions
-    : getAggressiveActionsForStreet(room, 'betting_preflop');
-  const positionMap = buildPositionMap(room);
-  const bigBlind = hand.blinds.bigBlind;
-  const effectiveStackBb = bigBlind > 0 ? effectiveStack / bigBlind : 0;
-  const potBaseForSpr = hand.potTotal > 0 ? hand.potTotal : bigBlind;
-
-  return {
-    canFold: valid.canFold,
-    canCheck: valid.canCheck,
-    canCall: valid.canCall,
-    callAmount: valid.callAmount,
-    canRaise: valid.canRaise,
-    minRaiseTo: valid.minRaiseTo,
-    maxRaiseTo: valid.maxRaiseTo,
-    canAllIn: valid.canAllIn,
-    phase,
-    potTotal: hand.potTotal,
-    myStack: actor.stack,
-    myStreetCommitted: actor.streetCommitted,
-    currentBetToMatch: hand.betting.currentBetToMatch,
-    lastFullRaiseSize: hand.betting.lastFullRaiseSize,
-    bigBlind: hand.blinds.bigBlind,
-    smallBlind: hand.blinds.smallBlind,
-    preflopLimpersCount: countPreflopLimpers(room),
-    streetActionCount: hand.actions.filter((action) => action.phase === hand.phase).length,
-    holeCards: [...(actor.holeCards as Card[])],
-    communityCards: [...(hand.communityCards as Card[])],
-    activePlayerCount: hand.players.length,
-    opponentCount: Math.max(0, activePlayers.length - 1),
-    position: positionMap.get(actor.seatIndex) ?? 'utg',
-    effectiveStack,
-    effectiveStackBb,
-    spr: potBaseForSpr > 0 ? effectiveStack / potBaseForSpr : 0,
-    bettingState: deriveBettingState(room, aggressiveActions),
-    isPreflopAggressor: preflopAggressiveActions.at(-1)?.playerId === actor.id,
-    isLastStreetAggressor: previousStreetAggressiveActions.at(-1)?.playerId === actor.id,
-  };
+  HANDS_IN_PLAYER_STATS.add(hand);
+  recordHandStats(room.playerStats, toDecisionHand(hand));
 }

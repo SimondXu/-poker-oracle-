@@ -1,6 +1,7 @@
 import { chooseBotAction } from '@aipoker/strategy-engine';
 import { applyAction, initializeHand, type HandActionRecord, type HandState, type PlayerActionInput } from '@aipoker/game-engine';
 import { getRuleBotPersonality, type BotAction, type BotDecisionContext, type BotPersonality, type BotPosition } from '@aipoker/shared';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -8,12 +9,16 @@ import {
   getAggressiveActionsForPhase,
   getBotPreflopFoldStreak,
   isFirstPreflopDecisionForPlayer,
+  recordFinishedHandStats,
   resetBotPreflopFoldStreaks,
   resolveButtonMarkerSeatForNextHand,
   trackBotPreflopEntryDecision,
 } from '../game-loop/bot-support.ts';
 import { syncRoomPlayersFromHand } from '../rooms/room-store.ts';
 import type { RuntimePlayer, RuntimeRoom } from '../rooms/types.ts';
+import { runDuplicateHu, type DuplicateHuReport } from './duplicate-hu.ts';
+import { parsePolicyName } from './eval-policies.ts';
+import { addToSample, createSample, mergeSample, summarizeSample, type Sample, type WinRateSummary } from './eval-utils.ts';
 
 export interface BotSeatConfig {
   id: string;
@@ -38,6 +43,7 @@ interface PlayerMetricCounters {
   foldToCbet: MetricCounter;
   wentToShowdown: MetricCounter;
   wonAtShowdown: MetricCounter;
+  netBb: Sample;
   rfiByPosition: Record<BotPosition, MetricCounter>;
 }
 
@@ -69,6 +75,7 @@ interface SummaryMetrics {
   foldToCbet: SummaryMetric;
   wentToShowdown: SummaryMetric;
   wonAtShowdown: SummaryMetric;
+  winRate: WinRateSummary;
   rfiByPosition: Record<BotPosition, SummaryMetric>;
 }
 
@@ -185,6 +192,7 @@ function createPlayerMetricCounters(): PlayerMetricCounters {
     foldToCbet: zeroMetric(),
     wentToShowdown: zeroMetric(),
     wonAtShowdown: zeroMetric(),
+    netBb: createSample(),
     rfiByPosition: {
       utg: zeroMetric(),
       hj: zeroMetric(),
@@ -265,6 +273,13 @@ export function recordBotDecisionStats(
     }
     tracker.currentHand.flopActedPlayerIds.add(input.playerId);
     recordFlopDecisionStats(metrics, input.hand, input.playerId, input.context, input.action);
+  }
+}
+
+export function recordBotNetResult(tracker: BotStatTracker, playerId: string, netBb: number): void {
+  const metrics = tracker.players.get(playerId);
+  if (metrics) {
+    addToSample(metrics.netBb, netBb);
   }
 }
 
@@ -459,6 +474,7 @@ function summarizeCounters(counters: PlayerMetricCounters): SummaryMetrics {
     foldToCbet: summarizeMetric(counters.foldToCbet),
     wentToShowdown: summarizeMetric(counters.wentToShowdown),
     wonAtShowdown: summarizeMetric(counters.wonAtShowdown),
+    winRate: summarizeSample(counters.netBb),
     rfiByPosition: {
       utg: summarizeMetric(counters.rfiByPosition.utg),
       hj: summarizeMetric(counters.rfiByPosition.hj),
@@ -493,6 +509,7 @@ function mergeCounters(target: PlayerMetricCounters, source: PlayerMetricCounter
   mergeMetric(target.foldToCbet, source.foldToCbet);
   mergeMetric(target.wentToShowdown, source.wentToShowdown);
   mergeMetric(target.wonAtShowdown, source.wonAtShowdown);
+  mergeSample(target.netBb, source.netBb);
   for (const position of POSITIONS) {
     mergeMetric(target.rfiByPosition[position], source.rfiByPosition[position]);
   }
@@ -710,6 +727,7 @@ function createSimulationRoom(input: {
     lastBroadcastActionCount: 0,
     lastButtonMarkerSeat: null,
     hostPlayerId: null,
+    playerStats: new Map(),
   };
 }
 
@@ -802,6 +820,13 @@ function playSimulatedHand(input: {
     syncRoomPlayersFromHand(room);
   }
 
+  for (const player of room.players.values()) {
+    const netBb = (player.stack - stackSize) / room.bigBlind;
+    recordBotNetResult(tracker, player.id, netBb);
+    recordBotNetResult(overallTracker, player.id, netBb);
+  }
+
+  recordFinishedHandStats(room);
   if (room.hand) {
     recordBotHandResultStats(tracker, room.hand);
     recordBotHandResultStats(overallTracker, room.hand);
@@ -849,6 +874,10 @@ function formatRate(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatWinRate(winRate: WinRateSummary): string {
+  return `${winRate.bbPer100.toFixed(1)} ± ${winRate.ci95.toFixed(1)}`;
+}
+
 function formatSummaryTable(summary: BotSimulationSummary): string {
   const rows = (['fish', 'tag', 'lag'] as BotPersonality[]).map((personality) => {
     const metrics = summary.personalities[personality];
@@ -863,6 +892,7 @@ function formatSummaryTable(summary: BotSimulationSummary): string {
       formatPercent(metrics.foldToCbet),
       formatPercent(metrics.wentToShowdown),
       formatPercent(metrics.wonAtShowdown),
+      formatWinRate(metrics.winRate),
       formatPercent(metrics.rfiByPosition.utg),
       formatPercent(metrics.rfiByPosition.co),
       formatPercent(metrics.rfiByPosition.btn),
@@ -870,7 +900,7 @@ function formatSummaryTable(summary: BotSimulationSummary): string {
     ];
   });
 
-  const headers = ['Bot', 'Hands', 'VPIP', 'PFR', '3Bet', 'FoldOpen', 'CBet', 'FoldCBet', 'WTSD', 'W$SD', 'RFI UTG', 'RFI CO', 'RFI BTN', 'RFI SB'];
+  const headers = ['Bot', 'Hands', 'VPIP', 'PFR', '3Bet', 'FoldOpen', 'CBet', 'FoldCBet', 'WTSD', 'W$SD', 'bb/100 (95% CI)', 'RFI UTG', 'RFI CO', 'RFI BTN', 'RFI SB'];
   const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => row[index]?.length ?? 0)));
   const formatRow = (row: string[]) => row.map((cell, index) => cell.padEnd(widths[index] ?? cell.length)).join('  ');
 
@@ -909,68 +939,132 @@ function printScenarioReport(label: string, report: TrainingTableSimulationRepor
   }
 }
 
-function parseCliArgs(argv: string[]): SimulateBotStatsOptions {
+interface CliOptions {
+  simulate: SimulateBotStatsOptions;
+  mode: 'ring' | 'duplicate-hu';
+  a: string | undefined;
+  b: string | undefined;
+  json: boolean;
+}
+
+function parseSeats(value: string): BotSeatConfig[] {
+  return value.split(',').map((raw, seatIndex) => {
+    const personality = raw.trim();
+    if (personality !== 'fish' && personality !== 'tag' && personality !== 'lag') {
+      throw new Error(`Unknown ring personality "${personality}"; expected fish, tag, or lag`);
+    }
+    return { id: `${personality}-${seatIndex + 1}`, name: `${personality} ${seatIndex + 1}`, seatIndex, personality };
+  });
+}
+
+function parseCliArgs(argv: string[]): CliOptions {
   const options: SimulateBotStatsOptions = {};
+  const cli: CliOptions = { simulate: options, mode: 'ring', a: undefined, b: undefined, json: false };
+  let stacks: number[] | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    const next = argv[index + 1];
     if (!arg) {
       continue;
     }
 
-    if (arg === '--hands') {
-      const next = argv[index + 1];
-      if (next) {
-        options.hands = Number.parseInt(next, 10);
-        index += 1;
-      }
-      continue;
-    }
-
-    if (arg === '--seed') {
-      const next = argv[index + 1];
-      if (next) {
-        options.seed = Number.parseInt(next, 10);
-        index += 1;
-      }
-      continue;
-    }
-
-    if (arg === '--stacks') {
-      const next = argv[index + 1];
-      if (next) {
-        const stackBbs = next
-          .split(',')
-          .map((value) => Number.parseInt(value.trim(), 10))
-          .filter((value) => Number.isFinite(value) && value > 0);
-        const hands = options.hands ?? 3000;
-        const baseHands = Math.floor(hands / Math.max(1, stackBbs.length));
-        let remainder = hands % Math.max(1, stackBbs.length);
-        options.segments = stackBbs.map((stackBb) => {
-          const segmentHands = baseHands + (remainder > 0 ? 1 : 0);
-          remainder = Math.max(0, remainder - 1);
-          return {
-            label: `${stackBb}bb`,
-            hands: segmentHands,
-            stackBb,
-          };
-        });
-        index += 1;
-      }
-      continue;
-    }
-
-    if (arg === '--no-training-table') {
+    if (arg === '--json') {
+      cli.json = true;
+    } else if (arg === '--no-training-table') {
       options.includeTrainingTable = false;
+    } else if (next === undefined) {
+      continue;
+    } else if (arg === '--hands') {
+      options.hands = Number.parseInt(next, 10);
+      index += 1;
+    } else if (arg === '--seed') {
+      options.seed = Number.parseInt(next, 10);
+      index += 1;
+    } else if (arg === '--seats') {
+      options.seats = parseSeats(next);
+      index += 1;
+    } else if (arg === '--mode') {
+      if (next !== 'ring' && next !== 'duplicate-hu') {
+        throw new Error(`Unknown mode "${next}"; expected ring or duplicate-hu`);
+      }
+      cli.mode = next;
+      index += 1;
+    } else if (arg === '--a') {
+      cli.a = next;
+      index += 1;
+    } else if (arg === '--b') {
+      cli.b = next;
+      index += 1;
+    } else if (arg === '--stacks') {
+      stacks = next
+        .split(',')
+        .map((value) => Number.parseInt(value.trim(), 10))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      index += 1;
     }
   }
 
-  return options;
+  // Segments depend on --hands, so build them once all flags are read.
+  if (stacks) {
+    const hands = options.hands ?? 3000;
+    const baseHands = Math.floor(hands / Math.max(1, stacks.length));
+    let remainder = hands % Math.max(1, stacks.length);
+    options.segments = stacks.map((stackBb) => {
+      const segmentHands = baseHands + (remainder > 0 ? 1 : 0);
+      remainder = Math.max(0, remainder - 1);
+      return {
+        label: `${stackBb}bb`,
+        hands: segmentHands,
+        stackBb,
+      };
+    });
+  }
+
+  return cli;
+}
+
+function printTiming(hands: number, elapsedMs: number): void {
+  console.log(`\nElapsed: ${(elapsedMs / 1000).toFixed(1)}s (${(hands / (elapsedMs / 1000)).toFixed(1)} hands/s)`);
+}
+
+function runDuplicateCli(cli: CliOptions): void {
+  const startedAt = performance.now();
+  const report: DuplicateHuReport = runDuplicateHu({
+    a: parsePolicyName(cli.a),
+    b: parsePolicyName(cli.b),
+    deals: cli.simulate.hands,
+    seed: cli.simulate.seed,
+  });
+  const elapsedMs = performance.now() - startedAt;
+
+  if (cli.json) {
+    console.log(JSON.stringify({ ...report, elapsedMs, handsPerSecond: report.hands / (elapsedMs / 1000) }));
+    return;
+  }
+
+  console.log(`Duplicate heads-up: ${report.a} (A) vs ${report.b} (B), ${report.stackBb}bb deep, seed ${report.seed}`);
+  console.log(`Deals: ${report.deals} (${report.hands} hands, each deal played from both seats)`);
+  console.log(`A win rate: ${formatWinRate(report.aWinRate)} bb/100 (95% CI over ${report.aWinRate.n} deal pairs)`);
+  printTiming(report.hands, elapsedMs);
 }
 
 function runCli(): void {
-  const options = parseCliArgs(process.argv.slice(2));
-  const report = simulateBotStats(options);
+  const cli = parseCliArgs(process.argv.slice(2));
+  if (cli.mode === 'duplicate-hu') {
+    runDuplicateCli(cli);
+    return;
+  }
+
+  const startedAt = performance.now();
+  const report = simulateBotStats(cli.simulate);
+  const elapsedMs = performance.now() - startedAt;
+  const simulatedHands = report.hands * (report.trainingTable ? 2 : 1);
+
+  if (cli.json) {
+    console.log(JSON.stringify({ ...report, elapsedMs, handsPerSecond: simulatedHands / (elapsedMs / 1000) }));
+    return;
+  }
 
   console.log(`Seed: ${report.seed}`);
   console.log(`Hands: ${report.hands}`);
@@ -988,6 +1082,8 @@ function runCli(): void {
     console.log(`\nTraining Table Seats: ${seatSummary}`);
     printScenarioReport('Training Table (1 Hero + 5 Bots)', report.trainingTable);
   }
+
+  printTiming(simulatedHands, elapsedMs);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

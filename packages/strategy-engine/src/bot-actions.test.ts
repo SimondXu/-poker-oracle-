@@ -509,3 +509,175 @@ test('all chosen actions include a positive thinkingDelayMs', () => {
   const action = chooseBotAction(makeContext(), 'fish', () => 0.99);
   assert.ok(action.thinkingDelayMs > 0);
 });
+
+function countActions(context: BotDecisionContext, personality: 'fish' | 'tag' | 'lag', samples = 100): Record<string, number> {
+  const rng = sequenceRng(7);
+  const counts: Record<string, number> = {};
+  for (let index = 0; index < samples; index += 1) {
+    const type = chooseBotAction(context, personality, rng).type;
+    counts[type] = (counts[type] ?? 0) + 1;
+  }
+  return counts;
+}
+
+test('preflop calls of a 100bb shove need the equity the price asks for', () => {
+  const facingShove = makeContext({
+    holeCards: ['Kh', '9d'],
+    position: 'btn',
+    bettingState: 'facing_open',
+    canRaise: false,
+    callAmount: 9_900,
+    currentBetToMatch: 10_000,
+    potTotal: 10_150,
+    myStack: 10_000,
+    effectiveStack: 10_000,
+    effectiveStackBb: 100,
+    opponentCount: 3,
+    opponents: [
+      { id: 'sb', position: 'sb', actions: [] },
+      { id: 'bb', position: 'bb', actions: [] },
+      { id: 'utg', position: 'utg', actions: [{ phase: 'preflop', type: 'all_in', facing: 'unopened', sizeOfPot: 66 }] },
+    ],
+  });
+
+  for (const personality of ['tag', 'lag'] as const) {
+    const counts = countActions(facingShove, personality, 50);
+    assert.equal(counts.fold, 50, `${personality} K9o vs a UTG shove: ${JSON.stringify(counts)}`);
+  }
+  assert.equal(countActions({ ...facingShove, holeCards: ['Ah', 'Ad'] }, 'tag', 20).fold ?? 0, 0);
+
+  // The same shove from a player who has shoved all 50 hands so far comes from any two cards.
+  const maniac = {
+    hands: 50,
+    preflopVoluntary: 50,
+    preflopRaises: 50,
+    preflopOversizedRaises: 50,
+    postflopActions: 0,
+    postflopAggressive: 0,
+    postflopFacingBets: 0,
+    postflopFoldsToBets: 0,
+  };
+  const facingManiac = {
+    ...facingShove,
+    opponents: facingShove.opponents!.map((opponent) => (opponent.id === 'utg' ? { ...opponent, stats: maniac } : opponent)),
+  };
+  // K9o has about 56% against any two cards and needs 49%; allow a rare Monte Carlo miss.
+  assert.ok((countActions(facingManiac, 'tag', 50).fold ?? 0) <= 2);
+});
+
+test('position comes from who acts last after the flop, not from the seat name', () => {
+  // The big blind acts after the small blind on every later street, so it is in position.
+  const bigBlindVsSmallBlindOpen = makeContext({
+    holeCards: ['Ah', 'Ad'],
+    position: 'bb',
+    bettingState: 'facing_open',
+    opponentCount: 1,
+    activePlayerCount: 6,
+    opponents: [{ id: 'sb', position: 'sb', actions: [{ phase: 'preflop', type: 'raise_to', facing: 'unopened', sizeOfPot: 1.3 }] }],
+  });
+  const rng = sequenceRng(3);
+  const raises = Array.from({ length: 30 }, () => chooseBotAction(bigBlindVsSmallBlindOpen, 'tag', rng))
+    .filter((action) => action.type === 'raise_to');
+
+  assert.ok(raises.length > 0);
+  for (const action of raises) {
+    assert.equal(action.type === 'raise_to' && action.amount, 400);
+  }
+});
+
+test('a deep-stacked set bets instead of shoving 100bb into a small pot', () => {
+  const checkedToSet = makeContext({
+    phase: 'flop',
+    holeCards: ['7h', '7c'],
+    communityCards: ['Kd', '7d', '2s'],
+    bettingState: 'unopened',
+    canCheck: true,
+    canCall: false,
+    callAmount: 0,
+    currentBetToMatch: 0,
+    potTotal: 600,
+    minRaiseTo: 100,
+    maxRaiseTo: 9_700,
+    myStack: 9_700,
+    effectiveStack: 9_700,
+    effectiveStackBb: 97,
+    spr: 9_700 / 600,
+    opponentCount: 1,
+    activePlayerCount: 2,
+  });
+
+  const counts = countActions(checkedToSet, 'tag', 30);
+  assert.equal(counts.all_in ?? 0, 0, JSON.stringify(counts));
+});
+
+test('no bluff c-bets into a player who never folds to a bet', () => {
+  const missedFlop = makeContext({
+    phase: 'flop',
+    holeCards: ['5h', '4h'],
+    communityCards: ['Kd', '9c', '2s'],
+    bettingState: 'unopened',
+    canCheck: true,
+    canCall: false,
+    callAmount: 0,
+    currentBetToMatch: 0,
+    potTotal: 600,
+    minRaiseTo: 100,
+    isPreflopAggressor: true,
+    opponentCount: 1,
+    activePlayerCount: 2,
+    position: 'btn',
+    opponents: [{ id: 'bb', position: 'bb', actions: [{ phase: 'preflop', type: 'call', facing: 'facing_open', sizeOfPot: 0 }] }],
+  });
+  const station = {
+    hands: 100,
+    preflopVoluntary: 100,
+    preflopRaises: 0,
+    preflopOversizedRaises: 0,
+    postflopActions: 100,
+    postflopAggressive: 0,
+    postflopFacingBets: 100,
+    postflopFoldsToBets: 0,
+  };
+  const versusStation = { ...missedFlop, opponents: missedFlop.opponents!.map((opponent) => ({ ...opponent, stats: station })) };
+
+  assert.ok((countActions(missedFlop, 'tag', 100).raise_to ?? 0) > 0);
+  assert.equal(countActions(versusStation, 'tag', 100).raise_to ?? 0, 0);
+});
+
+test('postflop bets mix value and bluffs at one size per spot', () => {
+  const cbetSpot = (holeCards: BotDecisionContext['holeCards']) => makeContext({
+    phase: 'flop',
+    holeCards,
+    communityCards: ['Kd', '7c', '2s'],
+    bettingState: 'unopened',
+    canCheck: true,
+    canCall: false,
+    callAmount: 0,
+    currentBetToMatch: 0,
+    potTotal: 600,
+    minRaiseTo: 100,
+    maxRaiseTo: 9_700,
+    myStack: 9_700,
+    effectiveStack: 9_700,
+    effectiveStackBb: 97,
+    spr: 16,
+    isPreflopAggressor: true,
+    opponentCount: 1,
+    activePlayerCount: 2,
+    position: 'btn',
+    selfView: { id: 'hero', position: 'btn', actions: [{ phase: 'preflop', type: 'raise_to', facing: 'unopened', sizeOfPot: 1 }] },
+    opponents: [{ id: 'bb', position: 'bb', actions: [{ phase: 'preflop', type: 'call', facing: 'facing_open', sizeOfPot: 0 }] }],
+  });
+  const actions = (holeCards: BotDecisionContext['holeCards']) => {
+    const rng = sequenceRng(11);
+    return Array.from({ length: 200 }, () => chooseBotAction(cbetSpot(holeCards), 'tag', rng));
+  };
+  const set = actions(['Kh', 'Kc']);
+  const air = actions(['5h', '4d']);
+  const betSizes = new Set([...set, ...air].flatMap((action) => (action.type === 'raise_to' ? [action.amount] : [])));
+  const betShare = (sample: ReturnType<typeof actions>) => sample.filter((action) => action.type === 'raise_to').length / sample.length;
+
+  assert.equal(betSizes.size, 1, `one bet size for the spot, got ${[...betSizes].join(', ')}`);
+  assert.ok(betShare(set) > 0.7 && betShare(set) < 1, `the set bets mostly but sometimes slowplays: ${betShare(set)}`);
+  assert.ok(betShare(air) > 0 && betShare(air) < betShare(set), `air bluffs sometimes: ${betShare(air)}`);
+});

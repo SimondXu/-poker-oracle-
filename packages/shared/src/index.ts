@@ -194,6 +194,43 @@ export interface BotDecisionContext {
   bettingState: BotBettingState;
   isPreflopAggressor: boolean;
   isLastStreetAggressor: boolean;
+  // Opponents still in the hand and what they did, so equity can be computed against their likely range.
+  opponents?: BotOpponentView[];
+  // The acting player's own actions this hand, read the same way, so it can reason about its own range.
+  selfView?: BotOpponentView;
+}
+
+export interface BotOpponentAction {
+  phase: BotDecisionPhase;
+  type: 'check' | 'call' | 'raise_to' | 'all_in';
+  // The betting state this player faced when acting (preflop: was the pot open, limped, raised...).
+  facing: BotBettingState;
+  // Bet or raise size as a fraction of the pot before it; 0 for checks and calls.
+  sizeOfPot: number;
+}
+
+export interface BotOpponentView {
+  id: string;
+  position: BotPosition;
+  actions: BotOpponentAction[];
+  // What this player has done over earlier hands at the table, when anyone has been tracking it.
+  stats?: BotPlayerStats;
+}
+
+/** Running counts of one player's tendencies, accumulated hand by hand. */
+export interface BotPlayerStats {
+  hands: number;
+  // Hands where they put chips in preflop without being forced to (VPIP).
+  preflopVoluntary: number;
+  // Hands with a voluntary preflop raise, and the subset where the raise was far over a standard size.
+  preflopRaises: number;
+  preflopOversizedRaises: number;
+  // Decisions after the flop, and how many of them were bets or raises.
+  postflopActions: number;
+  postflopAggressive: number;
+  // Postflop decisions facing a bet or raise, and how many of them were folds.
+  postflopFacingBets: number;
+  postflopFoldsToBets: number;
 }
 
 export type BotValidActions = BotDecisionContext;
