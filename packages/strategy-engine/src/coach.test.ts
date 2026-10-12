@@ -248,6 +248,21 @@ test('position: checked to in position without the initiative, the policy says w
   assert.ok(advice.reasons.some((reason) => reason.code === 'checked_to_in_position'), JSON.stringify(advice));
 });
 
+test('the TAG chart: the cutoff opens between the hijack and the button, and the big blind defends an open widely', () => {
+  for (const effectiveStackBb of [100, 40, 20]) {
+    const sixMax = { effectiveStackBb, activePlayerCount: 6 };
+    const [hj, co, btn] = (['hj', 'co', 'btn'] as const).map((position) => preflopPlayShare(sixMax, 'unopened', position));
+    assert.ok(hj! < co! && co! < btn!, `${effectiveStackBb}bb: hj ${hj} co ${co} btn ${btn}`);
+    assert.ok(co! >= 0.26 && co! <= 0.32, `${effectiveStackBb}bb: co opens ${co}`);
+    const bbDefends = preflopPlayShare(sixMax, 'facing_open', 'bb');
+    assert.ok(bbDefends >= 0.33 && bbDefends <= 0.42, `${effectiveStackBb}bb: bb defends ${bbDefends}`);
+  }
+  // Heads-up charts are separate and unchanged.
+  const headsUp = { effectiveStackBb: 100, activePlayerCount: 2 };
+  assert.equal(Math.round(preflopPlayShare(headsUp, 'unopened', 'btn') * 100), 77);
+  assert.equal(Math.round(preflopPlayShare(headsUp, 'facing_open', 'bb') * 100), 62);
+});
+
 test('preflop equity says how many players it is against: only those who put chips in, not everyone still to act', () => {
   const quiet = (id: string, position: 'sb' | 'bb' | 'hj' | 'co') => ({ id, position, actions: [] });
   const facingOneOpen: BotDecisionContext = {

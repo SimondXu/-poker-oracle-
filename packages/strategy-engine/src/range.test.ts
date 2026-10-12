@@ -80,3 +80,15 @@ test('bottom pair facing a triple barrel is a fold against the range, not a call
   });
   assert.equal(advice.options[0]?.kind, 'fold');
 });
+
+test('a range is cached per stack bucket: 24.6bb and 25.4bb round alike but are read from different charts', () => {
+  const opener: BotOpponentView = {
+    id: 'cache-key-opener',
+    position: 'utg',
+    actions: [{ phase: 'preflop', type: 'raise_to', facing: 'unopened', sizeOfPot: 1 }],
+  };
+  const preflop = { ...RIVER, communityCards: [], activePlayerCount: 6 };
+  const shallow = buildOpponentRange(opener, { ...preflop, effectiveStackBb: 24.6 });
+  const deeper = buildOpponentRange(opener, { ...preflop, effectiveStackBb: 25.4 });
+  assert.notDeepEqual(deeper, shallow);
+});

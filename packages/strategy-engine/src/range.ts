@@ -5,7 +5,7 @@ import type { BotRng, RankVector } from './types.ts';
 import { compareRankVectors, detectStraightState, FULL_DECK, remainingDeck, sampleWithoutReplacement } from './cards.ts';
 import { OVERSIZED_RAISE_SIZE_OF_POT } from './context.ts';
 import { canonicalizeHoleCards, evaluatePreflopPercentile } from './preflop-hands.ts';
-import { getPreflopMix } from './preflop-mixes.ts';
+import { getPreflopMix, preflopChartKey } from './preflop-mixes.ts';
 
 type Combo = readonly [Card, Card];
 
@@ -213,8 +213,8 @@ export function buildOpponentRange(view: BotOpponentView, context: BotDecisionCo
     view.position,
     view.actions,
     context.communityCards,
-    Math.round(context.effectiveStackBb),
-    context.activePlayerCount,
+    // Exactly what the preflop charts read from the table, so a range is never reused across charts.
+    preflopChartKey(context.effectiveStackBb, context.activePlayerCount),
   ]);
   const cached = rangeCache.get(cacheKey);
   if (cached) {

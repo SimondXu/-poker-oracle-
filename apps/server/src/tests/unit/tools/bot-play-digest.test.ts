@@ -49,5 +49,5 @@ test('seeded heads-up bot decisions are unchanged', () => {
 
 test('a seeded six-max run is unchanged (multiway pots, fold-streak options, 10bb stacks)', () => {
   const report = simulateBotStats({ hands: 60, seed: SEED, includeTrainingTable: false });
-  assert.equal(sha256([JSON.stringify(report)]), '77ae7580c44f178cb2028cdc1ff277d920558a435c792fef4f28c510c66656dd');
+  assert.equal(sha256([JSON.stringify(report)]), '6785304ca6606df1e2775071e6660f94a7aad7bfd13a013ed5ba06c79a767854');
 });
