@@ -247,3 +247,28 @@ test('position: checked to in position without the initiative, the policy says w
   const advice = adviseFromEquities(checkedTo, fixedEquities({ equity: 0.2 }), KEYS);
   assert.ok(advice.reasons.some((reason) => reason.code === 'checked_to_in_position'), JSON.stringify(advice));
 });
+
+test('preflop equity says how many players it is against: only those who put chips in, not everyone still to act', () => {
+  const quiet = (id: string, position: 'sb' | 'bb' | 'hj' | 'co') => ({ id, position, actions: [] });
+  const facingOneOpen: BotDecisionContext = {
+    ...FACING_BET,
+    phase: 'preflop',
+    communityCards: [],
+    position: 'btn',
+    holeCards: ['Ah', 'Jh'],
+    activePlayerCount: 6,
+    opponentCount: 5,
+    bettingState: 'facing_open',
+    opponents: [
+      { id: 'opener', position: 'utg', actions: [{ phase: 'preflop', type: 'raise_to', facing: 'unopened', sizeOfPot: 1 }] },
+      quiet('hj', 'hj'),
+      quiet('co', 'co'),
+      quiet('sb', 'sb'),
+      quiet('bb', 'bb'),
+    ],
+  };
+  const advice = adviseFromEquities(facingOneOpen, fixedEquities(null, 0.45), KEYS);
+  assert.equal(advice.equity, 0.45);
+  assert.equal(advice.opponents, 5);
+  assert.equal(advice.equityAgainst, 1);
+});
