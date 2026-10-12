@@ -19,6 +19,21 @@ function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
 }
 
+/** First bot action of a hand waits for the client's hole-card deal (~1.5s at six seats). */
+const DEAL_PAUSE_MS = 1_200;
+/**
+ * First bot action of a street waits for the client to hold the closing action (~0.9s) and reveal
+ * the new card, so the card is on screen for a beat before anyone acts on it.
+ */
+const NEW_STREET_PAUSE_MS = 1_800;
+
+export function getStreetOpeningPauseMs(hand: Pick<NonNullable<RuntimeRoom['hand']>, 'phase' | 'actions'>): number {
+  if (hand.actions.some((action) => action.phase === hand.phase)) {
+    return 0;
+  }
+  return hand.phase === 'betting_preflop' ? DEAL_PAUSE_MS : NEW_STREET_PAUSE_MS;
+}
+
 function buildActionInput(
   actorId: string,
   botAction: ReturnType<typeof chooseBotAction>,
@@ -95,7 +110,7 @@ export async function runBotTurns(
       },
     );
 
-    await runtime.sleep(botAction.thinkingDelayMs);
+    await runtime.sleep(botAction.thinkingDelayMs + getStreetOpeningPauseMs(room.hand));
 
     // Re-validate state after the delay (disconnect or other events may have mutated it)
     if (!room.hand || room.hand.currentActorSeat !== seatIndex) {

@@ -2762,3 +2762,59 @@ test('injected bot runtime makes bot turns deterministic and immediate', async (
   assert.ok(advanced.hand.actions.length >= 2);
   assert.equal(advanced.hand.actions[1]?.playerId, 'bot-1');
 });
+
+async function startWaitingRoomServer(t: { after: (fn: () => unknown) => void }, waitingRoomReconnectGraceMs: number) {
+  const app = createServer({ nowMs: () => 42 });
+  const io = attachRealtime(app, { waitingRoomReconnectGraceMs });
+  t.after(async () => {
+    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await app.close();
+  });
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const address = app.server.address() as AddressInfo;
+  return `http://127.0.0.1:${address.port}`;
+}
+
+test('a waiting-room player who reconnects within the grace period keeps the room and seat', async (t) => {
+  const url = await startWaitingRoomServer(t, 5_000);
+  const first = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  await once(first, 'connect');
+  await emitWithAck(first, 'room:create', { roomId: 'AAAAGR', smallBlind: 10, bigBlind: 20 });
+  await emitWithAck(first, 'room:join', { roomId: 'AAAAGR', playerId: 'p0', playerName: 'Alice', seatIndex: 0, stack: 1000 });
+
+  first.close();
+  await sleep(50);
+
+  const second = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => second.close());
+  await once(second, 'connect');
+  const rejoin = await emitWithAck<{ ok: boolean; playerCount?: number; error?: string }>(second, 'room:join', {
+    roomId: 'AAAAGR',
+    playerId: 'p0',
+    playerName: 'Alice',
+    stack: 1000
+  });
+  assert.deepEqual(rejoin, { ok: true, roomId: 'AAAAGR', playerCount: 1 });
+});
+
+test('a waiting-room player who stays away past the grace period is removed with the empty room', async (t) => {
+  const url = await startWaitingRoomServer(t, 30);
+  const first = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  await once(first, 'connect');
+  await emitWithAck(first, 'room:create', { roomId: 'AAAAGS', smallBlind: 10, bigBlind: 20 });
+  await emitWithAck(first, 'room:join', { roomId: 'AAAAGS', playerId: 'p0', playerName: 'Alice', seatIndex: 0, stack: 1000 });
+
+  first.close();
+  await sleep(200);
+
+  const second = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => second.close());
+  await once(second, 'connect');
+  const rejoin = await emitWithAck<{ ok: boolean; error?: string }>(second, 'room:join', {
+    roomId: 'AAAAGS',
+    playerId: 'p0',
+    playerName: 'Alice',
+    stack: 1000
+  });
+  assert.deepEqual(rejoin, { ok: false, error: 'room_not_found' });
+});

@@ -34,6 +34,9 @@ interface RegisterRoomEventsInput {
   authStrict: boolean;
   actionTimeoutMs: number;
   emptyRoomTtlMs: number;
+  /** Pending waiting-room seat removals, keyed `roomId:playerId`. Shared by every socket. */
+  waitingRoomRemovals: Map<string, ReturnType<typeof setTimeout>>;
+  waitingRoomReconnectGraceMs: number;
   nowMs: () => number;
   deleteRoom: (roomId: string) => void;
   // Shared across sockets so reconnecting does not reset the budget.
@@ -81,6 +84,8 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     authStrict,
     actionTimeoutMs,
     emptyRoomTtlMs,
+    waitingRoomRemovals,
+    waitingRoomReconnectGraceMs,
     nowMs,
     deleteRoom,
     rateLimit,
@@ -117,6 +122,43 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
 
   function isRateLimited(action: string, maxPerWindow: number): boolean {
     return !rateLimit(`${action}:${clientKey}`, nowMs(), maxPerWindow).allowed;
+  }
+
+  function cancelWaitingRoomRemoval(roomId: string, playerId: string): void {
+    const key = `${roomId}:${playerId}`;
+    clearTimeout(waitingRoomRemovals.get(key));
+    waitingRoomRemovals.delete(key);
+  }
+
+  /** Remove a disconnected human now, or keep the seat until the hand that holds it ends. */
+  function removeDisconnectedPlayer(room: RuntimeRoom, playerId: string): void {
+    if (shouldKeepSeatDuringHand(room, playerId)) {
+      room.pendingDisconnectPlayerIds.add(playerId);
+      emitRoomState(io, room);
+      return;
+    }
+
+    removePlayerFromRoom(room, playerId);
+    if (deleteRoomIfNoHumans(room)) {
+      return;
+    }
+
+    emitRoomState(io, room);
+  }
+
+  /** A refresh drops the socket for a moment; hold the waiting-room seat so the same player can come back. */
+  function scheduleWaitingRoomRemoval(roomId: string, playerId: string): void {
+    cancelWaitingRoomRemoval(roomId, playerId);
+    const handle = setTimeout(() => {
+      waitingRoomRemovals.delete(`${roomId}:${playerId}`);
+      const room = rooms.get(roomId);
+      if (!room || !room.players.has(playerId) || hasOtherSocketForPlayer(roomId, playerId)) {
+        return;
+      }
+      removeDisconnectedPlayer(room, playerId);
+    }, waitingRoomReconnectGraceMs);
+    handle.unref?.();
+    waitingRoomRemovals.set(`${roomId}:${playerId}`, handle);
   }
 
   function deleteRoomIfNoHumans(room: RuntimeRoom): boolean {
@@ -256,6 +298,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     // All checks pass; everything below mutates synchronously so no other handler can interleave
     // between validation and the seat being taken.
     clearEmptyRoomTimeout(emptyRoomTimeouts, room.id);
+    cancelWaitingRoomRemoval(room.id, resolvedPlayerId);
     if (!isBot && previousMembership && previousMembership.roomId !== roomId) {
       const previousRoom = rooms.get(previousMembership.roomId);
       void socket.leave(previousMembership.roomId);
@@ -472,17 +515,11 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       return;
     }
 
-    if (shouldKeepSeatDuringHand(room, membership.playerId)) {
-      room.pendingDisconnectPlayerIds.add(membership.playerId);
-      emitRoomState(io, room);
+    if (!room.hand && waitingRoomReconnectGraceMs > 0) {
+      scheduleWaitingRoomRemoval(membership.roomId, membership.playerId);
       return;
     }
 
-    removePlayerFromRoom(room, membership.playerId);
-    if (deleteRoomIfNoHumans(room)) {
-      return;
-    }
-
-    emitRoomState(io, room);
+    removeDisconnectedPlayer(room, membership.playerId);
   });
 }

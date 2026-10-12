@@ -26,6 +26,8 @@ interface AttachRealtimeOptions {
   sessionRevocations?: SessionRevocations;
   corsOrigin?: string;
   emptyRoomTtlMs?: number;
+  /** How long a disconnected human keeps a waiting-room seat (e.g. across a page refresh). */
+  waitingRoomReconnectGraceMs?: number;
   nowMs?: () => number;
   botRuntime?: Partial<BotRuntimeDeps>;
   llmAgent?: {
@@ -57,6 +59,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const authStrict = options.authStrict ?? false;
   const sessionRevocations = options.sessionRevocations ?? createSessionRevocations();
   const emptyRoomTtlMs = options.emptyRoomTtlMs ?? 60_000;
+  const waitingRoomReconnectGraceMs = options.waitingRoomReconnectGraceMs ?? 15_000;
   const nowMs = options.nowMs ?? (() => Date.now());
   const botRuntime: BotRuntimeDeps = {
     ...DEFAULT_BOT_RUNTIME_DEPS,
@@ -86,6 +89,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
   const roomActionTimeouts: RoomActionTimeouts = new Map();
   const roomNextHandTimeouts: RoomNextHandTimeouts = new Map();
   const emptyRoomTimeouts: EmptyRoomTimeouts = new Map();
+  const waitingRoomRemovals = new Map<string, ReturnType<typeof setTimeout>>();
   const roomTaskQueues: RoomTaskQueues = new Map();
   const roomRateLimit = createFixedWindowRateLimiter();
 
@@ -122,6 +126,8 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       authStrict,
       actionTimeoutMs,
       emptyRoomTtlMs,
+      waitingRoomRemovals,
+      waitingRoomReconnectGraceMs,
       nowMs,
       deleteRoom,
       rateLimit: roomRateLimit,
