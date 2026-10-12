@@ -1,4 +1,4 @@
-import { chooseBotAction } from '@aipoker/bot-engine';
+import { chooseBotAction } from '@aipoker/strategy-engine';
 import { applyAction, initializeHand, type HandActionRecord, type HandState, type PlayerActionInput } from '@aipoker/game-engine';
 import { getRuleBotPersonality, type BotAction, type BotDecisionContext, type BotPersonality, type BotPosition } from '@aipoker/shared';
 import { fileURLToPath } from 'node:url';

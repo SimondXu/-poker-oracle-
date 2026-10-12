@@ -1,4 +1,4 @@
-import { chooseBotAction } from '@aipoker/bot-engine';
+import { chooseBotAction } from '@aipoker/strategy-engine';
 import { applyAction, getValidActions, type PlayerActionInput } from '@aipoker/game-engine';
 import { getRuleBotPersonality, type BotDecisionContext } from '@aipoker/shared';
 import type { Server } from 'socket.io';

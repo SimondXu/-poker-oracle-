@@ -26,9 +26,6 @@
       ],
       "@aipoker/strategy-engine": [
         "../../packages/strategy-engine/src/index.ts"
-      ],
-      "@aipoker/bot-engine": [
-        "../../packages/bot-engine/src/index.ts"
       ]
     },
     "lib": [

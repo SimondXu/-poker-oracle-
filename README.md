@@ -102,7 +102,7 @@ pnpm --filter @aipoker/server test
 
 # Core packages
 pnpm --filter @aipoker/game-engine test
-pnpm --filter @aipoker/bot-engine test
+pnpm --filter @aipoker/strategy-engine test
 pnpm --filter @aipoker/shared typecheck
 ```
 

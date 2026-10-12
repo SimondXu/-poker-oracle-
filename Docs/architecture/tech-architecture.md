@@ -163,7 +163,7 @@ CI/CD (GitHub Actions):
   "dependencies": {
     "fastify": "^5.0", "socket.io": "^4.7", "drizzle-orm": "^0.36",
     "zod": "^3.23",
-    "@aipoker/bot-engine": "workspace:*"
+    "@aipoker/strategy-engine": "workspace:*"
   }
 }
 

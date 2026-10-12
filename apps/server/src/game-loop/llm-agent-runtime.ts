@@ -7,7 +7,7 @@ import {
   type AgentFallbackReason,
   type AgentLlmClient,
 } from '@aipoker/agent-engine';
-import { chooseBotAction } from '@aipoker/bot-engine';
+import { chooseBotAction } from '@aipoker/strategy-engine';
 import type { BotConfig, BotDecisionContext } from '@aipoker/shared';
 
 export interface RealtimeLlmAgentOptions {

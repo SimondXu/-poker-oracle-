@@ -5,9 +5,9 @@
   "type": "module",
   "dependencies": {
     "@aipoker/agent-engine": "workspace:*",
-    "@aipoker/bot-engine": "workspace:*",
     "@aipoker/game-engine": "workspace:*",
     "@aipoker/shared": "workspace:*",
+    "@aipoker/strategy-engine": "workspace:*",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.1.0",
     "@fastify/helmet": "^13.0.2",
