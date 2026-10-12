@@ -1,4 +1,4 @@
-import type { BotDecisionContext, BotPersonality } from '@aipoker/shared';
+import type { BotDecisionContext, BotPersonality, CoachReason } from '@aipoker/shared';
 import type { ActionIntent, BotActionWithoutThinking, ChooseBotActionOptions, Mix } from './types.ts';
 import { clamp01 } from './cards.ts';
 import { decide, type Chooser, type Equities } from './decide.ts';
@@ -6,6 +6,8 @@ import { decide, type Chooser, type Equities } from './decide.ts';
 export interface DecisionOutcome {
   action: BotActionWithoutThinking;
   probability: number;
+  /** Facts noted on any path that ends in this action, in the order first noted. */
+  reasons: CoachReason[];
 }
 
 const INTENTS: readonly ActionIntent[] = ['fold', 'call', 'raise', 'jam'];
@@ -43,6 +45,7 @@ export function enumerateDecision(
   while (pending.length > 0) {
     const script = pending.pop()!;
     const taken: number[] = [];
+    const reasons: CoachReason[] = [];
     let probability = 1;
 
     const choose = <T>(branches: ReadonlyArray<{ value: T; p: number }>): T => {
@@ -68,6 +71,9 @@ export function enumerateDecision(
         const probabilities = intentProbabilities(mix);
         return choose(INTENTS.map((value, i) => ({ value, p: probabilities[i]! })));
       },
+      note: (reason) => {
+        reasons.push(reason);
+      },
     };
 
     const action = decide(context, personality, chooser, equities, options);
@@ -75,8 +81,10 @@ export function enumerateDecision(
     const existing = outcomes.get(key);
     if (existing) {
       existing.probability += probability;
+      const seen = new Set(existing.reasons.map((reason) => JSON.stringify(reason)));
+      existing.reasons.push(...reasons.filter((reason) => !seen.has(JSON.stringify(reason))));
     } else {
-      outcomes.set(key, { action, probability });
+      outcomes.set(key, { action, probability, reasons });
     }
   }
 

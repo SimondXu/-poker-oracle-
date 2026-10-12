@@ -1,5 +1,6 @@
 import type {
   BotPersonality,
+  HandClass,
 } from '@aipoker/shared';
 
 export type BotRng = () => number;
@@ -10,7 +11,7 @@ export type PreflopScenario = 'unopened' | 'facing_limpers' | 'facing_open' | 'f
 
 export type ActionIntent = 'fold' | 'call' | 'raise' | 'jam';
 
-export type HandClass = 'premium' | 'strong' | 'playable' | 'speculative' | 'marginal' | 'trash';
+export type { HandClass };
 
 export type HandDetail =
   | 'premium_pair'

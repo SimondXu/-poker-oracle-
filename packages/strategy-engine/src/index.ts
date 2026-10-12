@@ -6,5 +6,7 @@ export { getPotOdds, getRequiredEquity } from './actions.ts';
 export { analyzePostflop } from './postflop-analysis.ts';
 export { analyzeTrainingSpot } from './training.ts';
 export { chooseBotAction } from './decide.ts';
+export type { CoachJoinKeys } from './coach.ts';
+export { buildCoachAdvice } from './coach.ts';
 export type { DecisionHand, DecisionValidActions } from './context.ts';
 export { buildDecisionContext, getAggressiveActions, recordHandStats } from './context.ts';

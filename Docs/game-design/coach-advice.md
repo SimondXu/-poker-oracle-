@@ -113,11 +113,11 @@ interface Equities {
 
 The coach's equity comes with a standard error, so the advice states whether the error matters:
 
-- `simulateRangeEquity` gets a sibling that also returns the standard error. The bots' function and rng use are unchanged.
+- The standard error is the bound √(ê(1−ê)/N) for a mean of N draws in [0, 1] (ties count half), and 0 for an exact heads-up river. The bound matches the measured σ (step 1e), so no estimator returns its variance and the bots' functions are unchanged.
 - 512 iterations per street (step 1e). Mean σ is about 0.0115 (worst case 0.5/√512 ≈ 0.022). A heads-up river uses exact enumeration over the range (σ = 0, about 13 ms).
 - After enumerating at the estimate ê, enumerate again with injected equity ê − 2σ and ê + 2σ. Injection makes these nearly free.
 - `stable` is false when the top option changes, or any option's frequency moves by more than 0.25, across the three runs.
-- Frequencies in the contract are exact. The UI rounds them to 5%.
+- Frequencies in the contract are exact, except that options under 0.5% are dropped and the rest renormalised: the call logistic leaves a fold of about 1e-11 far from the price. The UI rounds them to 5%.
 
 ### 3. The contract (`packages/shared`)
 

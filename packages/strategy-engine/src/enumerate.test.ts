@@ -150,8 +150,28 @@ for (const spot of SPOTS) {
 
 test('facing a shove, the price check decides every branch: call with the price, fold without it', () => {
   // Calling 1,900 to win 4,050 needs about 47% plus TAG's call buffer.
-  assert.deepEqual(enumerateDecision(FACING_SHOVE, 'tag', fixedEquities(null, 0.6)), [{ action: { type: 'call', amount: 1_900 }, probability: 1 }]);
-  assert.deepEqual(enumerateDecision(FACING_SHOVE, 'tag', fixedEquities(null, 0.4)), [{ action: { type: 'fold' }, probability: 1 }]);
+  const priced = enumerateDecision(FACING_SHOVE, 'tag', fixedEquities(null, 0.6));
+  assert.deepEqual(priced.map(({ action, probability }) => ({ action, probability })), [{ action: { type: 'call', amount: 1_900 }, probability: 1 }]);
+  assert.ok(priced[0]!.reasons.some((reason) => reason.code === 'price_ok'));
+
+  const short = enumerateDecision(FACING_SHOVE, 'tag', fixedEquities(null, 0.4));
+  assert.deepEqual(short.map(({ action, probability }) => ({ action, probability })), [{ action: { type: 'fold' }, probability: 1 }]);
+  assert.ok(short[0]!.reasons.some((reason) => reason.code === 'price_short'));
+});
+
+test('reasons belong to the paths that use them: a slowplay is a reason only for the check', () => {
+  const nearLock: BotDecisionContext = {
+    ...SPOTS.find((spot) => spot.name.startsWith('unopened flop'))!.context,
+    holeCards: ['Kd', 'Kc'],
+    communityCards: ['Ks', '7h', '2c'],
+  };
+  const outcomes = enumerateDecision(nearLock, 'tag', fixedEquities({ equity: 0.85 }));
+  const check = outcomes.find((outcome) => outcome.action.type === 'check');
+  const bet = outcomes.find((outcome) => outcome.action.type === 'raise_to');
+  assert.ok(check && bet, JSON.stringify(outcomes));
+  assert.ok(check.reasons.some((reason) => reason.code === 'slowplay'));
+  assert.ok(!bet.reasons.some((reason) => reason.code === 'slowplay'));
+  assert.ok(bet.reasons.some((reason) => reason.code === 'value'));
 });
 
 test('every spot above is a real mix, so the comparison is not trivial', () => {

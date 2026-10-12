@@ -2,6 +2,7 @@ import type {
   BotAction,
   BotDecisionContext,
   BotPersonality,
+  CoachReason,
 } from '@aipoker/shared';
 import type { ActionIntent, BotActionWithoutThinking, BotRng, ChooseBotActionOptions, HandClass, Mix, PersonalityProfile, PostflopAnalysis, PreflopPosition, PreflopScenario } from './types.ts';
 import { PERSONALITY_PROFILES } from './personality.ts';
@@ -10,7 +11,7 @@ import { canonicalizeHoleCards, classifyHand, getPreflopTablePosition, normalize
 import { getPreflopMix, nudgeMix, scaleMixDelta } from './preflop-mixes.ts';
 import { calcThinkingDelay, computePotOdds, STICKY_FOLD_TO_BET_RATE, finalizeIntent, getPostflopRaiseTo, getPreflopRaiseTo, isLikelyInPosition, resolvePassiveAction, sampleIntent, selectPostflopSizeFraction } from './actions.ts';
 import { analyzePostflop } from './postflop-analysis.ts';
-import { buildOpponentRange, lowestFoldToBetRate, readOwnRange, simulateRangeEquity } from './range.ts';
+import { buildOpponentRange, lowestFoldToBetRate, readOwnRange, simulateRangeEquity, stickiestOpponent } from './range.ts';
 
 const MAX_SPR_FOR_VALUE_JAM = 3;
 // A hand in the value part of its range still needs to be ahead of what calls to bet for value.
@@ -35,6 +36,8 @@ export interface Chooser {
   chance(p: number): boolean;
   /** One intent from a preflop mix, drawn as sampleIntent draws it. */
   pick(mix: Mix): ActionIntent;
+  /** A fact the decision used on the current path; the coach shows it as a reason, a bot ignores it. */
+  note(reason: CoachReason): void;
 }
 
 /** The equity estimates a decision may need, computed lazily and at most once. */
@@ -44,7 +47,7 @@ export interface Equities {
   preflopVsCallers(): number | null;
 }
 
-function once<T>(compute: () => T): () => T {
+export function once<T>(compute: () => T): () => T {
   let done = false;
   let value: T;
   return () => {
@@ -60,6 +63,7 @@ export function samplingChooser(rng: BotRng): Chooser {
   return {
     chance: (p) => rng() < p,
     pick: (mix) => sampleIntent(mix, rng),
+    note: () => {},
   };
 }
 
@@ -190,28 +194,43 @@ function decidePreflop(
       preflopConsecutiveFolds: options.preflopConsecutiveFolds ?? 0,
     });
   }
+  chooser.note({
+    code: 'preflop_chart',
+    params: { handClass, scenario: context.bettingState, position: context.position, effStackBb: context.effectiveStackBb },
+  });
   const intent = chooser.pick(mixValue);
   // The mixes don't know the size of the bet, so any call (including a raise that can only call) checks the price.
   const callsOnly = intent === 'call' || (intent !== 'fold' && !context.canRaise);
-  if (callsOnly && context.callAmount > 0 && preflopCallHasPrice(context, personality, equities) === false) {
-    return resolvePassiveAction(context);
+  if (callsOnly && context.callAmount > 0) {
+    const price = preflopPrice(context, personality, equities);
+    if (price && price.equity < price.required) {
+      chooser.note({ code: 'price_short', params: price });
+      return resolvePassiveAction(context);
+    }
+    if (price) {
+      chooser.note({ code: 'price_ok', params: price });
+    }
   }
   // Calling for all the chips is pure equity against the price, with no later streets to play badly.
   const callIsAllIn = context.canCall && (!context.canRaise || context.callAmount >= context.myStack);
-  if (intent === 'fold' && callIsAllIn && preflopCallHasPrice(context, personality, equities) === true) {
-    return { type: 'call', amount: context.callAmount };
+  if (intent === 'fold' && callIsAllIn) {
+    const price = preflopPrice(context, personality, equities);
+    if (price && price.equity >= price.required) {
+      chooser.note({ code: 'price_ok', params: price });
+      return { type: 'call', amount: context.callAmount };
+    }
   }
   const targetTo = getPreflopRaiseTo(context);
   return finalizeIntent(context, intent, targetTo);
 }
 
 /**
- * Whether equity against the ranges of the players who put chips in voluntarily covers what the call
- * costs; null when nobody's actions are known.
+ * Equity against the ranges of the players who put chips in voluntarily, and the equity the call
+ * needs; null when nobody's actions are known.
  */
-function preflopCallHasPrice(context: BotDecisionContext, personality: BotPersonality, equities: Equities): boolean | null {
+function preflopPrice(context: BotDecisionContext, personality: BotPersonality, equities: Equities): { equity: number; required: number } | null {
   const equity = equities.preflopVsCallers();
-  return equity === null ? null : equity >= clamp01(computePotOdds(context) + PERSONALITY_PROFILES[personality].callBuffer);
+  return equity === null ? null : { equity, required: clamp01(computePotOdds(context) + PERSONALITY_PROFILES[personality].callBuffer) };
 }
 
 export function preflopEquityVsCallers(context: BotDecisionContext, rng: BotRng, iterations = PREFLOP_PRICE_ITERATIONS): number | null {
@@ -237,6 +256,8 @@ function decidePostflop(
   const analysis = equities.postflop();
 
   if (shouldJamPostflop(context, analysis, profile)) {
+    const trigger = context.effectiveStackBb <= 12 ? 'short_stack' : context.spr <= 1 ? 'low_spr' : 'near_lock';
+    chooser.note({ code: 'jam', params: { trigger, effStackBb: context.effectiveStackBb, spr: context.spr } });
     return finalizeIntent(context, 'jam', context.maxRaiseTo);
   }
 
@@ -254,7 +275,11 @@ function decideUnopenedPostflop(
 ): BotActionWithoutThinking {
   const bet = () => finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
   // A pure bluff into someone who never folds just burns chips.
-  const opponentFolds = (lowestFoldToBetRate(context) ?? 1) >= STICKY_FOLD_TO_BET_RATE;
+  const sticky = stickiestOpponent(context);
+  const opponentFolds = (sticky?.foldToBet ?? 1) >= STICKY_FOLD_TO_BET_RATE;
+  if (sticky && !opponentFolds) {
+    chooser.note({ code: 'sticky_opponent', params: { playerId: sticky.id, foldToBet: sticky.foldToBet, facingBets: sticky.facingBets } });
+  }
   const hasInitiative = context.isPreflopAggressor || context.isLastStreetAggressor;
   const checkedToInPosition = context.streetActionCount > 0 && isLikelyInPosition(context);
   const drawBetFrequency = Math.min(1, DRAW_BET_FREQUENCY * profile.bluffScale);
@@ -267,10 +292,17 @@ function decideUnopenedPostflop(
       : profile.cbetFreqDry;
     if (analysis.equity >= profile.valueBetMinEquity
       || (analysis.madeHandRank >= 2 && context.phase === 'river' && analysis.equity >= profile.riverThinValueMinEquity)) {
+      chooser.note({ code: 'value', params: { equity: analysis.equity } });
       return bet();
     }
-    if (hasInitiative && (analysis.equity >= profile.semiBluffMinEquity || (opponentFolds && chooser.chance(cbetFrequency)))) {
+    if (hasInitiative && analysis.equity >= profile.semiBluffMinEquity) {
       return bet();
+    }
+    if (hasInitiative && opponentFolds) {
+      chooser.note({ code: 'cbet', params: { frequency: clamp01(cbetFrequency) } });
+      if (chooser.chance(cbetFrequency)) {
+        return bet();
+      }
     }
     return resolvePassiveAction(context);
   }
@@ -281,19 +313,29 @@ function decideUnopenedPostflop(
     ? read.shareAbove < read.valueShare && analysis.equity >= MIN_VALUE_BET_EQUITY
     : analysis.equity >= MIN_VALUE_BET_EQUITY;
   if (isValue) {
-    const slowplay = opponentFolds
-      && analysis.equity >= SLOWPLAY_MIN_EQUITY
-      && context.opponentCount === 1
-      && chooser.chance(profile.slowplayFreq);
-    return slowplay ? resolvePassiveAction(context) : bet();
+    chooser.note({ code: 'value', params: { equity: analysis.equity } });
+    if (opponentFolds && analysis.equity >= SLOWPLAY_MIN_EQUITY && context.opponentCount === 1 && chooser.chance(profile.slowplayFreq)) {
+      chooser.note({ code: 'slowplay', params: { equity: analysis.equity } });
+      return resolvePassiveAction(context);
+    }
+    return bet();
   }
   if (!hasInitiative && !checkedToInPosition) {
+    chooser.note({ code: 'no_initiative', params: {} });
     return resolvePassiveAction(context);
   }
   if (read.isDraw) {
+    chooser.note({ code: 'draw', params: { draw: analysis.features.flushDraw ? 'flush' : 'oesd' } });
     return chooser.chance(drawBetFrequency) ? bet() : resolvePassiveAction(context);
   }
-  return opponentFolds && chooser.chance(read.airBetFrequency * profile.bluffScale) ? bet() : resolvePassiveAction(context);
+  if (opponentFolds) {
+    const airBetFrequency = read.airBetFrequency * profile.bluffScale;
+    chooser.note({ code: 'bluff_share', params: { frequency: clamp01(airBetFrequency) } });
+    if (chooser.chance(airBetFrequency)) {
+      return bet();
+    }
+  }
+  return resolvePassiveAction(context);
 }
 
 function decideFacingBetPostflop(
@@ -304,16 +346,19 @@ function decideFacingBetPostflop(
   chooser: Chooser,
 ): BotActionWithoutThinking {
   const raise = () => finalizeIntent(context, 'raise', getPostflopRaiseTo(context, analysis, profile));
-  if (context.canRaise && analysis.equity >= profile.valueBetMinEquity && chooser.chance(VALUE_RAISE_FREQUENCY)) {
-    return raise();
+  if (context.canRaise && analysis.equity >= profile.valueBetMinEquity) {
+    chooser.note({ code: 'value', params: { equity: analysis.equity } });
+    if (chooser.chance(VALUE_RAISE_FREQUENCY)) {
+      return raise();
+    }
   }
-  if (
-    context.canRaise
-    && (analysis.features.flushDraw || analysis.features.oesd || analysis.features.pairPlusDraw)
-    && analysis.equity >= profile.semiBluffMinEquity
-    && chooser.chance(profile.barrelFreq)
-  ) {
-    return raise();
+  const { flushDraw, oesd, pairPlusDraw } = analysis.features;
+  const draw = flushDraw ? 'flush' : oesd ? 'oesd' : pairPlusDraw ? 'pair_plus_draw' : null;
+  if (context.canRaise && draw && analysis.equity >= profile.semiBluffMinEquity) {
+    chooser.note({ code: 'draw', params: { draw } });
+    if (chooser.chance(profile.barrelFreq)) {
+      return raise();
+    }
   }
 
   if (shouldFloatSmallBet(context, analysis, personality)) {
@@ -323,8 +368,12 @@ function decideFacingBetPostflop(
   // Near the price the call is mixed rather than a hard cut-off, so the line can't be read off one number.
   const requiredCallEquity = clamp01(computePotOdds(context) + profile.callBuffer);
   const callProbability = 1 / (1 + Math.exp(-(analysis.equity - requiredCallEquity) / CALL_MIX_WIDTH));
-  if (context.canCall && chooser.chance(callProbability)) {
-    return { type: 'call', amount: context.callAmount };
+  if (context.canCall) {
+    const price = { equity: analysis.equity, required: requiredCallEquity };
+    chooser.note({ code: analysis.equity >= requiredCallEquity ? 'price_ok' : 'price_short', params: price });
+    if (chooser.chance(callProbability)) {
+      return { type: 'call', amount: context.callAmount };
+    }
   }
 
   return resolvePassiveAction(context);
