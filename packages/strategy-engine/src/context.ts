@@ -4,6 +4,8 @@ import {
   hasPreflopLimpers,
   type BotDecisionContext,
   type BotDecisionPhase,
+  type BotOpponentView,
+  type BotPosition,
   type Card,
 } from '@aipoker/shared';
 
@@ -24,7 +26,7 @@ export interface DecisionHand {
     holeCards: readonly Card[];
   }>;
   communityCards: readonly Card[];
-  actions: ReadonlyArray<{ playerId: string; phase: string; type: string; toAmount: number }>;
+  actions: ReadonlyArray<{ playerId: string; phase: string; type: string; toAmount: number; potTotalBefore: number }>;
   betting: { currentBetToMatch: number; lastFullRaiseSize: number };
 }
 
@@ -113,6 +115,55 @@ function getEffectiveStack(hand: DecisionHand, actorId: string): number {
   return opponentTotals.length === 0 ? actorTotal : Math.max(...opponentTotals);
 }
 
+/** Replays the hand once to record, for each live opponent, every voluntary action and what it faced. */
+function buildOpponentViews(
+  hand: DecisionHand,
+  actorId: string,
+  positionMap: Map<number, BotPosition>,
+): BotOpponentView[] {
+  const views = new Map<string, BotOpponentView>();
+  for (const player of hand.players) {
+    if (player.id !== actorId && player.status !== 'folded' && isSeated(player)) {
+      views.set(player.id, { id: player.id, position: positionMap.get(player.seatIndex) ?? 'utg', actions: [] });
+    }
+  }
+
+  let street = '';
+  let currentMax = 0;
+  let raises = 0;
+  let limpers = 0;
+  for (const action of hand.actions) {
+    if (action.phase !== street) {
+      street = action.phase;
+      currentMax = street === 'betting_preflop' ? hand.bigBlind : 0;
+      raises = 0;
+      limpers = 0;
+    }
+
+    const isRaise = (action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax;
+    const view = views.get(action.playerId);
+    const phase = mapHandPhase(action.phase);
+    if (view && phase && action.type !== 'fold') {
+      view.actions.push({
+        phase,
+        // An all-in that doesn't raise the price is just a call.
+        type: isRaise ? (action.type as 'raise_to' | 'all_in') : action.type === 'check' ? 'check' : 'call',
+        facing: deriveBotBettingState(raises, limpers > 0),
+        sizeOfPot: isRaise ? (action.toAmount - currentMax) / Math.max(action.potTotalBefore, hand.bigBlind) : 0,
+      });
+    }
+
+    if (isRaise) {
+      currentMax = action.toAmount;
+      raises += 1;
+    } else if (street === 'betting_preflop' && raises === 0 && action.type === 'call') {
+      limpers += 1;
+    }
+  }
+
+  return [...views.values()];
+}
+
 /** One decision context for bots (server) and the coach (client), so the two can't drift apart. */
 export function buildDecisionContext(
   hand: DecisionHand,
@@ -166,5 +217,6 @@ export function buildDecisionContext(
     ),
     isPreflopAggressor: preflopAggressiveActions.at(-1)?.playerId === actor.id,
     isLastStreetAggressor: previousStreetAggressiveActions.at(-1)?.playerId === actor.id,
+    opponents: buildOpponentViews(hand, actor.id, positionMap),
   };
 }

@@ -194,6 +194,23 @@ export interface BotDecisionContext {
   bettingState: BotBettingState;
   isPreflopAggressor: boolean;
   isLastStreetAggressor: boolean;
+  // Opponents still in the hand and what they did, so equity can be computed against their likely range.
+  opponents?: BotOpponentView[];
+}
+
+export interface BotOpponentAction {
+  phase: BotDecisionPhase;
+  type: 'check' | 'call' | 'raise_to' | 'all_in';
+  // The betting state this player faced when acting (preflop: was the pot open, limped, raised...).
+  facing: BotBettingState;
+  // Bet or raise size as a fraction of the pot before it; 0 for checks and calls.
+  sizeOfPot: number;
+}
+
+export interface BotOpponentView {
+  id: string;
+  position: BotPosition;
+  actions: BotOpponentAction[];
 }
 
 export type BotValidActions = BotDecisionContext;
