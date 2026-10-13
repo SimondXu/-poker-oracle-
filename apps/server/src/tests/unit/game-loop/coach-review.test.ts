@@ -5,7 +5,7 @@ import { applyAction, getValidActions, initializeHand, type PlayerActionInput } 
 import { gradeDecision, type CoachAdvice } from '@aipoker/shared';
 import { chooseBotAction } from '@aipoker/strategy-engine';
 
-import { recordCoachDecision, takeHandReviews } from '../../../game-loop/coach-review.ts';
+import { captureCoachDecision, forgetCoachPlayer, takeHandReviews } from '../../../game-loop/coach-review.ts';
 import { buildBotDecisionContext, recordFinishedHandStats } from '../../../game-loop/bot-support.ts';
 import { selectEmergencyBotActionInput } from '../../../game-loop/realtime-bot-fallback.ts';
 import type { RuntimeRoom } from '../../../rooms/types.ts';
@@ -58,13 +58,14 @@ function currentActorId(room: RuntimeRoom): string {
   return room.hand!.players.find((player) => player.seatIndex === room.hand!.currentActorSeat)!.id;
 }
 
-/** Records the action as the server does (before the state moves on), then applies it. */
+/** Captures the decision as the server does (before the state moves on), applies the action, then records it. */
 function act(room: RuntimeRoom, action: PlayerActionInput, source: 'player' | 'timeout' = 'player'): void {
   const applied = applyAction(room.hand!, action, { timestamp: 1 });
   assert.ok(applied.ok);
-  recordCoachDecision(room, action, source);
+  const record = captureCoachDecision(room, action, source);
   room.hand = applied.value;
   room.stateVersion += 1;
+  record?.();
 }
 
 /** Advice built from scratch for the open decision, as if nothing had been kept. */
@@ -170,4 +171,38 @@ test('a raise to the whole stack is recorded as the all-in it is', () => {
 
   const [record] = room.coachRecords.get('hero')!;
   assert.deepEqual(record!.heroAction, { kind: 'all_in', to: allInTo, source: 'player' });
+});
+
+test('the advice is built when the decision is recorded, not when it is captured, and is the one for the state before the action', () => {
+  const room = createRoom();
+  startHand(room, 0);
+  while (currentActorId(room) !== 'hero') {
+    act(room, { playerId: currentActorId(room), type: 'fold' });
+  }
+  const advice = freshAdvice(room)!;
+  const action: PlayerActionInput = { playerId: 'hero', type: 'call' };
+  const applied = applyAction(room.hand!, action, { timestamp: 1 });
+  assert.ok(applied.ok);
+
+  const record = captureCoachDecision(room, action, 'player')!;
+  assert.equal(room.coachAdvice.size, 0, 'nothing is built while the ack and the state go out');
+  assert.equal(room.coachRecords.size, 0);
+
+  room.hand = applied.value;
+  room.stateVersion += 1;
+  record();
+  assert.deepEqual(room.coachRecords.get('hero')!.map((decision) => decision.advice), [advice]);
+});
+
+test('a departed player’s coach state is forgotten', () => {
+  const room = createRoom();
+  room.coachAdvice.set('hero', {} as CoachAdvice);
+  room.coachRecords.set('hero', []);
+  room.coachSessions.set('hero', { matched: 1, close: 0, off: 0 });
+  room.coachReviews.set('hero', { roomId: room.id, playerId: 'hero', handNumber: 1, decisions: [], session: { matched: 1, close: 0, off: 0 } });
+  room.coachSessions.set('b1', { matched: 0, close: 1, off: 0 });
+
+  forgetCoachPlayer(room, 'hero');
+  assert.deepEqual([room.coachAdvice.size, room.coachRecords.size, room.coachReviews.size], [0, 0, 0]);
+  assert.deepEqual([...room.coachSessions.keys()], ['b1']);
 });

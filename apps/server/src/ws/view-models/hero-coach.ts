@@ -37,49 +37,69 @@ export function buildHeroCoachEvent(room: RuntimeRoom): GameCoachEvent | null {
   return actor && advice ? { roomId: room.id, playerId: actor.id, stateVersion: room.stateVersion, advice } : null;
 }
 
+type AdviceInput = Parameters<typeof buildCoachAdvice>[0];
+
 /**
  * The advice for a human's open decision: the one already built for this state, or built now and
  * kept on the room, so the review grades the action against exactly what the hero was (or would
  * have been) sent.
  */
 export function openDecisionAdvice(room: RuntimeRoom, heroId: string): CoachAdvice | null {
-  const kept = room.coachAdvice.get(heroId);
-  if (kept && kept.stateVersion === room.stateVersion) {
-    return kept;
-  }
-  const advice = buildHeroAdvice(room, heroId);
+  const advice = prepareDecisionAdvice(room, heroId)?.() ?? null;
   if (advice) {
     room.coachAdvice.set(heroId, advice);
   }
   return advice;
 }
 
-function buildHeroAdvice(room: RuntimeRoom, heroId: string): CoachAdvice | null {
+/**
+ * Reads what the open decision's advice needs now, and returns the function that builds it, so the
+ * Monte Carlo can wait until the action is acknowledged. Run it in the same tick the room moves on
+ * (the player stats, an input, change when the hand ends); it gives the advice the hero was or
+ * would have been sent. Null when it is not a human's turn, or the inputs can't be read.
+ */
+export function prepareDecisionAdvice(room: RuntimeRoom, heroId: string): (() => CoachAdvice | null) | null {
+  const kept = room.coachAdvice.get(heroId);
+  if (kept && kept.stateVersion === room.stateVersion) {
+    return () => kept;
+  }
+
   const hand = room.hand;
   const actor = hand?.players.find((player) => player.seatIndex === hand.currentActorSeat);
   if (!hand || !actor || actor.id !== heroId || room.players.get(actor.id)?.isBot !== false) {
     return null;
   }
 
+  let input: AdviceInput;
   try {
-    const started = performance.now();
     const actionIndex = hand.actions.length;
-    const advice = buildCoachAdvice({
+    input = {
       view: toDecisionView(buildViewerHand(room, actor.id)),
       heroId: actor.id,
       valid: getValidActions(hand, actor.id),
       stats: room.playerStats,
       seed: `${room.id}:${room.handNumber}:${actor.id}:${actionIndex}`,
       keys: { handId: `${room.id}:${room.handNumber}`, actionIndex, stateVersion: room.stateVersion },
-    });
+    };
+  } catch (error) {
+    console.error('coach advice failed', { roomId: room.id, playerId: actor.id, error });
+    return null;
+  }
+  return () => buildAdvice(room.id, input);
+}
+
+function buildAdvice(roomId: string, input: AdviceInput): CoachAdvice | null {
+  try {
+    const started = performance.now();
+    const advice = buildCoachAdvice(input);
     const elapsedMs = performance.now() - started;
     if (elapsedMs > SLOW_ADVICE_MS) {
-      console.warn('slow coach advice', { roomId: room.id, street: advice?.street, opponents: advice?.opponents, elapsedMs: Math.round(elapsedMs) });
+      console.warn('slow coach advice', { roomId, street: advice?.street, opponents: advice?.opponents, elapsedMs: Math.round(elapsedMs) });
     }
     return advice;
   } catch (error) {
     // Advice is optional; the hero's turn must go on without it.
-    console.error('coach advice failed', { roomId: room.id, playerId: actor.id, error });
+    console.error('coach advice failed', { roomId, playerId: input.heroId, error });
     return null;
   }
 }

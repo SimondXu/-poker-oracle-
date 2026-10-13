@@ -52,13 +52,15 @@ interface CoachViewProps {
   /** The finished hand's outcome for the hero, shown once the hand is over. */
   heroSummary?: HeroHandSummary | null | undefined;
   /** The graded decisions to show off-turn: this hand's once it is over, or the last hand's (see `reviewToShow`). */
-  review?: { review: GameReviewEvent; which: 'this' | 'last' } | null | undefined;
+  review?: GameReviewEvent | null | undefined;
+  /** Whether `review` is this hand's or the last hand's. */
+  reviewedHand?: 'this' | 'last' | undefined;
   isVisible: boolean;
   onToggle: () => void;
   className?: string | undefined;
 }
 
-export const CoachView = memo(function CoachView({ data, hand, heroId, heroSummary, review, isVisible, onToggle, className }: CoachViewProps) {
+export const CoachView = memo(function CoachView({ data, hand, heroId, heroSummary, review, reviewedHand, isVisible, onToggle, className }: CoachViewProps) {
   const t = useT();
   const heroText = useHeroSummaryText();
   const context = useMemo(() => deriveCoachContext(hand, heroId), [hand, heroId]);
@@ -66,15 +68,16 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
   // Open rows live here, not in HandReview, so they stay open when the next hand deals and the
   // review moves to another branch below; a new hand's review starts closed.
   const [openRows, setOpenRows] = useState<{ handNumber: number; rows: ReadonlySet<number> } | null>(null);
-  const reviewList = review ? (
+  const reviewList = review && reviewedHand ? (
     <HandReview
-      {...review}
-      open={openRows?.handNumber === review.review.handNumber ? openRows.rows : NO_ROWS}
+      review={review}
+      which={reviewedHand}
+      open={openRows?.handNumber === review.handNumber ? openRows.rows : NO_ROWS}
       onToggle={(index) =>
         setOpenRows((current) => {
-          const rows = new Set(current?.handNumber === review.review.handNumber ? current.rows : NO_ROWS);
+          const rows = new Set(current?.handNumber === review.handNumber ? current.rows : NO_ROWS);
           if (!rows.delete(index)) rows.add(index);
-          return { handNumber: review.review.handNumber, rows };
+          return { handNumber: review.handNumber, rows };
         })
       }
       nameOf={nameOf}
@@ -263,40 +266,48 @@ function HandReview({
         {review.decisions.map((decision, index) => {
           const row = reviewRowText(decision, t, nameOf);
           const expanded = open.has(index);
+          const summary = (
+            <>
+              <span className="flex items-baseline justify-between gap-3">
+                <span className="label-index text-micro text-text-3">{row.street}</span>
+                <span className={cn('label-index flex items-center gap-tight text-micro', VERDICT_CLASS[decision.verdict])}>
+                  {row.verdict}
+                  {row.reasons.length > 0 && (
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                      className={cn('shrink-0 text-text-3 transition-transform duration-150 ease-out', expanded && 'rotate-180')}
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  )}
+                </span>
+              </span>
+              <span className="mt-1 block font-index text-lead font-semibold text-text">{row.hero}</span>
+              <span className="mt-1 block font-index text-body text-text-2">{row.policy}</span>
+            </>
+          );
           return (
             <li key={decision.advice.actionIndex}>
-              <button
-                type="button"
-                aria-expanded={expanded}
-                disabled={row.reasons.length === 0}
-                onClick={() => onToggle(index)}
-                className="block w-full py-snug text-left transition-colors duration-150 ease-out enabled:hover:bg-panel-2/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brass)]"
-              >
-                <span className="flex items-baseline justify-between gap-3">
-                  <span className="label-index text-micro text-text-3">{row.street}</span>
-                  <span className={cn('label-index flex items-center gap-tight text-micro', VERDICT_CLASS[decision.verdict])}>
-                    {row.verdict}
-                    {row.reasons.length > 0 && (
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden
-                        className={cn('shrink-0 text-text-3 transition-transform duration-150 ease-out', expanded && 'rotate-180')}
-                      >
-                        <path d="m6 9 6 6 6-6" />
-                      </svg>
-                    )}
-                  </span>
-                </span>
-                <span className="mt-1 block font-index text-lead font-semibold text-text">{row.hero}</span>
-                <span className="mt-1 block font-index text-body text-text-2">{row.policy}</span>
-              </button>
+              {row.reasons.length === 0 ? (
+                <div className="py-snug">{summary}</div>
+              ) : (
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => onToggle(index)}
+                  className="block w-full py-snug text-left transition-colors duration-150 ease-out hover:bg-panel-2/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brass)]"
+                >
+                  {summary}
+                </button>
+              )}
               {expanded && (
                 <div className="space-y-snug pb-3 text-body">
                   {row.reasons.map((group) => (

@@ -3029,3 +3029,71 @@ test('a reconnect in the next hand, before the player acts, gets the last handâ€
   await emitWithAck(socket, 'room:join', { roomId: 'REVWAD', playerId: 'p0', playerName: 'Alice', stack: 1000 });
   assert.deepEqual(await Promise.race([replayed, sleep(500).then(() => 'no review')]), review);
 });
+
+test('a player seated mid-hand, who is not in it, gets no review of the othersâ€™ decisions', async (t) => {
+  const carolReviews: any[] = [];
+  const { url, alice } = await seatHeadsUpPair(t, { roomId: 'REVWAE' });
+  const carol = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => carol.close());
+  await once(carol, 'connect');
+  carol.on('game:review', (review) => carolReviews.push(review));
+  await emitWithAck(carol, 'room:join', { roomId: 'REVWAE', playerId: 'p2', playerName: 'Carol', seatIndex: 2, stack: 1000 });
+
+  const handEnd = waitForState(carol, (payload) => payload.hand.phase === 'hand_end');
+  assert.deepEqual(await emitWithAck(alice, 'game:action', { roomId: 'REVWAE', type: 'fold', seq: 1 }), { ok: true });
+  await handEnd;
+  await sleep(100);
+  assert.deepEqual(carolReviews, []);
+});
+
+test('a reconnect two hands after the review is not sent it', async (t) => {
+  let firstReview!: Promise<any>;
+  const { url, alice, bob } = await seatHeadsUpPair(t, {
+    roomId: 'REVWAF',
+    beforeStart: (alice) => {
+      firstReview = new Promise((resolve) => alice.once('game:review', resolve));
+    },
+  });
+  assert.deepEqual(await emitWithAck(alice, 'game:action', { roomId: 'REVWAF', type: 'fold', seq: 1 }), { ok: true });
+  assert.equal((await firstReview).handNumber, 1);
+
+  // Hand 2: Bob has the button and folds, so Alice never decides. Hand 3 is left open.
+  const handTwoEnd = waitForState(alice, (payload) => payload.hand.handNumber === 2 && payload.hand.phase === 'hand_end');
+  await emitWithAck(alice, 'game:start', { roomId: 'REVWAF' });
+  assert.deepEqual(await emitWithAck(bob, 'game:action', { roomId: 'REVWAF', type: 'fold', seq: 1 }), { ok: true });
+  await handTwoEnd;
+  const handThree = waitForState(alice, (payload) => payload.hand.handNumber === 3);
+  await emitWithAck(alice, 'game:start', { roomId: 'REVWAF' });
+  await handThree;
+
+  const socket = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => socket.close());
+  await once(socket, 'connect');
+  const reviews: any[] = [];
+  socket.on('game:review', (review) => reviews.push(review));
+  await emitWithAck(socket, 'room:join', { roomId: 'REVWAF', playerId: 'p0', playerName: 'Alice', stack: 1000 });
+  await sleep(200);
+  assert.deepEqual(reviews, []);
+});
+
+test('a player who left the room does not get their old review back when they join again', async (t) => {
+  let firstReview!: Promise<any>;
+  const { url, alice } = await seatHeadsUpPair(t, {
+    roomId: 'REVWAG',
+    beforeStart: (alice) => {
+      firstReview = new Promise((resolve) => alice.once('game:review', resolve));
+    },
+  });
+  assert.deepEqual(await emitWithAck(alice, 'game:action', { roomId: 'REVWAG', type: 'fold', seq: 1 }), { ok: true });
+  await firstReview;
+  assert.equal((await emitWithAck<{ ok: boolean }>(alice, 'room:leave', {})).ok, true);
+
+  const socket = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => socket.close());
+  await once(socket, 'connect');
+  const reviews: any[] = [];
+  socket.on('game:review', (review) => reviews.push(review));
+  await emitWithAck(socket, 'room:join', { roomId: 'REVWAG', playerId: 'p0', playerName: 'Alice', stack: 1000 });
+  await sleep(200);
+  assert.deepEqual(reviews, []);
+});

@@ -3,6 +3,7 @@ import type { Server } from 'socket.io';
 import { hasHumanPlayers, syncRoomHost } from '../rooms/room-store.ts';
 import type { RuntimeRoom } from '../rooms/types.ts';
 import { emitRoomState } from '../ws/emitters.ts';
+import { forgetCoachPlayer } from './coach-review.ts';
 
 export function cleanupDisconnectedPlayersAfterHandEnd(
   io: Server,
@@ -18,6 +19,7 @@ export function cleanupDisconnectedPlayersAfterHandEnd(
     room.readyPlayerIds.delete(playerId);
     room.spectatingPlayerIds.delete(playerId);
     room.lastActionSeqByPlayer.delete(playerId);
+    forgetCoachPlayer(room, playerId);
   }
 
   room.pendingDisconnectPlayerIds.clear();
