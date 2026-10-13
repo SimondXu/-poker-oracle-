@@ -65,7 +65,7 @@ export function TopBar({
   return (
     <header
       data-layout-box="top-bar"
-      className="col-span-full flex h-12 min-w-0 items-center gap-2 overflow-hidden border-b border-line bg-panel px-3 sm:gap-3 md:px-4"
+      className="col-span-full flex h-12 min-w-0 items-center gap-tight overflow-hidden border-b border-line bg-panel px-3 sm:gap-3 md:px-4"
     >
       <button
         type="button"
@@ -78,7 +78,8 @@ export function TopBar({
         </svg>
       </button>
 
-      <div className="flex min-w-0 shrink items-center gap-2">
+      {/* Below 360px the spade and the short hand number give way so the buttons fit. */}
+      <div className="flex min-w-0 shrink items-center gap-2 max-[360px]:hidden">
         <SpadeMark />
         <span className="label-index hidden truncate text-label font-bold tracking-caps-wide text-text sm:inline">
           {t('common.appName')}
@@ -114,7 +115,7 @@ export function TopBar({
             <span className="label-index text-micro text-text-3">{t('common.game.hand')}</span>
             <span className="text-body font-semibold text-text">{handNumber}</span>
           </span>
-          <span className="font-index shrink-0 text-body font-semibold text-text-2 md:hidden">
+          <span className="font-index shrink-0 text-body font-semibold text-text-2 md:hidden max-[360px]:hidden">
             {t('common.game.handShort', { number: handNumber })}
           </span>
         </>
