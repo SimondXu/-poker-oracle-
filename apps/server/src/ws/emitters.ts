@@ -258,9 +258,12 @@ export function emitGameStateToSocket(
       };
       io.to(socketId).emit('game:hand_result', event);
     }
-    const review = viewerPlayerId ? room.coachReviews.get(viewerPlayerId) : undefined;
-    if (review?.handNumber === room.handNumber) {
-      io.to(socketId).emit('game:review', review);
-    }
+  }
+
+  // The client shows this hand's review once it is over, and the last hand's until the player's
+  // first decision of the next; it decides which, so replay either.
+  const review = viewerPlayerId ? room.coachReviews.get(viewerPlayerId) : undefined;
+  if (review && review.handNumber >= room.handNumber - 1) {
+    io.to(socketId).emit('game:review', review);
   }
 }

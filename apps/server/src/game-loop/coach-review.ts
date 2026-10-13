@@ -16,7 +16,9 @@ export function recordCoachDecision(room: RuntimeRoom, action: PlayerActionInput
     return;
   }
 
-  const kind = classifyAction(action, {
+  // A raise to everything behind is the all-in the policy would call it.
+  const allIn = action.type === 'raise_to' && action.amount === hero.streetCommitted + hero.stack;
+  const kind = classifyAction(allIn ? { type: 'all_in' } : action, {
     currentBetToMatch: room.hand.betting.currentBetToMatch,
     myStreetCommitted: hero.streetCommitted,
     myStack: hero.stack,

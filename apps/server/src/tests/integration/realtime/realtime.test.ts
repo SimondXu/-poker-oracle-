@@ -3004,3 +3004,28 @@ test('a timed-out decision is reviewed and flagged as a timeout', async (t) => {
   assert.equal(review.playerId, 'p0');
   assert.deepEqual(review.decisions.map((decision: any) => decision.heroAction), [{ kind: 'fold', source: 'timeout' }]);
 });
+
+test('a reconnect in the next hand, before the player acts, gets the last hand’s review', async (t) => {
+  let firstReview!: Promise<any>;
+  const { url, alice } = await seatHeadsUpPair(t, {
+    roomId: 'REVWAD',
+    beforeStart: (alice) => {
+      firstReview = new Promise((resolve) => alice.once('game:review', resolve));
+    },
+  });
+  assert.deepEqual(await emitWithAck(alice, 'game:action', { roomId: 'REVWAD', type: 'fold', seq: 1 }), { ok: true });
+  const review = await firstReview;
+  assert.equal(review.handNumber, 1);
+
+  // Hand 2: Bob has the button and acts first, so Alice has not decided yet.
+  const handTwo = waitForState(alice, (payload) => payload.hand.handNumber === 2);
+  assert.deepEqual(await emitWithAck(alice, 'game:start', { roomId: 'REVWAD' }), { ok: true });
+  await handTwo;
+
+  const socket = createClient(url, { transports: ['websocket'], forceNew: true, reconnection: false });
+  t.after(() => socket.close());
+  await once(socket, 'connect');
+  const replayed = new Promise<any>((resolve) => socket.once('game:review', resolve));
+  await emitWithAck(socket, 'room:join', { roomId: 'REVWAD', playerId: 'p0', playerName: 'Alice', stack: 1000 });
+  assert.deepEqual(await Promise.race([replayed, sleep(500).then(() => 'no review')]), review);
+});

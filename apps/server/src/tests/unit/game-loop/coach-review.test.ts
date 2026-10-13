@@ -157,3 +157,17 @@ test('the review is built only once the hand is over', () => {
   assert.deepEqual(takeHandReviews(room), []);
   assert.equal(room.coachRecords.get('hero')?.length, 1);
 });
+
+test('a raise to the whole stack is recorded as the all-in it is', () => {
+  const room = createRoom();
+  startHand(room, 0);
+  while (currentActorId(room) !== 'hero') {
+    act(room, { playerId: currentActorId(room), type: 'fold' });
+  }
+  const hero = room.hand!.players.find((player) => player.id === 'hero')!;
+  const allInTo = hero.streetCommitted + hero.stack;
+  act(room, { playerId: 'hero', type: 'raise_to', amount: allInTo });
+
+  const [record] = room.coachRecords.get('hero')!;
+  assert.deepEqual(record!.heroAction, { kind: 'all_in', to: allInTo, source: 'player' });
+});

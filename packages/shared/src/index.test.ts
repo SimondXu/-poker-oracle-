@@ -134,6 +134,9 @@ test('gradeDecision grades the hero against the policy\'s options', () => {
     ['only the sizes within range count: 20%', twoSizes, { kind: 'bet', to: 110 }, 'close'],
     ['an action the policy never takes is off', mostlyCall, { kind: 'raise', to: 200 }, 'off'],
     ['an all-in where the policy only calls is off', mostlyCall, { kind: 'all_in', to: 1_000 }, 'off'],
+    ['a shove where the policy raises nearly all in matches', adviceWith([{ kind: 'raise', to: 900, frequency: 1 }]), { kind: 'all_in', to: 1_000 }, 'matched'],
+    ['a raise near the stack where the policy jams matches', adviceWith([{ kind: 'all_in', to: 1_000, frequency: 0.8 }, { kind: 'fold', frequency: 0.2 }]), { kind: 'raise', to: 900 }, 'matched'],
+    ['a shove where the policy raises small is close', callOrRaise, { kind: 'all_in', to: 1_000 }, 'close'],
     ['unstable advice: the second option is close', unstable, { kind: 'check' }, 'close'],
     ['unstable advice: even an action outside it is close, not off', unstable, { kind: 'fold' }, 'close'],
   ];

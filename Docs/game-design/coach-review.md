@@ -37,12 +37,12 @@ export type CoachVerdict = 'matched' | 'close' | 'off';
 export function gradeDecision(advice: CoachAdvice, hero: { kind: CoachActionKind; to?: number }): CoachVerdict;
 ```
 
-- **matched:** the policy plays the hero's kind at least 25% of the time. For bet and raise, only the policy's sizes whose total (`to`) is within ±50% of the hero's count toward that 25%; two sizes of the same kind add up.
-- **close:** the hero's kind is an option, but the policy plays it less than 25% of the time, or at another size.
-- **off:** the hero's kind is not among the options, and the advice is stable. Options under 0.5% are already dropped by the contract.
+- **matched:** the policy plays the hero's kind at least 25% of the time. Bets, raises and all-ins are one action at different sizes: for any of them, only the policy's aggressive options whose total (`to`) is within ±50% of the hero's count toward that 25%, and they add up. So a shove matches a policy raise to nearly the whole stack, and the reverse.
+- **close:** the hero's kind is an option (for an aggressive action, any aggressive option), but the policy plays it less than 25% of the time, or at another size. A shove where the policy makes a small raise is close.
+- **off:** no option is comparable, and the advice is stable. Options under 0.5% are already dropped by the contract.
 - **Unstable advice is never off.** When the advice is `stable: false`, an action outside its options is close: the options could change within the equity error. (The first draft said "close when the hero took the second-most-frequent option", but any option already grades close or better, so that rule did nothing.)
 - **Sizes compare totals.** The advice does not carry the hero's street commitment, so the ±50% is of the policy's total, not the chips it adds. They differ only when the hero already has chips in on the street (blinds, a re-raise).
-- The hero's kind comes from `classifyAction`, the same function the contract uses for options, so an all-in that only calls is graded as a call.
+- The hero's kind comes from `classifyAction`, the same function the contract uses for options, so an all-in that only calls is graded as a call. A `raise_to` for everything behind is recorded as the all-in it is.
 
 The thresholds (25%, ±50%) are constants and an open question below.
 
@@ -71,7 +71,7 @@ A record is the contract's `CoachReviewDecision` (street, advice, hero action, v
    - the hand number.
 
    Then this hand's records and kept advice are cleared. No other player or spectator receives anyone's review. A human with no decision in the hand gets no review.
-4. **On reconnect during `hand_end`**, the socket gets the last review again, as it already gets `game:hand_result`.
+4. **On reconnect**, the socket gets the player's last review again when it is for this hand or the one before, since the web shows the last hand's review until the player's first decision of the next. The client decides which to show.
 
 Timeouts are graded like any action, but flagged `source: 'timeout'` so the review can say so.
 

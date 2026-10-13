@@ -584,20 +584,23 @@ export interface CoachReviewDecision {
 
 export type CoachSessionTally = Record<CoachVerdict, number>;
 
+const AGGRESSIVE_KINDS: ReadonlySet<CoachActionKind> = new Set(['bet', 'raise', 'all_in']);
+
 /**
- * Matched when the policy takes the hero's action at least COACH_MATCH_FREQUENCY of the time (for a
- * bet or raise, counting only its sizes near the hero's); close when it takes it less often or at
- * another size; off when it never takes it. Unstable advice could flip within its equity error, so
- * an action outside it is close, not off.
+ * Matched when the policy takes the hero's action at least COACH_MATCH_FREQUENCY of the time;
+ * close when it takes it less often or at another size; off when it never takes it. Bets, raises
+ * and all-ins are one action at different sizes, so a shove and a raise to nearly the whole stack
+ * match when their totals are within COACH_SIZE_TOLERANCE. Unstable advice could flip within its
+ * equity error, so an action outside it is close, not off.
  */
 export function gradeDecision(advice: CoachAdvice, hero: { kind: CoachActionKind; to?: number }): CoachVerdict {
-  const sameKind = advice.options.filter((option) => option.kind === hero.kind);
-  if (sameKind.length === 0) {
+  const aggressive = AGGRESSIVE_KINDS.has(hero.kind);
+  const comparable = advice.options.filter((option) => option.kind === hero.kind || (aggressive && AGGRESSIVE_KINDS.has(option.kind)));
+  if (comparable.length === 0) {
     return advice.stable ? 'off' : 'close';
   }
-  const sized = hero.kind === 'bet' || hero.kind === 'raise';
-  const frequency = sameKind
-    .filter((option) => !sized || (hero.to !== undefined && option.to !== undefined && Math.abs(hero.to - option.to) <= COACH_SIZE_TOLERANCE * option.to))
+  const frequency = comparable
+    .filter((option) => !aggressive || (hero.to !== undefined && option.to !== undefined && Math.abs(hero.to - option.to) <= COACH_SIZE_TOLERANCE * option.to))
     .reduce((sum, option) => sum + option.frequency, 0);
   return frequency >= COACH_MATCH_FREQUENCY ? 'matched' : 'close';
 }
