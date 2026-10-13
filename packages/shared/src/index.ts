@@ -412,6 +412,16 @@ export interface GameCoachEvent {
   advice: CoachAdvice;
 }
 
+/** A player's graded decisions in the hand just finished, sent only to their own sockets at hand end. */
+export interface GameReviewEvent {
+  roomId: string;
+  playerId: string;
+  handNumber: number;
+  decisions: CoachReviewDecision[];
+  /** Verdict counts over every hand this player has had reviewed at this table, this one included. */
+  session: CoachSessionTally;
+}
+
 export interface HandResultPayout {
   potIndex: number;
   playerId: string;
@@ -545,4 +555,52 @@ export interface CoachAdvice {
 
   /** Reasons common to every option's path, most important first. */
   reasons: CoachReason[];
+}
+
+// ---- Coach review: the hero's decisions graded against the advice (see Docs/game-design/coach-review.md).
+
+export type CoachVerdict = 'matched' | 'close' | 'off';
+
+/** An action the policy takes at least this often counts as matched. */
+export const COACH_MATCH_FREQUENCY = 0.25;
+/** A bet or raise is the policy's size when its total is within this share of the policy's total. */
+export const COACH_SIZE_TOLERANCE = 0.5;
+
+export interface CoachHeroAction {
+  /** From classifyAction on the state before the action, like the advice's options. */
+  kind: CoachActionKind;
+  /** Street total for bet / raise / all_in. */
+  to?: number;
+  /** A timeout's check or fold is graded like any action, and flagged. */
+  source: 'player' | 'timeout';
+}
+
+export interface CoachReviewDecision {
+  street: BotDecisionPhase;
+  advice: CoachAdvice;
+  heroAction: CoachHeroAction;
+  verdict: CoachVerdict;
+}
+
+export type CoachSessionTally = Record<CoachVerdict, number>;
+
+const AGGRESSIVE_KINDS: ReadonlySet<CoachActionKind> = new Set(['bet', 'raise', 'all_in']);
+
+/**
+ * Matched when the policy takes the hero's action at least COACH_MATCH_FREQUENCY of the time;
+ * close when it takes it less often or at another size; off when it never takes it. Bets, raises
+ * and all-ins are one action at different sizes, so a shove and a raise to nearly the whole stack
+ * match when their totals are within COACH_SIZE_TOLERANCE. Unstable advice could flip within its
+ * equity error, so an action outside it is close, not off.
+ */
+export function gradeDecision(advice: CoachAdvice, hero: { kind: CoachActionKind; to?: number }): CoachVerdict {
+  const aggressive = AGGRESSIVE_KINDS.has(hero.kind);
+  const comparable = advice.options.filter((option) => option.kind === hero.kind || (aggressive && AGGRESSIVE_KINDS.has(option.kind)));
+  if (comparable.length === 0) {
+    return advice.stable ? 'off' : 'close';
+  }
+  const frequency = comparable
+    .filter((option) => !aggressive || (hero.to !== undefined && option.to !== undefined && Math.abs(hero.to - option.to) <= COACH_SIZE_TOLERANCE * option.to))
+    .reduce((sum, option) => sum + option.frequency, 0);
+  return frequency >= COACH_MATCH_FREQUENCY ? 'matched' : 'close';
 }

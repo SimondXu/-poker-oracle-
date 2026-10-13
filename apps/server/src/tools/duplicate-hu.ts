@@ -59,6 +59,10 @@ function createHeadsUpRoom(idsBySeat: readonly [string, string], playerStats: Ru
     lastButtonMarkerSeat: null,
     hostPlayerId: null,
     playerStats,
+    coachAdvice: new Map(),
+    coachRecords: new Map(),
+    coachSessions: new Map(),
+    coachReviews: new Map(),
   };
 }
 

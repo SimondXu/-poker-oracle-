@@ -32,6 +32,10 @@ function createRoom(isBot = false): RuntimeRoom {
     lastButtonMarkerSeat: null,
     hostPlayerId: 'p0',
     playerStats: new Map(),
+    coachAdvice: new Map(),
+    coachRecords: new Map(),
+    coachSessions: new Map(),
+    coachReviews: new Map(),
   };
 }
 
@@ -96,7 +100,8 @@ test('the hero is advised from exactly the context a bot in their seat would get
       `decision ${points}`,
     );
 
-    const reshuffled = { ...room, hand: withOthersCardsReshuffled(hand, heroId, shuffle) };
+    // A fresh advice store, so the reshuffled room builds its own advice instead of reusing the room's.
+    const reshuffled = { ...room, hand: withOthersCardsReshuffled(hand, heroId, shuffle), coachAdvice: new Map() };
     assert.notDeepEqual(reshuffled.hand.deck, hand.deck);
     assert.deepEqual(toDecisionView(buildViewerHand(reshuffled, heroId)), view, `decision ${points}`);
     if (points % 20 === 0) {

@@ -728,6 +728,10 @@ function createSimulationRoom(input: {
     lastButtonMarkerSeat: null,
     hostPlayerId: null,
     playerStats: new Map(),
+    coachAdvice: new Map(),
+    coachRecords: new Map(),
+    coachSessions: new Map(),
+    coachReviews: new Map(),
   };
 }
 

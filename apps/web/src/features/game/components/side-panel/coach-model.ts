@@ -3,7 +3,17 @@
  * advice (`CoachData.advice`) or from the hand state; nothing is estimated here.
  * `coach-model.test.ts` covers it.
  */
-import { formatBotPositionLabel, type CoachAdvice, type CoachOption, type CoachReason, type HandState } from '@aipoker/shared';
+import {
+  formatBotPositionLabel,
+  type CoachAdvice,
+  type CoachHeroAction,
+  type CoachOption,
+  type CoachReason,
+  type CoachReviewDecision,
+  type CoachSessionTally,
+  type GameReviewEvent,
+  type HandState,
+} from '@aipoker/shared';
 import type { TFunction } from '@/i18n';
 import { formatChips } from '../../../../lib/utils.ts';
 import type { CoachData } from '../../lib/coach-data';
@@ -45,7 +55,7 @@ export function formatPotOddsRatio(potOdds: number): string | null {
 }
 
 /** One option as an action: "Bet 40", "Raise to 220", "All-in 940", "Call", "Check", "Fold". */
-export function optionText(option: CoachOption, t: TFunction): string {
+export function optionText(option: CoachOption | CoachHeroAction, t: TFunction): string {
   switch (option.kind) {
     case 'bet':
     case 'raise':
@@ -156,4 +166,57 @@ export function coachEmptyState(hand: HandState | null, heroId: string | null | 
   if (hand.phase === 'hand_end') return 'hand_over';
   if (hero.status === 'folded') return 'folded';
   return hero.holeCards.length >= 2 ? 'waiting' : 'no_cards';
+}
+
+/**
+ * The review the Coach tab shows, if any: this hand's once it is over, or the last hand's in the
+ * next hand until the hero's first decision there, when the live coach takes over.
+ */
+export function reviewToShow(
+  review: GameReviewEvent | null,
+  hand: HandState | null,
+  heroId: string | null | undefined,
+  heroTurn: boolean,
+): { review: GameReviewEvent; which: 'this' | 'last' } | null {
+  if (!review || !hand || heroTurn) return null;
+  if (review.handNumber === hand.handNumber) return hand.phase === 'hand_end' ? { review, which: 'this' } : null;
+  const heroDecided = hand.actions.some((action) => action.playerId === heroId);
+  return review.handNumber === hand.handNumber - 1 && !heroDecided ? { review, which: 'last' } : null;
+}
+
+export interface ReviewRowText {
+  street: string;
+  /** "You: Call 40" */
+  hero: string;
+  /** "TAG: Raise to 120 70% · Call 30%" */
+  policy: string;
+  verdict: string;
+  /** Each option's own reasons under its name, then the reasons every option shares (label null). */
+  reasons: Array<{ label: string | null; lines: string[] }>;
+}
+
+export function reviewRowText(decision: CoachReviewDecision, t: TFunction, nameOf: (id: string) => string): ReviewRowText {
+  const { advice, heroAction } = decision;
+  const action = heroAction.kind === 'call'
+    ? t('panel.review.call', { amount: formatChips(advice.spot.toCall) })
+    : optionText(heroAction, t);
+  const lines = (reasons: CoachReason[]) => reasons.map((reason) => reasonText(reason, t, nameOf));
+  return {
+    street: t(`panel.log.street.${decision.street}`),
+    hero: t(heroAction.source === 'timeout' ? 'panel.review.you_timeout' : 'panel.review.you', { action }),
+    policy: t('panel.review.policy', {
+      options: advice.options.map((option) => `${optionText(option, t)} ${frequencyLabel(option.frequency)}`).join(' · '),
+    }),
+    verdict: t(`panel.review.verdict.${decision.verdict}`),
+    reasons: [
+      ...advice.options
+        .filter((option) => option.reasons.length > 0)
+        .map((option) => ({ label: optionText(option, t), lines: lines(option.reasons) })),
+      ...(advice.reasons.length > 0 ? [{ label: null, lines: lines(advice.reasons) }] : []),
+    ],
+  };
+}
+
+export function sessionText(session: CoachSessionTally, t: TFunction): string {
+  return t('panel.review.session', session);
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { CoachAdvice, GameCoachEvent, HandState, TableLifecycleSnapshot, ValidActions } from '@aipoker/shared';
+import type { CoachAdvice, GameCoachEvent, GameReviewEvent, HandState, TableLifecycleSnapshot, ValidActions } from '@aipoker/shared';
 
 /**
  * gameStore — 游戏实时状态
@@ -32,6 +32,8 @@ interface GameState {
   validActions: ValidActions | null;
   /** The server's advice for the hero's current decision; only while that decision is open. */
   coach: CoachAdvice | null;
+  /** The hero's latest hand review; kept into the next hand, where the Coach tab shows it until their first decision. */
+  review: GameReviewEvent | null;
   timerStartedAt: number | null;   // 当前行动者计时开始时间 (Date.now())
   timerDurationMs: number;
 
@@ -50,6 +52,7 @@ interface GameState {
   setValidActions: (actions: ValidActions, timeoutMs: number) => void;
   clearValidActions: () => void;
   setCoach: (event: GameCoachEvent) => void;
+  setReview: (event: GameReviewEvent) => void;
   setHandResult: (result: HandResult) => void;
   setHandResultPhase: (phase: HandResult['phase']) => void;
   clearHandResult: () => void;
@@ -65,6 +68,7 @@ const INITIAL_STATE = {
   stateVersion: null,
   validActions: null,
   coach: null,
+  review: null as GameReviewEvent | null,
   timerStartedAt: null,
   timerDurationMs: 30000,
   isWinning: false,
@@ -103,6 +107,10 @@ export const useGameStore = create<GameState>()(
       set((current) =>
         current.validActions && current.stateVersion === event.stateVersion ? { coach: event.advice } : current,
       ),
+
+    // A reconnect replays the current hand's review; an older hand's never replaces a newer one.
+    setReview: (event) =>
+      set((current) => (current.review && current.review.handNumber > event.handNumber ? current : { review: event })),
 
     setHandResult: (result) =>
       set({

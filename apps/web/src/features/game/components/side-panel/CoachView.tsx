@@ -1,7 +1,7 @@
 'use client';
 
-import { memo, useMemo } from 'react';
-import type { CoachActionKind, CoachAdvice, HandState } from '@aipoker/shared';
+import { memo, useMemo, useState } from 'react';
+import type { CoachActionKind, CoachAdvice, CoachVerdict, GameReviewEvent, HandState } from '@aipoker/shared';
 import { useT } from '@/i18n';
 import { cn, formatChips } from '@/lib/utils';
 import type { GameScreenState } from '../../lib/game-screen-state';
@@ -18,6 +18,8 @@ import {
   optionText,
   percent,
   reasonText,
+  reviewRowText,
+  sessionText,
   sizeText,
   strengthFill,
   type CoachData,
@@ -32,6 +34,15 @@ export const OPTION_CLASS: Record<CoachActionKind, string> = {
   fold: 'text-text-2',
 };
 
+/** Existing state inks only: positive for matched, caution for close, plain text for off. */
+const VERDICT_CLASS: Record<CoachVerdict, string> = {
+  matched: 'text-positive',
+  close: 'text-caution',
+  off: 'text-text',
+};
+
+const NO_ROWS: ReadonlySet<number> = new Set();
+
 const POSITION_KEYS = new Set(['utg', 'hj', 'co', 'btn', 'sb', 'bb']);
 
 interface CoachViewProps {
@@ -40,15 +51,35 @@ interface CoachViewProps {
   heroId: string | null;
   /** The finished hand's outcome for the hero, shown once the hand is over. */
   heroSummary?: HeroHandSummary | null | undefined;
+  /** The graded decisions to show off-turn: this hand's once it is over, or the last hand's (see `reviewToShow`). */
+  review?: { review: GameReviewEvent; which: 'this' | 'last' } | null | undefined;
   isVisible: boolean;
   onToggle: () => void;
   className?: string | undefined;
 }
 
-export const CoachView = memo(function CoachView({ data, hand, heroId, heroSummary, isVisible, onToggle, className }: CoachViewProps) {
+export const CoachView = memo(function CoachView({ data, hand, heroId, heroSummary, review, isVisible, onToggle, className }: CoachViewProps) {
   const t = useT();
   const heroText = useHeroSummaryText();
   const context = useMemo(() => deriveCoachContext(hand, heroId), [hand, heroId]);
+  const nameOf = (id: string) => hand?.players.find((player) => player.id === id)?.name ?? id;
+  // Open rows live here, not in HandReview, so they stay open when the next hand deals and the
+  // review moves to another branch below; a new hand's review starts closed.
+  const [openRows, setOpenRows] = useState<{ handNumber: number; rows: ReadonlySet<number> } | null>(null);
+  const reviewList = review ? (
+    <HandReview
+      {...review}
+      open={openRows?.handNumber === review.review.handNumber ? openRows.rows : NO_ROWS}
+      onToggle={(index) =>
+        setOpenRows((current) => {
+          const rows = new Set(current?.handNumber === review.review.handNumber ? current.rows : NO_ROWS);
+          if (!rows.delete(index)) rows.add(index);
+          return { handNumber: review.review.handNumber, rows };
+        })
+      }
+      nameOf={nameOf}
+    />
+  ) : null;
 
   if (!isVisible) {
     return (
@@ -74,9 +105,10 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
       waiting: t('panel.coach.returns'),
     }[state];
     return (
-      <div className={cn('px-4 py-5 text-body', className)}>
+      <div className={cn('min-h-0 overflow-y-auto px-4 py-5 text-body', className)}>
         {state === 'hand_over' && heroSummary && <p className="mb-2 font-semibold text-text">{heroText(heroSummary)}</p>}
         <p className="text-text-3">{message}</p>
+        {reviewList}
       </div>
     );
   }
@@ -87,7 +119,6 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
     advice?.potOdds ?? (context && context.toCall > 0 ? context.toCall / (context.pot + context.toCall) : undefined);
   const positionKey = data.position?.toLowerCase();
   const positionNote = positionKey && POSITION_KEYS.has(positionKey) ? t(`panel.coach.pos.${positionKey as 'utg'}`) : null;
-  const nameOf = (id: string) => hand?.players.find((player) => player.id === id)?.name ?? id;
 
   return (
     <div className={cn('min-h-0 overflow-y-auto px-4 py-4', className)}>
@@ -138,6 +169,7 @@ export const CoachView = memo(function CoachView({ data, hand, heroId, heroSumma
             </span>
           </p>
           <p className="pt-2 text-body text-text-3">{t('panel.coach.waiting')}</p>
+          {reviewList}
         </div>
       )}
     </div>
@@ -200,6 +232,90 @@ function Suggestion({ advice, nameOf }: { advice: CoachAdvice; nameOf: (id: stri
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/**
+ * The hero's decisions next to the TAG policy's options, each with its verdict; a row opens to the
+ * policy's reasons. Then the session tally, which counts verdicts and is not a score.
+ */
+function HandReview({
+  review,
+  which,
+  open,
+  onToggle,
+  nameOf,
+}: {
+  review: GameReviewEvent;
+  which: 'this' | 'last';
+  open: ReadonlySet<number>;
+  onToggle: (index: number) => void;
+  nameOf: (id: string) => string;
+}) {
+  const t = useT();
+  const title = t(which === 'this' ? 'panel.review.this_hand' : 'panel.review.last_hand');
+
+  return (
+    <section aria-label={title} className="mt-4 border-t border-line pt-3">
+      <p className="label-index text-micro text-text-3">{title}</p>
+      <ul className="mt-1 divide-y divide-line">
+        {review.decisions.map((decision, index) => {
+          const row = reviewRowText(decision, t, nameOf);
+          const expanded = open.has(index);
+          return (
+            <li key={decision.advice.actionIndex}>
+              <button
+                type="button"
+                aria-expanded={expanded}
+                disabled={row.reasons.length === 0}
+                onClick={() => onToggle(index)}
+                className="block w-full py-snug text-left transition-colors duration-150 ease-out enabled:hover:bg-panel-2/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brass)]"
+              >
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="label-index text-micro text-text-3">{row.street}</span>
+                  <span className={cn('label-index flex items-center gap-tight text-micro', VERDICT_CLASS[decision.verdict])}>
+                    {row.verdict}
+                    {row.reasons.length > 0 && (
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                        className={cn('shrink-0 text-text-3 transition-transform duration-150 ease-out', expanded && 'rotate-180')}
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    )}
+                  </span>
+                </span>
+                <span className="mt-1 block font-index text-lead font-semibold text-text">{row.hero}</span>
+                <span className="mt-1 block font-index text-body text-text-2">{row.policy}</span>
+              </button>
+              {expanded && (
+                <div className="space-y-snug pb-3 text-body">
+                  {row.reasons.map((group) => (
+                    <div key={group.label ?? ''}>
+                      {group.label && <p className="font-index font-semibold text-text-2">{group.label}</p>}
+                      {group.lines.map((line) => (
+                        <p key={line} className="text-text-3">
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 border-t border-line pt-3 font-index text-body text-text-2">{sessionText(review.session, t)}</p>
     </section>
   );
 }

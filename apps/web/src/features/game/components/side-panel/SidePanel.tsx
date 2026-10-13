@@ -9,6 +9,7 @@ import { summarizeHeroHand } from '../../lib/hand-log-hero';
 import { shouldShowWinnerIdentity } from '../../lib/table-animation';
 import type { SidePanelProps } from '../slots';
 import { CoachView } from './CoachView';
+import { reviewToShow } from './coach-model';
 import { HandLogView } from './HandLogView';
 import { OpponentsView } from './OpponentsView';
 
@@ -33,6 +34,11 @@ export function SidePanel({ hand, trainingData, isTrainingHUDVisible, onToggleTr
         ? summarizeHeroHand(hand, handResult, heroId)
         : null,
     [hand, handResult, heroId],
+  );
+  const review = useGameStore((state) => state.review);
+  const shownReview = useMemo(
+    () => reviewToShow(review, hand, heroId, trainingData?.heroTurn === true),
+    [review, hand, heroId, trainingData?.heroTurn],
   );
   const tabRefs = useRef<Partial<Record<PanelTab, HTMLButtonElement | null>>>({});
 
@@ -121,6 +127,7 @@ export function SidePanel({ hand, trainingData, isTrainingHUDVisible, onToggleTr
               hand={hand}
               heroId={heroId}
               heroSummary={heroSummary}
+              review={shownReview}
               isVisible={isTrainingHUDVisible}
               onToggle={onToggleTrainingHUD}
               className="flex-1"

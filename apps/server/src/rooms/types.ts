@@ -1,4 +1,4 @@
-import type { BotConfig, BotPlayerStats } from '@aipoker/shared';
+import type { BotConfig, BotPlayerStats, CoachAdvice, CoachReviewDecision, CoachSessionTally, GameReviewEvent } from '@aipoker/shared';
 import type { HandState } from '@aipoker/game-engine';
 
 export interface RoomMembership {
@@ -34,4 +34,10 @@ export interface RuntimeRoom {
   hostPlayerId: string | null;
   // Everyone's tendencies over the hands played here; the bots' opponent model reads them.
   playerStats: Map<string, BotPlayerStats>;
+  // Coach review, by human player id: the advice built for their open decision (its stateVersion says
+  // which), their graded decisions this hand, verdict counts over the session, and the last review sent.
+  coachAdvice: Map<string, CoachAdvice>;
+  coachRecords: Map<string, CoachReviewDecision[]>;
+  coachSessions: Map<string, CoachSessionTally>;
+  coachReviews: Map<string, GameReviewEvent>;
 }

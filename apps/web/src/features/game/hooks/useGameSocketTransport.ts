@@ -6,7 +6,7 @@ import { getSocket } from '@/lib/socket';
 import { useSocketSession } from '@/hooks/useSocketSession';
 import { useT } from '@/i18n';
 import { getGameErrorKey } from '../lib/game-errors';
-import type { GameActionRequiredEvent, GameCoachEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
+import type { GameActionRequiredEvent, GameCoachEvent, GameReviewEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
 
 interface UseGameSocketTransportOptions {
   roomId: string;
@@ -20,6 +20,7 @@ interface UseGameSocketTransportOptions {
   onGameState: (payload: GameStateEvent | HandState) => void;
   onActionRequired: (payload: GameActionRequiredEvent) => void;
   onCoach: (payload: GameCoachEvent) => void;
+  onReview: (payload: GameReviewEvent) => void;
   onHandResult: (payload: HandResultEvent) => void;
   onError: (message: string) => void;
   onCleanup?: () => void;
@@ -38,6 +39,7 @@ export function useGameSocketTransport({
   onGameState,
   onActionRequired,
   onCoach,
+  onReview,
   onHandResult,
   onError,
   onCleanup,
@@ -86,6 +88,7 @@ export function useGameSocketTransport({
       socket.on('game:state', onGameState);
       socket.on('game:action_required', onActionRequired);
       socket.on('game:coach', onCoach);
+      socket.on('game:review', onReview);
       socket.on('game:hand_result', onHandResult);
       socket.on('error', handleSocketError);
 
@@ -95,11 +98,12 @@ export function useGameSocketTransport({
         socket.off('game:state', onGameState);
         socket.off('game:action_required', onActionRequired);
         socket.off('game:coach', onCoach);
+        socket.off('game:review', onReview);
         socket.off('game:hand_result', onHandResult);
         socket.off('error', handleSocketError);
       };
     },
-    [onActionRequired, onCoach, onError, onGameState, onHandResult, onReconnected, onReconnecting, t],
+    [onActionRequired, onCoach, onError, onGameState, onHandResult, onReconnected, onReconnecting, onReview, t],
   );
 
   const handleCleanup = useCallback(

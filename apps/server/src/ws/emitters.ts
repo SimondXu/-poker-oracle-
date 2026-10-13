@@ -8,6 +8,7 @@ import {
 } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
+import { takeHandReviews } from '../game-loop/coach-review.ts';
 import { getTableLifecycleSnapshot } from '../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildHandResultPayload } from './view-models/hand-result.ts';
@@ -194,6 +195,22 @@ export function emitGameState(io: Server, room: RuntimeRoom, memberships: Map<st
   emitHandResult(io, room);
 }
 
+/** At hand end, each human's review goes to their own sockets only. */
+export function emitHandReviews(io: Server, room: RuntimeRoom, memberships: Map<string, RoomMembership>): void {
+  const reviews = takeHandReviews(room);
+  const roomSocketIds = io.sockets.adapter.rooms.get(room.id);
+  if (reviews.length === 0 || !roomSocketIds) {
+    return;
+  }
+  for (const socketId of roomSocketIds) {
+    const membership = memberships.get(socketId);
+    const review = membership?.roomId === room.id ? reviews.find((candidate) => candidate.playerId === membership.playerId) : undefined;
+    if (review) {
+      io.to(socketId).emit('game:review', review);
+    }
+  }
+}
+
 export function emitBotStatus(
   io: Server,
   room: RuntimeRoom,
@@ -241,5 +258,12 @@ export function emitGameStateToSocket(
       };
       io.to(socketId).emit('game:hand_result', event);
     }
+  }
+
+  // The client shows this hand's review once it is over, and the last hand's until the player's
+  // first decision of the next; it decides which, so replay either.
+  const review = viewerPlayerId ? room.coachReviews.get(viewerPlayerId) : undefined;
+  if (review && review.handNumber >= room.handNumber - 1) {
+    io.to(socketId).emit('game:review', review);
   }
 }
