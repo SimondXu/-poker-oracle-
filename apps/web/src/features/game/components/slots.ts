@@ -26,8 +26,10 @@ export interface ActionBarProps {
   championStack: number | null;
   /** Hero's chips when the table finished; `net` is null when the session start was not seen (page reloaded). */
   heroResult: { stack: number; net: number | null } | null;
-  /** Coach analysis on the hero's turn; shown as one line below xl, where the panel is a closed sheet. */
+  /** Coach analysis on the hero's turn; shown as one line below xl, where the panel is a closed sheet, and at xl while the panel column is collapsed. */
   coachHint: GameScreenState['trainingData'];
+  /** xl+ only: the side panel column is collapsed, so the Coach tab is not on screen. */
+  isPanelCollapsed: boolean;
   handNumber: number | null;
   onAction: (type: ActionType, amount?: number) => void;
   onSpectate: () => void;
@@ -54,6 +56,7 @@ export interface TopBarProps {
   bigBlind: number | null;
   onBack: () => void;
   onToggleHUD: () => void;
+  isTrainingHUDVisible: boolean;
   onTogglePanel: () => void;
   isPanelOpen: boolean;
 }

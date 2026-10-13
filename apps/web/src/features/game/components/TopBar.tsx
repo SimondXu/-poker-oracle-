@@ -43,6 +43,8 @@ export function TopBar({
   smallBlind,
   bigBlind,
   onBack,
+  onToggleHUD,
+  isTrainingHUDVisible,
   onTogglePanel,
   isPanelOpen,
 }: TopBarProps) {
@@ -130,6 +132,22 @@ export function TopBar({
         </span>
 
         <LocaleToggle />
+
+        {/* Below md the rail is hidden; the top bar carries its coach toggle. */}
+        <button
+          type="button"
+          onClick={onToggleHUD}
+          aria-pressed={isTrainingHUDVisible}
+          aria-label={t('common.rail.coach')}
+          title={t('common.rail.coach')}
+          data-layout-box="coach-toggle"
+          className="flex size-9 touch-manipulation items-center justify-center rounded-[var(--radius-control)] border border-line-2 text-text-2 outline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--color-brass)] aria-pressed:border-brass/60 aria-pressed:text-text md:hidden"
+        >
+          <svg width="18" height="18" {...ICON}>
+            <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
 
         <button
           type="button"

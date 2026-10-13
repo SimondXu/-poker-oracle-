@@ -38,6 +38,7 @@ export function ActionBar({
   championStack,
   heroResult,
   coachHint,
+  isPanelCollapsed,
   handNumber,
   onAction,
   onSpectate,
@@ -101,7 +102,7 @@ export function ActionBar({
         }
         return (
           <div className="flex flex-col gap-snug">
-            <CoachHint data={coachHint} />
+            <CoachHint data={coachHint} isPanelCollapsed={isPanelCollapsed} />
             <ActionControls validActions={validActions} pot={pot} hero={hero} onAction={onAction} />
           </div>
         );

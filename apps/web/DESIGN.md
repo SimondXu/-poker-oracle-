@@ -262,7 +262,7 @@ Table type (inside the stage, in stage em, each with a pixel floor): `seat-micro
 
 ## Layout
 
-**Game screen.** One CSS grid at the viewport (`h-dvh`): rows `3rem` (48px top bar) then the rest; columns: one below `md`; `3.5rem` (56px icon rail) plus the table column at `md` (768px); a third `21.25rem` (340px) side-panel column at `xl` (1280px), which the rail's panel button collapses. Below `xl` the panel is a sheet inside the stage region (bottom sheet under `md`, right drawer at `md`), ending where the dock starts. Below `md` the rail is hidden and the top bar carries the back and panel buttons.
+**Game screen.** One CSS grid at the viewport (`h-dvh`): rows `3rem` (48px top bar) then the rest; columns: one below `md`; `3.5rem` (56px icon rail) plus the table column at `md` (768px); a third `21.25rem` (340px) side-panel column at `xl` (1280px), which the rail's panel button collapses. Below `xl` the panel is a sheet inside the stage region (bottom sheet under `md`, right drawer at `md`), ending where the dock starts. Below `md` the rail is hidden and the top bar carries the back, coach and panel buttons. The dock's one-line coach hint shows wherever the Coach tab is off screen: below `xl`, and at `xl` while the panel is collapsed.
 
 **Table column.** A flex column: connection banner strip, the stage region (`flex-1`), the action dock. The dock is a full-width row below the stage, never over the felt. There is no bottom reserve inside the stage: `TableStage` fills the free space exactly. When the raise sizing row opens, the dock grows upward and the stage shrinks.
 
