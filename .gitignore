@@ -33,3 +33,8 @@ memory/
 # impeccable local artifacts (screenshots, decision-page state)
 apps/web/.impeccable/review/
 apps/web/.impeccable/questions/
+
+# Environment files (secrets); keep examples committable
+.env
+.env.*
+!.env.example
