@@ -8,6 +8,7 @@ import {
   scheduleEmptyRoomTimeout,
   type EmptyRoomTimeouts,
 } from '../../game-loop/empty-room-timeout.ts';
+import { forgetCoachPlayer } from '../../game-loop/coach-review.ts';
 import { getOrCreateRoom, hasHumanPlayers, pickSeatIndex, syncRoomHost } from '../../rooms/room-store.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
 import { emitGameStateToSocket, emitRoomState } from '../emitters.ts';
@@ -117,6 +118,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     room.readyPlayerIds.delete(playerId);
     room.pendingDisconnectPlayerIds.delete(playerId);
     room.spectatingPlayerIds.delete(playerId);
+    forgetCoachPlayer(room, playerId);
     syncRoomHost(room);
   }
 

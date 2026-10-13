@@ -39,7 +39,7 @@ import {
   getTableLifecycleSnapshot,
 } from '../../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../../rooms/types.ts';
-import { recordCoachDecision } from '../../game-loop/coach-review.ts';
+import { captureCoachDecision } from '../../game-loop/coach-review.ts';
 import { emitBotStatus, emitGameState, emitHandReviews } from '../emitters.ts';
 import {
   gameActionPayloadSchema,
@@ -115,9 +115,12 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
       status: 'acted';
       turnToken: string;
     },
+    recordDecision?: (() => void) | null,
   ): Promise<void> {
     room.stateVersion += 1;
     emitGameState(io, room, memberships);
+    // The human's action is graded once the table has the new state; their advice may need building.
+    recordDecision?.();
     if (botStatusEvent) {
       emitBotStatus(io, room, botStatusEvent);
     }
@@ -313,15 +316,16 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
           return;
         }
 
+        let recordDecision: (() => void) | null = null;
         if (isBotActor) {
           console.error('bot turn watchdog fired', { roomId: room.id, playerId: latestActor.id });
           emitBotFailureStatus(latestRoom, latestActor.id, '', 'watchdog');
         } else {
-          recordCoachDecision(latestRoom, timeoutAction, 'timeout');
+          recordDecision = captureCoachDecision(latestRoom, timeoutAction, 'timeout');
         }
         latestRoom.hand = timeoutResult.value;
         syncRoomPlayersFromHand(latestRoom);
-        await emitStateAndProgress(latestRoom);
+        await emitStateAndProgress(latestRoom, undefined, recordDecision);
       }).catch((error: unknown) => {
         console.error('room action timeout task failed', error);
       });
@@ -588,12 +592,12 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
         return;
       }
 
-      recordCoachDecision(room, action, 'player');
+      const recordDecision = captureCoachDecision(room, action, 'player');
       room.hand = result.value;
       recordActionSeq(room, actionPlayerId, parsed.data.seq);
       syncRoomPlayersFromHand(room);
       ack({ ok: true });
-      await emitStateAndProgress(room);
+      await emitStateAndProgress(room, undefined, recordDecision);
     }).catch((error: unknown) => {
       console.error('game:action room task failed', error);
     });

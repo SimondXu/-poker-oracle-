@@ -63,8 +63,9 @@ A record is the contract's `CoachReviewDecision` (street, advice, hero action, v
 2. **When the actor's action is applied:**
    - Applied paths: the player's own action at `ws/handlers/game-events.ts:581`, and the timeout at `:308`.
    - The server classifies the action from the pre-action state and grades it against the kept advice.
-   - If the advice was not built yet (the hero acted within the same tick), the server builds it there and then. It is deterministic by seed, so it matches what would have been sent.
+   - If the advice was not built yet (the hero acted within the same tick), the server reads its inputs before the action is applied and builds it after the ack and the new state have gone out, in the same tick and before the hand's review is taken. It is deterministic by seed, so it matches what would have been sent.
    - The server then appends the record.
+   - A player removed from the room (not one who merely disconnected) loses their kept advice, records, tally and review.
 3. **At hand end**, next to `recordFinishedHandStats`, each human's records go out as one `game:review` event to that player's sockets only:
    - the decisions;
    - the updated session tally;

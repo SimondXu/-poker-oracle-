@@ -127,7 +127,8 @@ export function SidePanel({ hand, trainingData, isTrainingHUDVisible, onToggleTr
               hand={hand}
               heroId={heroId}
               heroSummary={heroSummary}
-              review={shownReview}
+              review={shownReview?.review}
+              reviewedHand={shownReview?.which}
               isVisible={isTrainingHUDVisible}
               onToggle={onToggleTrainingHUD}
               className="flex-1"
