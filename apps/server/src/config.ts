@@ -1,4 +1,25 @@
+import type { AgentModel } from '@aipoker/shared';
 import { z } from 'zod';
+
+import type { CassetteConfig } from './llm/cassette.ts';
+import { DEFAULT_OPENROUTER_BASE_URL, resolveLlmProfile, type ResolvedLlmProfile } from './llm/profiles.ts';
+
+const AGENT_MODELS = ['claude', 'gpt', 'gemini', 'grok', 'minimax'] as const satisfies readonly AgentModel[];
+
+// `claude:<profile>,gpt:<profile>`: each AgentModel label at most once.
+const botProfilesSchema = z.string().trim().min(1).transform((value, context) => {
+  const profiles: Partial<Record<AgentModel, string>> = {};
+  for (const entry of value.split(',')) {
+    const [model, profileId, ...extra] = entry.split(':').map((part) => part.trim());
+    const known = (AGENT_MODELS as readonly string[]).includes(model ?? '');
+    if (!known || !profileId || extra.length > 0 || profiles[model as AgentModel]) {
+      context.addIssue({ code: 'custom', message: `invalid LLM_BOT_PROFILES entry: ${entry}` });
+      return z.NEVER;
+    }
+    profiles[model as AgentModel] = profileId;
+  }
+  return profiles;
+});
 
 const booleanFromEnvSchema = z.preprocess((value) => {
   if (typeof value === 'string') {
@@ -37,6 +58,16 @@ const serverConfigSchema = z.object({
   LLM_AGENT_MAX_PROMPT_TOKENS: z.coerce.number().int().min(1).optional(),
   LLM_AGENT_MAX_COMPLETION_TOKENS: z.coerce.number().int().min(1).optional(),
   LLM_AGENT_ROOM_COST_LIMIT_USD: z.coerce.number().positive().optional(),
+  OPENAI_API_KEY: z.string().trim().min(1).optional(),
+  ANTHROPIC_API_KEY: z.string().trim().min(1).optional(),
+  LLM_RELAY_BASE_URL: z.string().trim().url().optional(),
+  LLM_RELAY_API_KEY: z.string().trim().min(1).optional(),
+  COACH_COMMENTARY_PROFILE: z.string().trim().min(1).optional(),
+  COACH_JUDGE_PROFILE: z.string().trim().min(1).optional(),
+  LLM_BOT_PROFILES: botProfilesSchema.optional(),
+  LLM_DAILY_BUDGET_USD: z.coerce.number().positive().optional(),
+  LLM_CASSETTE: z.enum(['off', 'record', 'replay']).optional(),
+  LLM_CASSETTE_DIR: z.string().trim().min(1).optional(),
 });
 
 export interface ServerConfig {
@@ -62,6 +93,14 @@ export interface ServerConfig {
   llmAgentMaxPromptTokens: number;
   llmAgentMaxCompletionTokens: number;
   llmAgentRoomCostLimitUsd: number;
+  /** Every profile referenced below, with its endpoint and key resolved. */
+  llmProfiles: Record<string, ResolvedLlmProfile>;
+  /** null: commentary is off. */
+  coachCommentaryProfile: string | null;
+  coachJudgeProfile: string | null;
+  llmBotProfiles: Partial<Record<AgentModel, string>>;
+  llmDailyBudgetUsd: number;
+  llmCassette: CassetteConfig;
 }
 
 export type ServerConfigResult =
@@ -76,6 +115,36 @@ export function parseServerConfig(env: Record<string, string | undefined>): Serv
 
   if ((parsed.data.LLM_AGENT_ENABLED ?? false) && !parsed.data.OPENROUTER_API_KEY) {
     return { ok: false, error: 'invalid_server_config' };
+  }
+
+  const llmCassette = parseCassette(parsed.data.LLM_CASSETTE ?? 'off', parsed.data.LLM_CASSETTE_DIR);
+  if (!llmCassette) {
+    return { ok: false, error: 'invalid_server_config' };
+  }
+
+  // Profiles may only read these variables; a referenced profile must resolve.
+  const openRouterBaseUrl = parsed.data.OPENROUTER_BASE_URL ?? DEFAULT_OPENROUTER_BASE_URL;
+  const llmEnv = {
+    OPENROUTER_API_KEY: parsed.data.OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL: openRouterBaseUrl,
+    OPENAI_API_KEY: parsed.data.OPENAI_API_KEY,
+    ANTHROPIC_API_KEY: parsed.data.ANTHROPIC_API_KEY,
+    LLM_RELAY_BASE_URL: parsed.data.LLM_RELAY_BASE_URL,
+    LLM_RELAY_API_KEY: parsed.data.LLM_RELAY_API_KEY,
+  };
+  const llmBotProfiles = parsed.data.LLM_BOT_PROFILES ?? {};
+  const referencedProfiles = [
+    parsed.data.COACH_COMMENTARY_PROFILE,
+    parsed.data.COACH_JUDGE_PROFILE,
+    ...Object.values(llmBotProfiles),
+  ].filter((id): id is string => id !== undefined);
+  const llmProfiles: Record<string, ResolvedLlmProfile> = {};
+  for (const id of referencedProfiles) {
+    const profile = resolveLlmProfile(id, llmEnv);
+    if (!profile) {
+      return { ok: false, error: 'invalid_server_config' };
+    }
+    llmProfiles[id] = profile;
   }
 
   // The dev fallback secret is public, so production must provide its own.
@@ -97,7 +166,7 @@ export function parseServerConfig(env: Record<string, string | undefined>): Serv
       secureCookies: parsed.data.SECURE_COOKIES ?? isProduction,
       authStrict: parsed.data.AUTH_STRICT ?? true,
       openRouterApiKey: parsed.data.OPENROUTER_API_KEY ?? null,
-      openRouterBaseUrl: parsed.data.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
+      openRouterBaseUrl,
       openRouterHttpReferer: parsed.data.OPENROUTER_HTTP_REFERER ?? null,
       openRouterAppTitle: parsed.data.OPENROUTER_APP_TITLE ?? 'AiPoker',
       llmAgentEnabled: parsed.data.LLM_AGENT_ENABLED ?? false,
@@ -109,6 +178,19 @@ export function parseServerConfig(env: Record<string, string | undefined>): Serv
       llmAgentMaxPromptTokens: parsed.data.LLM_AGENT_MAX_PROMPT_TOKENS ?? 4000,
       llmAgentMaxCompletionTokens: parsed.data.LLM_AGENT_MAX_COMPLETION_TOKENS ?? 600,
       llmAgentRoomCostLimitUsd: parsed.data.LLM_AGENT_ROOM_COST_LIMIT_USD ?? 1,
+      llmProfiles,
+      coachCommentaryProfile: parsed.data.COACH_COMMENTARY_PROFILE ?? null,
+      coachJudgeProfile: parsed.data.COACH_JUDGE_PROFILE ?? null,
+      llmBotProfiles,
+      llmDailyBudgetUsd: parsed.data.LLM_DAILY_BUDGET_USD ?? 1,
+      llmCassette,
     }
   };
+}
+
+function parseCassette(mode: 'off' | 'record' | 'replay', dir: string | undefined): CassetteConfig | null {
+  if (mode === 'off') {
+    return { mode };
+  }
+  return dir ? { mode, dir } : null;
 }
