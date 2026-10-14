@@ -10,6 +10,10 @@ import type { ToolRun } from './trace.ts';
  */
 export type BriefKind = 'full' | 'minimal';
 
+/** How the brief is worded and which numbers it carries; a prompt version names one (`PROMPTS[version].brief`). */
+export type BriefFormat = 'brief-0';
+export const DEFAULT_BRIEF_FORMAT: BriefFormat = 'brief-0';
+
 export interface Brief {
   kind: BriefKind;
   ms: number;
@@ -284,6 +288,8 @@ export interface UserMessageInput {
   handNumber: number;
   /** Rendered memory lines; empty for none. */
   notes: readonly string[];
+  /** Defaults to brief-0, the text of prompt v0. */
+  format?: BriefFormat;
 }
 
 /** The user message: brief, notes, the hand's action and the menu. Seats only, never names or ids. */

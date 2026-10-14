@@ -34,6 +34,9 @@
     "coach:samples": "node --conditions=source --experimental-strip-types src/tools/coach-samples.ts",
     "bench:bot-brief": "node --conditions=source --experimental-strip-types src/tools/bot-brief-bench.ts",
     "eval:llm-hu": "node --conditions=source --experimental-strip-types src/tools/llm-hu.ts",
+    "eval:llm-hu-replay": "node --conditions=source --experimental-strip-types src/tools/llm-hu-replay.ts",
+    "eval:llm-hu-spots": "node --conditions=source --experimental-strip-types src/tools/llm-hu-spots.ts",
+    "eval:llm-hu-compare": "node --conditions=source --experimental-strip-types src/tools/llm-hu-compare.ts",
     "eval:cli-canary": "node --conditions=source --experimental-strip-types src/tools/cli-canary.ts"
   }
 }

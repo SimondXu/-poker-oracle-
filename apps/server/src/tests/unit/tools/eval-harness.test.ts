@@ -8,7 +8,7 @@ import { playDealPair, playHalfDeal, runDuplicateHu } from '../../../tools/dupli
 import { POLICIES, parsePolicyName, type PolicyName } from '../../../tools/eval-policies.ts';
 import { addToSample, createSample, summarizeSample } from '../../../tools/eval-utils.ts';
 
-const PROBES: PolicyName[] = ['station', 'maniac-shove', 'overbettor'];
+const PROBES: PolicyName[] = ['station', 'maniac-shove', 'overbettor', 'folder', 'calldown'];
 
 function assertLegal(context: BotDecisionContext, action: BotAction): void {
   switch (action.type) {
@@ -121,4 +121,90 @@ test('ring simulation reports per-player win rates that sum to zero', () => {
 
   assert.ok(players.every((player) => player.winRate.n === 12));
   assert.ok(Math.abs(players.reduce((sum, player) => sum + player.winRate.bbPer100, 0)) < 1e-6);
+});
+
+/** Only what the probes read; they play TAG before the flop, so these are all postflop spots. */
+function spot(hole: string, board: string, facingBet: boolean): BotDecisionContext {
+  const community = board.split(' ');
+  return {
+    phase: community.length === 3 ? 'flop' : community.length === 4 ? 'turn' : 'river',
+    holeCards: hole.split(' '),
+    communityCards: community,
+    canFold: facingBet,
+    canCheck: !facingBet,
+    canCall: facingBet,
+    callAmount: facingBet ? 60 : 0,
+  } as unknown as BotDecisionContext;
+}
+
+const decide = (policy: PolicyName, hole: string, board: string, facingBet: boolean) =>
+  POLICIES[policy](spot(hole, board, facingBet), () => 0.5).type;
+
+test('folder keeps top pair or better and strong draws before the river, folds the rest, and never raises a bet', () => {
+  const calls: Array<[string, string]> = [
+    ['Ah Kd', 'Ac 7d 2s'], // top pair
+    ['9s 9d', '2c 3d 7h'], // overpair
+    ['Ah Td', 'Ac Ts 3d'], // two pair
+    ['Ah Ks', 'Kc 8d 3s'], // top pair with the lower hole card
+    ['9h 8h', 'Kh 7h 2c'], // flush draw
+    ['9h 8d', '6c 7d Ks'], // open-ended straight draw
+  ];
+  const folds: Array<[string, string]> = [
+    ['6s 6d', 'Ac Kd 2h'], // a pocket pair below the board
+    ['Ah 7s', 'Kc 7d 2h'], // second pair
+    ['7h 6h', 'Kd Tc 3s'], // nothing
+    ['9h 8d', '6c 5d Ks'], // gutshot only
+    ['9h 8h', 'Kh 7h 2c 3d 4s'], // the river: the draws have missed
+  ];
+  for (const [hole, board] of calls) {
+    assert.equal(decide('folder', hole, board, true), 'call', `${hole} on ${board}`);
+  }
+  for (const [hole, board] of folds) {
+    assert.equal(decide('folder', hole, board, true), 'fold', `${hole} on ${board}`);
+  }
+  assert.equal(decide('folder', 'Ah Ad', 'Ac Kd 2s', true), 'call');
+  assert.equal(decide('folder', 'Ah Ad', 'Ac Kd 2s', false), POLICIES.tag(spot('Ah Ad', 'Ac Kd 2s', false), () => 0.5).type);
+});
+
+test('calldown never folds a pair or a draw, folds with neither, and never bets or raises', () => {
+  for (const [hole, board] of [['6s 6d', 'Ac Kd 2h'], ['Ah 7s', 'Kc 7d 2h'], ['9h 8d', '6c 5d Ks'], ['9h 8h', 'Kh 7h 2c']]) {
+    assert.equal(decide('calldown', hole!, board!, true), 'call', `${hole} on ${board}`);
+  }
+  for (const [hole, board] of [['7h 6h', 'Kd Tc 3s'], ['Ah 3s', 'Kc 8d 2h'], ['9h 8h', 'Kd 7h 2c 3d 4s']]) {
+    assert.equal(decide('calldown', hole!, board!, true), 'fold', `${hole} on ${board}`);
+  }
+  assert.equal(decide('calldown', 'Ah Ad', 'Ac Ad Kd', false), 'check');
+  // Backdoor draws and overcards are not draws.
+  assert.equal(decide('calldown', 'Ah Kh', '7h 8c 2d', true), 'fold');
+});
+
+test('folder and calldown fold to bets at different rates over seeded duplicate play against TAG', () => {
+  const foldToBet = (b: PolicyName) => {
+    let facing = 0;
+    let folds = 0;
+    for (let deal = 0; deal < 60; deal += 1) {
+      for (const [salt, seats] of [[1, ['tag', b]], [2, [b, 'tag']]] as const) {
+        playHalfDeal({
+          policiesBySeat: [POLICIES[seats[0]], POLICIES[seats[1]]],
+          dealSeed: deal * 104729 + 3,
+          decisionSalt: salt,
+          stackBb: 100,
+          bigBlind: 20,
+          onDecision: (context, action) => {
+            const mine = seats[context.position === 'btn' ? 0 : 1] === b;
+            if (mine && context.phase !== 'preflop' && context.callAmount > 0) {
+              facing += 1;
+              folds += action.type === 'fold' ? 1 : 0;
+            }
+          },
+        });
+      }
+    }
+    return folds / facing;
+  };
+  const folder = foldToBet('folder');
+  const calldown = foldToBet('calldown');
+  assert.ok(folder > 0.4 && folder < 0.85, `folder ${folder}`);
+  assert.ok(calldown > 0.1 && calldown < 0.5, `calldown ${calldown}`);
+  assert.ok(folder > calldown + 0.15);
 });

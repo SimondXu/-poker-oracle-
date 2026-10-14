@@ -47,6 +47,8 @@ export async function playHalfDealAsync<T>(input: {
   bigBlind: number;
   idsBySeat?: readonly [string, string];
   playerStats?: RuntimeRoom['playerStats'];
+  /** The hand's number in the match, 1-based; the default 0 is what every run before snapshot mode used. */
+  handNumber?: number;
   onDecision?: (context: BotDecisionContext, action: BotAction) => void;
 }): Promise<HalfDealAsyncResult<T>> {
   const { policiesBySeat, bigBlind } = input;
@@ -56,6 +58,7 @@ export async function playHalfDealAsync<T>(input: {
   const room = createHeadsUpRoom(idsBySeat, input.playerStats ?? new Map());
   room.smallBlind = smallBlind;
   room.bigBlind = bigBlind;
+  room.handNumber = input.handNumber ?? 0;
 
   const initialized = initializeHand({
     players: idsBySeat.map((id, seatIndex) => ({ id, seatIndex, stack })),
@@ -113,7 +116,40 @@ export interface DealPairAsyncResult<T> {
   traces: Array<{ half: 1 | 2; trace: T }>;
 }
 
-/** Plays deal `index` twice with the same deck: A on seat 0 then A on seat 1. */
+const copyStats = (stats: RuntimeRoom['playerStats']): RuntimeRoom['playerStats'] =>
+  new Map([...stats].map(([id, counts]) => [id, { ...counts }]));
+
+const STAT_FIELDS: Array<keyof BotPlayerStats> = [
+  'hands',
+  'preflopVoluntary',
+  'preflopRaises',
+  'preflopOversizedRaises',
+  'postflopActions',
+  'postflopAggressive',
+  'postflopFacingBets',
+  'postflopFoldsToBets',
+];
+
+/** Adds what each branch counted beyond `base` to `target`, which holds `base`'s counts. */
+function addBranches(target: RuntimeRoom['playerStats'], base: RuntimeRoom['playerStats'], branches: ReadonlyArray<RuntimeRoom['playerStats']>): void {
+  for (const branch of branches) {
+    for (const [id, counts] of branch) {
+      const merged = target.get(id) ?? Object.fromEntries(STAT_FIELDS.map((field) => [field, 0])) as unknown as BotPlayerStats;
+      for (const field of STAT_FIELDS) {
+        merged[field] += counts[field] - (base.get(id)?.[field] ?? 0);
+      }
+      target.set(id, merged);
+    }
+  }
+}
+
+/**
+ * Plays deal `index` twice with the same deck: A on seat 0 then A on seat 1. By default both halves
+ * share one statistics map, so the second half also sees the first. With `snapshotPerPair` both
+ * halves read the state as the pair began and the pair's two hands are merged after it, so what one
+ * half learns about a player cannot be read by the other, where the same cards are dealt the other way
+ * round. It also numbers the hands (2 per deal), which the default leaves at 0.
+ */
 export async function playDealPairAsync<T>(input: {
   a: AsyncPolicy<T>;
   b: AsyncPolicy<T>;
@@ -122,11 +158,19 @@ export async function playDealPairAsync<T>(input: {
   stackBb: number;
   bigBlind: number;
   playerStats: RuntimeRoom['playerStats'];
+  snapshotPerPair?: boolean;
 }): Promise<DealPairAsyncResult<T>> {
   const dealSeed = mixSeed(input.seed, input.index);
-  const shared = { dealSeed, stackBb: input.stackBb, bigBlind: input.bigBlind, playerStats: input.playerStats };
-  const first = await playHalfDealAsync({ ...shared, policiesBySeat: [input.a, input.b], idsBySeat: ['a', 'b'], decisionSalt: 1 });
-  const second = await playHalfDealAsync({ ...shared, policiesBySeat: [input.b, input.a], idsBySeat: ['b', 'a'], decisionSalt: 2 });
+  const shared = { dealSeed, stackBb: input.stackBb, bigBlind: input.bigBlind };
+  const snapshot = input.snapshotPerPair === true;
+  const start = snapshot ? copyStats(input.playerStats) : input.playerStats;
+  const firstStats = snapshot ? copyStats(start) : input.playerStats;
+  const secondStats = snapshot ? copyStats(start) : input.playerStats;
+  const first = await playHalfDealAsync({ ...shared, playerStats: firstStats, policiesBySeat: [input.a, input.b], idsBySeat: ['a', 'b'], decisionSalt: 1, ...(snapshot ? { handNumber: 2 * input.index + 1 } : {}) });
+  const second = await playHalfDealAsync({ ...shared, playerStats: secondStats, policiesBySeat: [input.b, input.a], idsBySeat: ['b', 'a'], decisionSalt: 2, ...(snapshot ? { handNumber: 2 * input.index + 2 } : {}) });
+  if (snapshot) {
+    addBranches(input.playerStats, start, [firstStats, secondStats]);
+  }
   return {
     aBb: first.netBbBySeat[0] + second.netBbBySeat[1],
     traces: [
@@ -156,6 +200,8 @@ export interface MatchRun<T> {
   b: AsyncPolicy<T>;
   stackBb: number;
   bigBlind: number;
+  /** See `playDealPairAsync`. */
+  snapshotPerPair?: boolean;
 }
 
 /**

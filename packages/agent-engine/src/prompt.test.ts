@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import { getPersona, minThinkMs, PERSONA_IDS } from './personas.ts';
-import { BOT_PROMPT_VERSION, botPromptDigest, buildBotMessages, buildSystemPrompt, COMMON_SECTIONS } from './prompt.ts';
+import {
+  BOT_PROMPT_VERSION,
+  botPromptDigest,
+  buildBotMessages,
+  buildSystemPrompt,
+  COMMON_SECTIONS,
+  PROMPT_VERSIONS,
+  PROMPTS,
+} from './prompt.ts';
 
 /**
  * Pins the prompt text to its version, so traces and evals can tell prompts apart. When the text
@@ -13,6 +22,22 @@ const PINNED = { version: 'bot-2026-10-13.1', digest: '4645f1f608e5135b6e2f132ed
 test('the prompt digest is pinned to BOT_PROMPT_VERSION', () => {
   assert.equal(BOT_PROMPT_VERSION, PINNED.version);
   assert.equal(botPromptDigest(), PINNED.digest);
+  assert.equal(botPromptDigest('v0'), PINNED.digest);
+});
+
+test('the Analyst system prompt the first CLI runs used (cli-proto-0) is byte-stable', () => {
+  const text = buildSystemPrompt('analyst', { deep: false });
+  assert.equal(createHash('sha256').update(text).digest('hex'), 'f5a054b314bddb33a38ad3023e7e98c47cc954b05e89d41f3a4bdfbd4963b962');
+  assert.equal(buildSystemPrompt('analyst', { deep: false }, 'v0'), text);
+});
+
+test('every prompt version has its own text, digest and bot version, and names a brief format', () => {
+  const versions = PROMPT_VERSIONS.map((version) => PROMPTS[version]);
+  assert.equal(new Set(versions.map((texts) => texts.botVersion)).size, versions.length);
+  assert.equal(new Set(PROMPT_VERSIONS.map((version) => botPromptDigest(version))).size, versions.length);
+  for (const texts of versions) {
+    assert.ok(texts.common.startsWith('## Role') && texts.brief.startsWith('brief-'), texts.id);
+  }
 });
 
 test('system holds the common sections first, then deep mode, then the persona; user holds the spot', () => {

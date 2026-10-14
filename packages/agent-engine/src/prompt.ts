@@ -1,10 +1,8 @@
 import type { AgentPersonaId } from '@aipoker/shared';
 
+import type { BriefFormat } from './brief.ts';
 import { getPersona, PERSONA_IDS } from './personas.ts';
 import { hashJson, type BotChatMessage } from './trace.ts';
-
-/** Bump with any change to the text below; the digest test pins the text to this version. */
-export const BOT_PROMPT_VERSION = 'bot-2026-10-13.1';
 
 /** Byte-stable, first in `system`, so providers can cache it as a prefix. No ids, no timestamps. */
 export const COMMON_SECTIONS = `## Role
@@ -70,28 +68,66 @@ const ADVISOR_LINE = `
 
 export type PromptMode = { deep: false } | { deep: true; maxRounds: number; withAdvisor: boolean };
 
+/** The prompt versions evals can compare. A version fixes the system text and the brief format it goes with. */
+export const PROMPT_VERSIONS = ['v0'] as const;
+export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
+export const DEFAULT_PROMPT_VERSION: PromptVersion = 'v0';
+
+export interface PromptTexts {
+  id: PromptVersion;
+  /** Bump with any change to the text of this version; the digest test pins the text to it. */
+  botVersion: string;
+  brief: BriefFormat;
+  common: string;
+  deep: string;
+  advisor: string;
+  /** The personas whose text the digest covers. */
+  personas: readonly AgentPersonaId[];
+}
+
+export const PROMPTS: Record<PromptVersion, PromptTexts> = {
+  v0: {
+    id: 'v0',
+    botVersion: 'bot-2026-10-13.1',
+    brief: 'brief-0',
+    common: COMMON_SECTIONS,
+    deep: DEEP_SECTION,
+    advisor: ADVISOR_LINE,
+    personas: PERSONA_IDS,
+  },
+};
+
+/** Version v0, the text the first CLI runs used. */
+export const BOT_PROMPT_VERSION = PROMPTS.v0.botVersion;
+
+export function isPromptVersion(value: string): value is PromptVersion {
+  return (PROMPT_VERSIONS as readonly string[]).includes(value);
+}
+
 /** `system`: the common sections, the deep-mode section in deep mode, then the persona, in cache order. */
-export function buildSystemPrompt(persona: AgentPersonaId, mode: PromptMode): string {
+export function buildSystemPrompt(persona: AgentPersonaId, mode: PromptMode, version: PromptVersion = DEFAULT_PROMPT_VERSION): string {
+  const texts = PROMPTS[version];
   const deep = mode.deep
-    ? DEEP_SECTION.replace('{MAX_ROUNDS}', String(mode.maxRounds)) + (mode.withAdvisor ? ADVISOR_LINE : '')
+    ? texts.deep.replace('{MAX_ROUNDS}', String(mode.maxRounds)) + (mode.withAdvisor ? texts.advisor : '')
     : null;
-  return [COMMON_SECTIONS, deep, getPersona(persona).prompt].filter(Boolean).join('\n\n');
+  return [texts.common, deep, getPersona(persona).prompt].filter(Boolean).join('\n\n');
 }
 
 /** The messages for one decision: the stable system prompt and the volatile user message. */
-export function buildBotMessages(persona: AgentPersonaId, mode: PromptMode, userMessage: string): BotChatMessage[] {
+export function buildBotMessages(persona: AgentPersonaId, mode: PromptMode, userMessage: string, version: PromptVersion = DEFAULT_PROMPT_VERSION): BotChatMessage[] {
   return [
-    { role: 'system', content: buildSystemPrompt(persona, mode) },
+    { role: 'system', content: buildSystemPrompt(persona, mode, version) },
     { role: 'user', content: userMessage },
   ];
 }
 
-/** A hash of every fixed text a bot prompt is built from, pinned in a test to BOT_PROMPT_VERSION. */
-export function botPromptDigest(): string {
+/** A hash of every fixed text a bot prompt of this version is built from, pinned in a test to its botVersion. */
+export function botPromptDigest(version: PromptVersion = DEFAULT_PROMPT_VERSION): string {
+  const texts = PROMPTS[version];
   return hashJson({
-    common: COMMON_SECTIONS,
-    deep: DEEP_SECTION,
-    advisor: ADVISOR_LINE,
-    personas: PERSONA_IDS.map((id) => getPersona(id).prompt),
+    common: texts.common,
+    deep: texts.deep,
+    advisor: texts.advisor,
+    personas: texts.personas.map((id) => getPersona(id).prompt),
   });
 }
