@@ -38,3 +38,55 @@ export type {
   StartAgentTurnInput,
   StartAgentTurnResult,
 } from './agent-turn-coordinator.ts';
+export { buildBrief, renderUserMessage, type Brief, type BriefKind, type UserMessageInput } from './brief.ts';
+export { buildMenu, MENU_IDS, resolveChoice, toDecision, type MenuId, type MenuOption } from './menu.ts';
+export {
+  emptyBotMemory,
+  HAND_CATEGORIES,
+  renderNotes,
+  updateBotMemory,
+  type BotSessionMemory,
+  type HandEndInput,
+  type HandCategory,
+  type NotableEvent,
+  type OpponentImpressions,
+  type OwnHandLine,
+} from './memory.ts';
+export {
+  createToolContext,
+  deepTools,
+  EQUITY_ITERATIONS,
+  runTool,
+  TOOL_NAMES,
+  TOOLS,
+  type BotTurnInput,
+  type ToolArgs,
+  type ToolContext,
+  type ToolMode,
+  type ToolName,
+  type ToolSpec,
+} from './tools/index.ts';
+export {
+  canonicalJson,
+  hashJson,
+  type BotChatMessage,
+  type BotDecisionTrace,
+  type BotFallbackReason,
+  type BotTraceArm,
+  type ToolRun,
+} from './trace.ts';
+export { getPersona, minThinkMs, PERSONA_IDS, type Band, type PersonaBands, type PersonaSpec } from './personas.ts';
+export { BOT_PROMPT_VERSION, botPromptDigest, buildBotMessages, buildSystemPrompt, COMMON_SECTIONS, type PromptMode } from './prompt.ts';
+export {
+  DEEP_RESPONSE_SCHEMA,
+  NOTE_LIMITS,
+  noteRequired,
+  REALTIME_RESPONSE_SCHEMA,
+  TALK_LIMITS,
+  validateDeep,
+  validateRealtime,
+  type Bilingual,
+  type Invalid,
+  type ValidAct,
+  type ValidToolRequest,
+} from './validate.ts';
