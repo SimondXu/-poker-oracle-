@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  BOT_PROMPT_VERSION,
   buildBrief,
   buildMenu,
   buildSystemPrompt,
   createToolContext,
+  DEFAULT_PROMPT_VERSION,
+  PROMPTS,
   REALTIME_RESPONSE_SCHEMA,
   renderUserMessage,
   validateRealtime,
@@ -16,8 +17,18 @@ import {
   type Bilingual,
   type BotTurnInput,
   type MenuOption,
+  type PromptVersion,
 } from '@aipoker/agent-engine';
-import { classifyAction, gradeDecision, type BotAction, type BotDecisionContext, type Card, type CoachActionKind, type CoachVerdict } from '@aipoker/shared';
+import {
+  classifyAction,
+  gradeDecision,
+  type AgentPersonaId,
+  type BotAction,
+  type BotDecisionContext,
+  type Card,
+  type CoachActionKind,
+  type CoachVerdict,
+} from '@aipoker/shared';
 import { adviseFromEquities, chooseBotAction } from '@aipoker/strategy-engine';
 
 import type { AsyncPolicy } from './duplicate-hu-async.ts';
@@ -25,6 +36,8 @@ import { buildClaudeArgs, childEnv, parseClaudeOutput, runClaude, type ClaudeCal
 
 /** Results under this label join later tables only if the prompt digests match (`llm-bots.md`, "CLI players"). */
 export const CLI_PROTO_PROMPT_VERSION = 'cli-proto-0';
+/** The label a prompt version's runs carry. */
+export const CLI_PROTO_LABELS: Record<PromptVersion, string> = { v0: CLI_PROTO_PROMPT_VERSION };
 /** The deep-mode eval deadline (`LLM_AGENT_EVAL_TIMEOUT_MS`). */
 export const DEADLINE_MS = 45_000;
 /**
@@ -39,20 +52,23 @@ const UNCLASSIFIED_IN_A_ROW = 3;
 const PRICE_BLUNDER_GAP = 0.15;
 const RAW_LIMIT = 4_096;
 
-/** The Analyst's system prompt: B2a's assembler, whole. */
-export function cliSystemPrompt(): { text: string; sha256: string } {
-  const text = buildSystemPrompt('analyst', { deep: false });
+/** A prompt version's system prompt for a persona (the Analyst by default): B2a's assembler, whole. */
+export function cliSystemPrompt(version: PromptVersion = DEFAULT_PROMPT_VERSION, persona: AgentPersonaId = 'analyst'): { text: string; sha256: string } {
+  const text = buildSystemPrompt(persona, { deep: false }, version);
   return { text, sha256: createHash('sha256').update(text).digest('hex') };
 }
 
 export interface CliRow {
-  /** `cli-claude/<model>/<effort>` */
+  /** `cli-claude/<model>/<effort>/<prompt version>`, with `+<persona>` unless it is the Analyst. */
   id: string;
   model: string;
   effort: string;
+  prompt: PromptVersion;
+  persona: AgentPersonaId;
 }
 
-export const cliRowId = (model: string, effort: string) => `cli-claude/${model}/${effort}`;
+export const cliRowId = (model: string, effort: string, prompt: PromptVersion = DEFAULT_PROMPT_VERSION, persona: AgentPersonaId = 'analyst') =>
+  `cli-claude/${model}/${effort}/${prompt}${persona === 'analyst' ? '' : `+${persona}`}`;
 
 /** The run ends here: a stop rule tripped. The checkpoint holds everything finished before it. */
 export class StopRun extends Error {}
@@ -146,6 +162,9 @@ export interface CliDecisionTrace {
   traceId: string;
   at: string;
   promptVersion: string;
+  /** The prompt version (`PROMPTS`), which also fixes the brief format. Traces from before it hold v0. */
+  prompt: PromptVersion;
+  persona: AgentPersonaId;
   botPromptVersion: string;
   promptSha256: string;
   model: string;
@@ -226,11 +245,12 @@ function priceBlunder(kind: CoachActionKind, context: BotDecisionContext, equity
   return null;
 }
 
-/** Arm A1 for one decision: the full brief with empty NOTES, then the menu. */
-export function prepareDecision(input: BotTurnInput) {
+/** Arm A1 for one decision: the full brief of the prompt version with empty NOTES, then the menu. */
+export function prepareDecision(input: BotTurnInput, version: PromptVersion = DEFAULT_PROMPT_VERSION) {
+  const format = PROMPTS[version].brief;
   const ctx = createToolContext(input);
   const brief = buildBrief(ctx, 'full');
-  const userMessage = renderUserMessage({ ctx, brief, handNumber: input.handNumber, notes: [] });
+  const userMessage = renderUserMessage({ ctx, brief, handNumber: input.handNumber, notes: [], format });
   return { ctx, brief, userMessage, menu: buildMenu(input.context) };
 }
 
@@ -254,7 +274,7 @@ export function createCliPolicy(deps: CliPolicyDeps): AsyncPolicy<CliDecisionTra
 
   return async (input: BotTurnInput, { rng, seat }) => {
     const { context } = input;
-    const { ctx, brief, userMessage, menu } = prepareDecision(input);
+    const { ctx, brief, userMessage, menu } = prepareDecision(input, row.prompt);
 
     control.beginCall(row.id);
     const cwd = await mkdtemp(join(tmpdir(), 'holdem-cli-'));
@@ -299,8 +319,10 @@ export function createCliPolicy(deps: CliPolicyDeps): AsyncPolicy<CliDecisionTra
     const trace: CliDecisionTrace = {
       traceId: randomUUID(),
       at: new Date().toISOString(),
-      promptVersion: CLI_PROTO_PROMPT_VERSION,
-      botPromptVersion: BOT_PROMPT_VERSION,
+      promptVersion: CLI_PROTO_LABELS[row.prompt],
+      prompt: row.prompt,
+      persona: row.persona,
+      botPromptVersion: PROMPTS[row.prompt].botVersion,
       promptSha256: system.sha256,
       model: row.model,
       effort: row.effort,

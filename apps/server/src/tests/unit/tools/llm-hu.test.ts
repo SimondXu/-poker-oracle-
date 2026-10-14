@@ -5,14 +5,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import type { RunFn, RunResult } from '../../../tools/claude-cli.ts';
-import {
-  cliSystemPrompt,
-  createCliPolicy,
-  FALLBACK_LIMIT,
-  RunControl,
-  StopRun,
-} from '../../../tools/llm-cli-policy.ts';
-import { budgetLines, parseConfig, runEval, type Checkpoint, type EvalDeps, type RunConfig } from '../../../tools/llm-hu.ts';
+import { cliRowId, FALLBACK_LIMIT, RunControl, StopRun } from '../../../tools/llm-cli-policy.ts';
+import { budgetLines, cliPolicyFor, parseConfig, runEval, systemPromptsOf, type Checkpoint, type EvalDeps, type RunConfig } from '../../../tools/llm-hu.ts';
 import { loadDeals } from '../../../tools/llm-hu-report.ts';
 
 const MODEL = 'claude-haiku-5-5';
@@ -48,14 +42,17 @@ const CONFIG: RunConfig = {
   stackBb: 100,
   bigBlind: 20,
   claudeVersion: 'test',
-  promptSha256: cliSystemPrompt().sha256,
+  prompts: ['v0'],
+  persona: 'analyst',
+  snapshotPerPair: false,
+  systemSha256: systemPromptsOf(['v0'], 'analyst'),
 };
 
 const depsFor = (dir: string, control: RunControl, run: RunFn): EvalDeps => ({
   dir,
   control,
   seed: 4242,
-  cliPolicyOf: (row) => createCliPolicy({ row: { id: row.id, model: MODEL, effort: 'low' }, control, system: cliSystemPrompt(), claudeVersion: 'test', run }),
+  cliPolicyOf: (row) => cliPolicyFor(CONFIG, row, control, run),
 });
 
 function harness(run: RunFn, maxCalls = CONFIG.maxCalls) {
@@ -219,4 +216,48 @@ test('the command line takes full model ids, caps concurrency at 3 and prints a 
   assert.throws(() => parseConfig(['--models', 'haiku']), /full model ids/);
   assert.throws(() => parseConfig(['--concurrency', '4']), /concurrency/);
   assert.match(budgetLines(parseConfig([]).config).join('\n'), /about 1200 decisions = 1200 invocations \(cap 1350\)/);
+});
+
+test('the command line takes prompt versions, a persona, snapshot mode and a spot file; row ids carry the prompt version', () => {
+  const defaults = parseConfig([]);
+  assert.deepEqual(defaults.config.prompts, ['v0']);
+  assert.equal(defaults.config.persona, 'analyst');
+  assert.equal(defaults.config.snapshotPerPair, false);
+  assert.equal(defaults.spots, undefined);
+  assert.equal(defaults.config.systemSha256.v0, 'f5a054b314bddb33a38ad3023e7e98c47cc954b05e89d41f3a4bdfbd4963b962');
+
+  const given = parseConfig(['--prompts', 'v0', '--persona', 'bully', '--snapshot-per-pair', '--spots', 'x.json']);
+  assert.equal(given.config.persona, 'bully');
+  assert.equal(given.config.snapshotPerPair, true);
+  assert.equal(given.spots, 'x.json');
+  assert.notEqual(given.config.systemSha256.v0, defaults.config.systemSha256.v0);
+  assert.throws(() => parseConfig(['--prompts', 'v9']), /--prompts takes distinct versions/);
+  assert.throws(() => parseConfig(['--prompts', 'v0,v0']), /distinct/);
+  assert.throws(() => parseConfig(['--persona', 'pirate']), /--persona/);
+
+  assert.equal(cliRowId(MODEL, 'low', 'v0'), 'cli-claude/claude-haiku-5-5/low/v0');
+  assert.equal(cliRowId(MODEL, 'low', 'v0', 'bully'), 'cli-claude/claude-haiku-5-5/low/v0+bully');
+});
+
+test('snapshot mode runs the same deals with real hand numbers; the default keeps HAND 0', async () => {
+  const play = async (snapshotPerPair: boolean) => {
+    const h = harness(async () => success(answer('A')));
+    try {
+      await runEval({ ...CONFIG, snapshotPerPair, matches: 1, dealsPerMatch: 3 }, h.deps, {});
+      const lines = loadDeals(join(h.dir, 'deals.jsonl')).filter((line) => line.row.startsWith('cli-'));
+      return {
+        results: lines.map((line) => `${line.key}#${line.deal}`).sort(),
+        hands: [...new Set(lines.flatMap((line) => line.traces.map((entry) => entry.trace.userMessage.split('\n')[0]!.split(' · ')[0]!)))].sort(),
+        rows: [...new Set(lines.map((line) => line.row))],
+      };
+    } finally {
+      h.cleanup();
+    }
+  };
+  const snapshot = await play(true);
+  const shared = await play(false);
+  assert.deepEqual(snapshot.results, shared.results);
+  assert.deepEqual(shared.hands, ['HAND 0']);
+  assert.deepEqual(snapshot.hands, ['HAND 1', 'HAND 2', 'HAND 3', 'HAND 4', 'HAND 5', 'HAND 6']);
+  assert.deepEqual(snapshot.rows, ['cli-claude/claude-haiku-5-5/low/v0']);
 });

@@ -3,14 +3,17 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeF
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
+import { isPromptVersion, PERSONA_IDS, PROMPT_VERSIONS, type PromptVersion } from '@aipoker/agent-engine';
+import type { AgentPersonaId } from '@aipoker/shared';
+
 import { buildBotTurnInput } from '../game-loop/bot-view.ts';
 import { seededBotSpots } from './bot-spots.ts';
-import { assertCanary, preflight } from './claude-cli.ts';
+import { assertCanary, preflight, type RunFn } from './claude-cli.ts';
 import { playMatchAsync, ruleBotPolicy, runQueue, secretSeed, type AsyncPolicy, type MatchState } from './duplicate-hu-async.ts';
 import { parsePolicyName, POLICIES, type PolicyName } from './eval-policies.ts';
 import { mixSeed, mulberry32 } from './eval-utils.ts';
 import {
-  CLI_PROTO_PROMPT_VERSION,
+  CLI_PROTO_LABELS,
   cliRowId,
   cliSystemPrompt,
   createCliPolicy,
@@ -21,7 +24,9 @@ import {
   type CliDecisionTrace,
   type ControlSnapshot,
 } from './llm-cli-policy.ts';
-import { buildReport, formatReport, loadDeals, percentiles, type DealLine, type Report, type RowMeta } from './llm-hu-report.ts';
+import { EVAL_DIR } from './llm-hu-replay.ts';
+import { collectSpotInputs, formatSpotSummary, loadSpotFile, runSpots } from './llm-hu-spots.ts';
+import { buildReport, formatReport, loadDeals, percentiles, type DealLine, type Report, type ReportMeta, type RowMeta } from './llm-hu-report.ts';
 
 /**
  * Duplicate heads-up matches for Claude models through `claude -p` (`llm-bots.md`, step L1), against
@@ -43,7 +48,13 @@ export interface RunConfig {
   stackBb: number;
   bigBlind: number;
   claudeVersion: string | null;
-  promptSha256: string;
+  /** Each CLI model is played once per prompt version (`--prompts`), all with this persona. */
+  prompts: PromptVersion[];
+  persona: AgentPersonaId;
+  /** Both halves of a deal read the state as the pair began, and hands are numbered (`playDealPairAsync`). */
+  snapshotPerPair: boolean;
+  /** The sha256 of each prompt version's system prompt for the persona. */
+  systemSha256: Record<string, string>;
 }
 
 export interface Checkpoint {
@@ -59,6 +70,7 @@ export interface Checkpoint {
 export interface Row extends RowMeta {
   policy: PolicyName | null;
   model: string | null;
+  prompt: PromptVersion | null;
 }
 
 interface Job {
@@ -87,17 +99,21 @@ const SECONDS_PER_DECISION = 8;
 
 function rowsOf(config: RunConfig): Row[] {
   return [
-    ...config.models.map((model): Row => ({ id: cliRowId(model, config.effort), kind: 'cli', policy: null, model })),
-    ...config.baselines.map((policy): Row => ({ id: `rule/${policy}`, kind: 'rule', policy, model: null })),
+    ...config.models.flatMap((model) =>
+      config.prompts.map((prompt): Row => ({ id: cliRowId(model, config.effort, prompt, config.persona), kind: 'cli', policy: null, model, prompt }))),
+    ...config.baselines.map((policy): Row => ({ id: `rule/${policy}`, kind: 'rule', policy, model: null, prompt: null })),
   ];
 }
+
+export const systemPromptsOf = (prompts: readonly PromptVersion[], persona: AgentPersonaId) =>
+  Object.fromEntries(prompts.map((prompt) => [prompt, cliSystemPrompt(prompt, persona).sha256]));
 
 export function budgetLines(config: RunConfig): string[] {
   const deals = config.matches * config.dealsPerMatch;
   const decisions = Math.round(deals * config.opponents.reduce((sum, opponent) => sum + (DECISIONS_PER_DEAL[opponent] ?? OTHER_DECISIONS_PER_DEAL), 0));
   const hours = (decisions * SECONDS_PER_DECISION) / config.concurrency / 3600;
   return [
-    `Budget: ${config.models.length} CLI row(s) x ${config.opponents.join(', ')}, ${config.matches} matches x ${config.dealsPerMatch} deals = ${deals} deals per opponent`,
+    `Budget: ${config.models.length * config.prompts.length} CLI row(s) (${config.models.join(', ')} x prompt ${config.prompts.join(', ')}, persona ${config.persona}${config.snapshotPerPair ? ', snapshot per pair' : ''}) x ${config.opponents.join(', ')}, ${config.matches} matches x ${config.dealsPerMatch} deals = ${deals} deals per opponent`,
     `  per row about ${decisions} decisions = ${decisions} invocations (cap ${config.maxCalls}), about ${decisions * 2} model requests (2 turns each); at most ${config.concurrency} in flight`,
     `  about ${hours.toFixed(1)} h per row at ${SECONDS_PER_DECISION} s per decision (Haiku; assume 12-20 s for Sonnet)`,
     ...(decisions > config.maxCalls ? [`  WARNING: the estimate is over the cap of ${config.maxCalls}; the run will stop at the cap`] : []),
@@ -106,6 +122,9 @@ export function budgetLines(config: RunConfig): string[] {
 }
 
 const pilotDeals = (config: RunConfig) => Math.max(1, Math.ceil(config.dealsPerMatch * PILOT_SHARE));
+
+export const promptsOf = (config: RunConfig): ReportMeta['prompts'] =>
+  config.prompts.map((prompt) => ({ prompt, label: CLI_PROTO_LABELS[prompt], sha256: config.systemSha256[prompt] ?? '' }));
 
 /** Plays (or resumes) the matches. Returns when they are finished, the pilot is done, or a stop rule tripped. */
 export async function runEval(
@@ -122,7 +141,6 @@ export async function runEval(
   appendFileSync(dealsPath, '');
 
   const rows = rowsOf(config);
-  const system = cliSystemPrompt();
   const policyOf = (row: Row): AsyncPolicy<CliDecisionTrace> => (row.kind === 'cli' ? deps.cliPolicyOf(row) : ruleBotPolicy(POLICIES[row.policy!]));
   const jobs: Job[] = [...rows].sort((left, right) => Number(left.kind === 'rule') - Number(right.kind === 'rule')).flatMap((row) =>
     config.opponents.flatMap((opponent) => Array.from({ length: config.matches }, (_, match): Job => ({ key: `${row.id}|${opponent}|${match}`, row, opponent, match }))),
@@ -144,11 +162,12 @@ export async function runEval(
     renameSync(`${checkpointPath}.tmp`, checkpointPath);
   };
 
-  log(`Run ${config.runId}: ${jobs.length} matches, up to ${until} deals each${until < config.dealsPerMatch ? ' (pilot)' : ''}; prompt ${CLI_PROTO_PROMPT_VERSION} sha256 ${system.sha256.slice(0, 12)}`);
+  const prompts = promptsOf(config);
+  log(`Run ${config.runId}: ${jobs.length} matches, up to ${until} deals each${until < config.dealsPerMatch ? ' (pilot)' : ''}; prompts ${prompts.map((prompt) => `${prompt.label} sha256 ${prompt.sha256.slice(0, 12)}`).join(', ')}`);
   let failure: unknown = null;
   try {
     await runQueue(jobs, config.concurrency, async (job) => {
-      const run = { seed: mixSeed(seed, job.match), a: policyOf(job.row), b: ruleBotPolicy(POLICIES[job.opponent]), stackBb: config.stackBb, bigBlind: config.bigBlind };
+      const run = { seed: mixSeed(seed, job.match), a: policyOf(job.row), b: ruleBotPolicy(POLICIES[job.opponent]), stackBb: config.stackBb, bigBlind: config.bigBlind, snapshotPerPair: config.snapshotPerPair };
       await playMatchAsync(run, states[job.key]!, until, (record, next) => {
         const line: DealLine = {
           key: job.key,
@@ -180,8 +199,8 @@ export async function runEval(
     seed: status === 'done' ? seed : null,
     status,
     claudeVersion: config.claudeVersion,
-    promptVersion: CLI_PROTO_PROMPT_VERSION,
-    promptSha256: system.sha256,
+    prompts,
+    persona: config.persona,
     effort: config.effort,
   });
   if (status === 'done') {
@@ -248,7 +267,14 @@ function ints(value: string | undefined, fallback: number, name: string, max = I
 
 const list = (value: string | undefined, fallback: string) => (value ?? fallback).split(',').map((item) => item.trim()).filter(Boolean);
 
-export function parseConfig(argv: string[]): { config: RunConfig; smoke: boolean; pilot: boolean; resume: string | undefined; sameDealsAs: string | undefined } {
+export function parseConfig(argv: string[]): {
+  config: RunConfig;
+  smoke: boolean;
+  pilot: boolean;
+  resume: string | undefined;
+  sameDealsAs: string | undefined;
+  spots: string | undefined;
+} {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -256,6 +282,10 @@ export function parseConfig(argv: string[]): { config: RunConfig; smoke: boolean
       pilot: { type: 'boolean' },
       resume: { type: 'string' },
       'same-deals-as': { type: 'string' },
+      spots: { type: 'string' },
+      prompts: { type: 'string' },
+      persona: { type: 'string' },
+      'snapshot-per-pair': { type: 'boolean' },
       models: { type: 'string' },
       effort: { type: 'string' },
       opponents: { type: 'string' },
@@ -275,11 +305,22 @@ export function parseConfig(argv: string[]): { config: RunConfig; smoke: boolean
   if (!EFFORTS.includes(effort)) {
     throw new Error(`--effort must be one of ${EFFORTS.join(', ')}`);
   }
+  const prompts = list(values.prompts, 'v0');
+  const unknownPrompt = prompts.find((prompt) => !isPromptVersion(prompt));
+  if (unknownPrompt || new Set(prompts).size !== prompts.length) {
+    throw new Error(`--prompts takes distinct versions from ${PROMPT_VERSIONS.join(', ')}${unknownPrompt ? `, not "${unknownPrompt}"` : ''}`);
+  }
+  const persona = values.persona ?? 'analyst';
+  if (!(PERSONA_IDS as string[]).includes(persona)) {
+    throw new Error(`--persona must be one of ${PERSONA_IDS.join(', ')}`);
+  }
+  const snapshotPerPair = values['snapshot-per-pair'] ?? false;
   return {
     smoke: values.smoke ?? false,
     pilot: values.pilot ?? false,
     resume: values.resume,
     sameDealsAs: values['same-deals-as'],
+    spots: values.spots,
     config: {
       runId: `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${randomBytes(2).toString('hex')}`,
       models,
@@ -293,15 +334,61 @@ export function parseConfig(argv: string[]): { config: RunConfig; smoke: boolean
       stackBb: 100,
       bigBlind: 20,
       claudeVersion: null,
-      promptSha256: cliSystemPrompt().sha256,
+      prompts: prompts as PromptVersion[],
+      persona: persona as AgentPersonaId,
+      snapshotPerPair,
+      systemSha256: systemPromptsOf(prompts as PromptVersion[], persona as AgentPersonaId),
     },
   };
 }
 
-const EVAL_DIR = fileURLToPath(new URL('../../.eval/llm-hu/', import.meta.url));
+/** The CLI policy of one row, on the prompt version and persona the run was configured with. */
+export function cliPolicyFor(config: RunConfig, row: Row, control: RunControl, run?: RunFn): AsyncPolicy<CliDecisionTrace> {
+  return createCliPolicy({
+    row: { id: row.id, model: row.model!, effort: config.effort, prompt: row.prompt!, persona: config.persona },
+    control,
+    system: cliSystemPrompt(row.prompt!, config.persona),
+    claudeVersion: config.claudeVersion ?? 'unknown',
+    ...(run ? { run } : {}),
+  });
+}
+
+
+/** `--spots <file>`: asks the configured rows the questions of an earlier run (`llm-hu-spots.ts`). */
+async function spotsMain(config: RunConfig, spotsPath: string, resume: string | undefined): Promise<void> {
+  const { version, subscriptionType } = preflight();
+  assertCanary(version);
+  config = { ...config, claudeVersion: version };
+  console.log(`claude ${version}, subscription ${subscriptionType ?? 'unknown'}, canary valid for this version and flag set`);
+
+  const file = loadSpotFile(spotsPath);
+  console.log(`Rebuilding ${file.spots.length} spots from ${file.source.kind === 'run' ? `run ${file.source.run}` : `a ${file.source.a} vs ${file.source.b} simulation`}`);
+  const spots = await collectSpotInputs(file);
+  const rows = rowsOf(config).filter((row) => row.kind === 'cli');
+  const control = new RunControl(config.maxCalls);
+  process.once('SIGINT', () => control.stop('interrupted'));
+  console.log(`Budget: ${rows.length} CLI row(s) x ${spots.length} spots = ${rows.length * spots.length} invocations (cap ${config.maxCalls} per row), at most ${config.concurrency} in flight`);
+  const dir = `${EVAL_DIR}spots-${resume ?? config.runId}`;
+  const lines = await runSpots({
+    dir,
+    rows: rows.map((row) => ({ id: row.id, policy: cliPolicyFor(config, row, control) })),
+    spots,
+    concurrency: config.concurrency,
+    log: console.log,
+  });
+  console.log(formatSpotSummary(lines).join('\n'));
+  console.log(`\nOutput: ${dir}`);
+  if (control.stopReason) {
+    console.error(`STOPPED: ${control.stopReason}\nThe finished spots are saved. Continue with the same command and --resume ${resume ?? config.runId}`);
+    process.exitCode = 1;
+  }
+}
 
 async function main(): Promise<void> {
   const parsed = parseConfig(process.argv.slice(2));
+  if (parsed.spots) {
+    return spotsMain(parsed.config, parsed.spots, parsed.resume);
+  }
   let { config } = parsed;
   let resume: Checkpoint | undefined;
   if (parsed.resume) {
@@ -347,13 +434,12 @@ async function main(): Promise<void> {
     control.restore(resume.control);
   }
   process.once('SIGINT', () => control.stop('interrupted'));
-  const system = cliSystemPrompt();
   const deps: EvalDeps = {
     dir,
     control,
     log: console.log,
     ...(seed === undefined ? {} : { seed }),
-    cliPolicyOf: (row) => createCliPolicy({ row: { id: row.id, model: row.model!, effort: config.effort }, control, system, claudeVersion: config.claudeVersion ?? 'unknown' }),
+    cliPolicyOf: (row) => cliPolicyFor(config, row, control),
   };
 
   console.log(budgetLines(config).join('\n'));

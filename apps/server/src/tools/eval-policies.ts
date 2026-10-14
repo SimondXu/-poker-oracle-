@@ -1,9 +1,9 @@
-import { chooseBotAction } from '@aipoker/strategy-engine';
-import type { BotAction, BotDecisionContext } from '@aipoker/shared';
+import { chooseBotAction, describeHand } from '@aipoker/strategy-engine';
+import type { BotAction, BotDecisionContext, Card } from '@aipoker/shared';
 
 export type Policy = (context: BotDecisionContext, rng: () => number) => BotAction;
 
-export const POLICY_NAMES = ['fish', 'tag', 'lag', 'tag-random', 'station', 'maniac-shove', 'overbettor', 'size-reader'] as const;
+export const POLICY_NAMES = ['fish', 'tag', 'lag', 'tag-random', 'station', 'maniac-shove', 'overbettor', 'size-reader', 'folder', 'calldown'] as const;
 export type PolicyName = (typeof POLICY_NAMES)[number];
 
 const OVERBET_POT_FRACTION = 1.5;
@@ -53,6 +53,58 @@ const sizeReader: Policy = (context, rng) => {
   return chooseBotAction(context, 'tag', rng);
 };
 
+const RANK_VALUE: Record<string, number> = { A: 14, K: 13, Q: 12, J: 11, T: 10 };
+const rankValue = (card: Card) => RANK_VALUE[card[0]!] ?? Number(card[0]);
+
+/** The pair is top pair or an overpair: a pocket pair above the board, or a hole card matching the board's highest rank. */
+function pairIsTopOrOver(context: BotDecisionContext): boolean {
+  const [first, second] = context.holeCards.map(rankValue) as [number, number];
+  const boardHigh = Math.max(...context.communityCards.map(rankValue));
+  return first === second ? first > boardHigh : first === boardHigh || second === boardHigh;
+}
+
+/**
+ * The hand's class as the probes read it, from `describeHand` and not from equity. made: a pair or
+ * better using a hole card (the board playing does not count). topPairPlus: top pair, an overpair, or
+ * two pair and better. strongDraw: a flush draw or open-ended straight draw before the river; anyDraw
+ * adds the gutshot.
+ */
+function handClass(context: BotDecisionContext): { made: boolean; topPairPlus: boolean; strongDraw: boolean; anyDraw: boolean } {
+  const { madeHandRank, features } = describeHand(context);
+  const river = context.phase === 'river';
+  return {
+    made: madeHandRank >= 1,
+    topPairPlus: madeHandRank >= 2 || (madeHandRank === 1 && pairIsTopOrOver(context)),
+    strongDraw: !river && (features.flushDraw || features.oesd),
+    anyDraw: !river && (features.flushDraw || features.oesd || features.gutshot),
+  };
+}
+
+const facingBetAfterFlop = (context: BotDecisionContext) => context.phase !== 'preflop' && context.callAmount > 0;
+
+// Plays TAG, but after the flop folds to any bet unless it holds top pair or better (pair kind top/overpair,
+// or two pair+ using a hole card) or, before the river, a flush draw or an open-ended straight draw; never raises a bet.
+const folder: Policy = (context, rng) => {
+  if (!facingBetAfterFlop(context)) {
+    return chooseBotAction(context, 'tag', rng);
+  }
+  const hand = handClass(context);
+  return passive(hand.topPairPlus || hand.strongDraw ? context : { ...context, canCall: false });
+};
+
+// Plays TAG preflop; after the flop never folds a pair (a hole card pairs the board) or any draw (flush, open-ended
+// or gutshot), folds only with neither; never bets or raises, so it checks when it can.
+const calldown: Policy = (context, rng) => {
+  if (context.phase === 'preflop') {
+    return chooseBotAction(context, 'tag', rng);
+  }
+  if (!facingBetAfterFlop(context)) {
+    return passive(context);
+  }
+  const hand = handClass(context);
+  return passive(hand.made || hand.anyDraw ? context : { ...context, canCall: false });
+};
+
 export const POLICIES: Record<PolicyName, Policy> = {
   fish: (context, rng) => chooseBotAction(context, 'fish', rng),
   tag: (context, rng) => chooseBotAction(context, 'tag', rng),
@@ -67,6 +119,8 @@ export const POLICIES: Record<PolicyName, Policy> = {
   'maniac-shove': maniacShove,
   overbettor,
   'size-reader': sizeReader,
+  folder,
+  calldown,
 };
 
 export function parsePolicyName(value: string | undefined): PolicyName {

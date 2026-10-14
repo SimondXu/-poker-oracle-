@@ -30,8 +30,9 @@ export interface ReportMeta {
   seed: number | null;
   status: string;
   claudeVersion: string | null;
-  promptVersion: string;
-  promptSha256: string;
+  /** The system prompts the CLI rows were played with: version, run label and sha256. */
+  prompts: Array<{ prompt: string; label: string; sha256: string }>;
+  persona: string;
   effort: string;
 }
 
@@ -49,6 +50,63 @@ export interface Agreement {
   /** Matched share, with a 95% bootstrap interval over deal pairs. */
   matchedShare: number;
   ci95: [number, number];
+}
+
+/** How the bot used its good and its weak hands when nobody had bet yet (`bot-eval.md`, prompt v1 gates). */
+export interface DecisionMetrics {
+  /** River, nothing to call, equity above 50%, by equity bucket: how often it moved all-in. */
+  riverValue: {
+    spots: number;
+    buckets: Array<{ from: number; to: number; spots: number; allIn: number; allInShare: number | null }>;
+    /**
+     * Chips left on the table against a player who never folds, in bb: (2e - 1) x (all-in minus the bet it made).
+     * Exact against a never-folding opponent only; against anyone else it is the model's number, not a result.
+     */
+    valueLeftBb: number;
+  };
+  /** Flop and turn, nothing to call, equity of 62% or more: how big it bet. */
+  flopTurnValue: { spots: number; bets: number; atLeastPot: number; medianPotShare: number | null };
+  /** After the flop, nothing to call, equity under 35%: how often it bet. */
+  bluff: { spots: number; bets: number; share: number | null };
+}
+
+const RIVER_BUCKETS: Array<[number, number]> = [[0.5, 0.65], [0.65, 0.8], [0.8, 1.01]];
+const median = (values: number[]): number | null => {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted.length === 0 ? null : sorted.length % 2 === 1 ? sorted[(sorted.length - 1) / 2]! : (sorted[sorted.length / 2 - 1]! + sorted[sorted.length / 2]!) / 2;
+};
+
+/** The metrics above over decisions the model made (fallbacks excluded). */
+export function decisionMetrics(traces: readonly CliDecisionTrace[]): DecisionMetrics {
+  const llm = traces.filter((trace) => trace.decision.source === 'llm' && trace.advice.equity !== null);
+  const unbet = llm.filter((trace) => trace.phase !== 'preflop' && trace.menu.some((option) => option.kind === 'check'));
+  const chosenOf = (trace: CliDecisionTrace) => trace.menu.find((option) => option.id === trace.decision.choice);
+  const isBet = (trace: CliDecisionTrace) => trace.decision.kind === 'bet' || trace.decision.kind === 'all_in';
+
+  const river = unbet.filter((trace) => trace.phase === 'river' && trace.advice.equity! > 0.5);
+  let valueLeftBb = 0;
+  const buckets = RIVER_BUCKETS.map(([from, to]) => {
+    const spots = river.filter((trace) => trace.advice.equity! >= from && trace.advice.equity! < to);
+    return { from, to: Math.min(to, 1), spots: spots.length, allIn: spots.filter((trace) => trace.decision.kind === 'all_in').length, allInShare: null as number | null };
+  });
+  for (const trace of river) {
+    const allIn = trace.menu.find((option) => option.kind === 'all_in');
+    const chosen = chosenOf(trace);
+    if (allIn && chosen) {
+      valueLeftBb += (2 * trace.advice.equity! - 1) * (allIn.toBb! - (chosen.kind === 'check' ? 0 : chosen.toBb!));
+    }
+  }
+  buckets.forEach((bucket) => (bucket.allInShare = bucket.spots === 0 ? null : bucket.allIn / bucket.spots));
+
+  const flopTurn = unbet.filter((trace) => trace.phase !== 'river' && trace.advice.equity! >= 0.62);
+  const bets = flopTurn.filter(isBet);
+  const shares = bets.flatMap((trace) => (chosenOf(trace)?.potShare === null || chosenOf(trace) === undefined ? [] : [chosenOf(trace)!.potShare!]));
+  const weak = unbet.filter((trace) => trace.advice.equity! < 0.35);
+  return {
+    riverValue: { spots: river.length, buckets, valueLeftBb },
+    flopTurnValue: { spots: flopTurn.length, bets: bets.length, atLeastPot: shares.filter((share) => share >= 0.995).length, medianPotShare: median(shares) },
+    bluff: { spots: weak.length, bets: weak.filter(isBet).length, share: weak.length === 0 ? null : weak.filter(isBet).length / weak.length },
+  };
 }
 
 export interface CliMetrics {
@@ -69,6 +127,8 @@ export interface CliMetrics {
   notionalUsd: number;
   agreement: { all: Agreement; preflop: Agreement; postflop: Agreement };
   priceBlunders: { count: number; ofDecisionsFacingABet: number; rate: number };
+  /** How it played its good and its weak hands; see `DecisionMetrics`. */
+  play: DecisionMetrics;
   models: string[];
 }
 
@@ -190,6 +250,7 @@ function cliMetrics(lines: DealLine[]): CliMetrics {
       postflop: agreementOf(unitsOf((trace) => trace.phase !== 'preflop')),
     },
     priceBlunders: { count: blunders, ofDecisionsFacingABet: priceSpots.length, rate: priceSpots.length === 0 ? 0 : blunders / priceSpots.length },
+    play: decisionMetrics(traces),
     models: [...new Set(metas.flatMap((meta) => meta.models))],
   };
 }
@@ -258,10 +319,20 @@ const win = (summary: WinRateSummary) => `${f(summary.bbPer100)} ± ${f(summary.
 const pcts = (p: Percentiles) => `p50 ${f(p.p50 / 1000, 1)} s · p95 ${f(p.p95 / 1000, 1)} s · max ${f(p.max / 1000, 1)} s`;
 const agree = (a: Agreement) => `${pct(a.matchedShare)} [${pct(a.ci95[0])}, ${pct(a.ci95[1])}] (matched ${a.matched}, close ${a.close}, off ${a.off})`;
 
+const share = (part: number, whole: number) => (whole === 0 ? '-' : `${part}/${whole}`);
+
+export function formatPlay(play: DecisionMetrics): string[] {
+  return [
+    `  river, nothing to call, equity over 50%: ${play.riverValue.spots} spots; all-in ${play.riverValue.buckets.map((bucket) => `${share(bucket.allIn, bucket.spots)} at ${f(bucket.from * 100)}-${f(bucket.to * 100)}%`).join(' · ')}; model value left vs an all-in ${f(play.riverValue.valueLeftBb)} bb (exact only against a never-folding opponent)`,
+    `  flop/turn, nothing to call, equity 62%+: ${play.flopTurnValue.spots} spots, bet ${play.flopTurnValue.bets}, pot or more ${play.flopTurnValue.atLeastPot}, median size ${play.flopTurnValue.medianPotShare === null ? '-' : `${f(play.flopTurnValue.medianPotShare * 100)}% of the pot`}`,
+    `  after the flop, nothing to call, equity under 35%: bet ${share(play.bluff.bets, play.bluff.spots)}`,
+  ];
+}
+
 export function formatReport(report: Report): string {
   const { meta } = report;
   const out = [
-    `Run ${meta.runId} (${meta.status}) · claude ${meta.claudeVersion ?? 'n/a'} · effort ${meta.effort} · prompt ${meta.promptVersion} sha256 ${meta.promptSha256.slice(0, 12)}`,
+    `Run ${meta.runId} (${meta.status}) · claude ${meta.claudeVersion ?? 'n/a'} · effort ${meta.effort} · persona ${meta.persona} · prompts ${meta.prompts.map((prompt) => `${prompt.prompt} (${prompt.label}) sha256 ${prompt.sha256.slice(0, 12)}`).join(', ')}`,
     `Seed: ${meta.seed ?? 'withheld until the run ends'}`,
   ];
   for (const opponent of [...new Set(report.groups.map((group) => group.opponent))]) {
@@ -283,6 +354,7 @@ export function formatReport(report: Report): string {
         `    preflop ${agree(cli.agreement.preflop)}`,
         `    postflop ${agree(cli.agreement.postflop)}`,
         `  price blunders ${cli.priceBlunders.count} of ${cli.priceBlunders.ofDecisionsFacingABet} decisions facing a bet (${pct(cli.priceBlunders.rate)}) · models ${cli.models.join(', ') || 'n/a'}`,
+        ...formatPlay(cli.play),
       );
     }
   }

@@ -38,7 +38,7 @@ export type {
   StartAgentTurnInput,
   StartAgentTurnResult,
 } from './agent-turn-coordinator.ts';
-export { buildBrief, renderUserMessage, type Brief, type BriefKind, type UserMessageInput } from './brief.ts';
+export { buildBrief, DEFAULT_BRIEF_FORMAT, renderUserMessage, type Brief, type BriefFormat, type BriefKind, type UserMessageInput } from './brief.ts';
 export { buildMenu, MENU_IDS, resolveChoice, toDecision, type MenuId, type MenuOption } from './menu.ts';
 export {
   emptyBotMemory,
@@ -76,7 +76,20 @@ export {
   type ToolRun,
 } from './trace.ts';
 export { getPersona, minThinkMs, PERSONA_IDS, type Band, type PersonaBands, type PersonaSpec } from './personas.ts';
-export { BOT_PROMPT_VERSION, botPromptDigest, buildBotMessages, buildSystemPrompt, COMMON_SECTIONS, type PromptMode } from './prompt.ts';
+export {
+  BOT_PROMPT_VERSION,
+  botPromptDigest,
+  buildBotMessages,
+  buildSystemPrompt,
+  COMMON_SECTIONS,
+  DEFAULT_PROMPT_VERSION,
+  isPromptVersion,
+  PROMPT_VERSIONS,
+  PROMPTS,
+  type PromptMode,
+  type PromptTexts,
+  type PromptVersion,
+} from './prompt.ts';
 export {
   DEEP_RESPONSE_SCHEMA,
   NOTE_LIMITS,
