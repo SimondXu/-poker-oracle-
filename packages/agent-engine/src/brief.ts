@@ -1,5 +1,6 @@
 import { buildBotPositionMap, formatBotPositionLabel, type BotPosition } from '@aipoker/shared';
 
+import { SIZE_BUCKET_LABELS, stackOffShare, streetsLeft } from './exploit.ts';
 import type { MenuOption } from './menu.ts';
 import { TOOLS, runTool, type ToolArgs, type ToolContext, type ToolName } from './tools/index.ts';
 import type { ToolRun } from './trace.ts';
@@ -11,7 +12,7 @@ import type { ToolRun } from './trace.ts';
 export type BriefKind = 'full' | 'minimal';
 
 /** How the brief is worded and which numbers it carries; a prompt version names one (`PROMPTS[version].brief`). */
-export type BriefFormat = 'brief-0';
+export type BriefFormat = 'brief-0' | 'brief-1';
 export const DEFAULT_BRIEF_FORMAT: BriefFormat = 'brief-0';
 
 export interface Brief {
@@ -21,7 +22,7 @@ export interface Brief {
 }
 
 /** Runs the brief's tools; the realtime brief is the deep-mode tools run eagerly, with the same seeds. */
-export function buildBrief(ctx: ToolContext, kind: BriefKind): Brief {
+export function buildBrief(ctx: ToolContext, kind: BriefKind, format: BriefFormat = DEFAULT_BRIEF_FORMAT): Brief {
   const started = performance.now();
   const calls: Array<[ToolName, ToolArgs]> = [
     ['hand_strength', NO_ARGS],
@@ -38,12 +39,21 @@ export function buildBrief(ctx: ToolContext, kind: BriefKind): Brief {
     if (ctx.context.phase === 'preflop') {
       calls.push(['preflop_chart', NO_ARGS]);
     }
+    // The exploit numbers are for a hand against one opponent; at a bigger table the lines stay as in brief-0.
+    if (format === 'brief-1' && headsUp(ctx)) {
+      calls.push(['opponent_read', { seat: ctx.seatOf(ctx.context.opponents![0]!.id), option: null }]);
+      if (ctx.context.phase !== 'preflop') {
+        calls.push(['bet_estimates', NO_ARGS]);
+      }
+    }
   }
   const tools = calls.map(([name, args]) => runTool(ctx, name, args));
   return { kind, ms: performance.now() - started, tools };
 }
 
 const NO_ARGS: ToolArgs = { seat: null, option: null };
+
+const headsUp = (ctx: ToolContext) => (ctx.context.opponents ?? []).length === 1;
 
 type Output<Name extends ToolName> = ReturnType<(typeof TOOLS)[Name]['execute']>;
 
@@ -123,11 +133,18 @@ function header(ctx: ToolContext, handNumber: number, positions: Map<number, Bot
   ].join(' · ');
 }
 
-function handSection(ctx: ToolContext, brief: Brief): string[] {
+/** brief-0 says "top 98%" for the worst hands; brief-1 says "bottom 2%". */
+function handRank(percentile: number, format: BriefFormat): string {
+  return format === 'brief-1' && percentile > 0.5
+    ? `bottom ${Math.max(1, 100 - Math.round(percentile * 100))}%`
+    : `top ${Math.max(1, Math.round(percentile * 100))}%`;
+}
+
+function handSection(ctx: ToolContext, brief: Brief, format: BriefFormat): string[] {
   const { context } = ctx;
   const strength = resultOf(brief, 'hand_strength')!;
   const lines = [
-    `Cards: ${context.holeCards.join(' ')} (${strength.handKey}, top ${Math.max(1, Math.round(strength.preflop.percentile * 100))}% of starting hands)`,
+    `Cards: ${context.holeCards.join(' ')} (${strength.handKey}, ${handRank(strength.preflop.percentile, format)} of starting hands)`,
   ];
   const chart = resultOf(brief, 'preflop_chart');
   if (chart) {
@@ -152,13 +169,16 @@ function handSection(ctx: ToolContext, brief: Brief): string[] {
   return lines;
 }
 
-function priceSection(ctx: ToolContext, brief: Brief): string[] {
+function priceSection(ctx: ToolContext, brief: Brief, format: BriefFormat): string[] {
   const price = resultOf(brief, 'price')!;
+  const stackOff = format === 'brief-1' && headsUp(ctx) ? stackOffShare(price.sprAtStreetStart, streetsLeft(ctx.context.phase)) : null;
   return [[
     `Pot ${chips(price.pot)}`,
     price.toCall > 0 ? `to call ${chips(price.toCall)} · pot odds ${percent(price.potOdds)}` : 'nothing to call',
     ctx.context.phase === 'preflop' ? null : `SPR at the start of the ${ctx.context.phase} ${price.sprAtStreetStart.toFixed(1)}`,
     `effective stack ${chips(price.effectiveStack)} (${bb(price.effectiveStackBb)})`,
+    // Only while there are streets left to spread it over.
+    stackOff !== null && ctx.context.phase !== 'river' ? `stack-off size about ${potShareLabel(stackOff)} per street` : null,
   ].filter(Boolean).join(' · ')];
 }
 
@@ -178,6 +198,25 @@ function equitySection(brief: Brief): string[] {
 
 function statLabel(label: string, stat: { rate: number | null; n: number }): string {
   return `${label} ${stat.rate === null ? '–' : percent(stat.rate)} (n ${stat.n})`;
+}
+
+/** The lines brief-1 adds under an opponent's statistics: folds by bet size, reads, and the hands they showed. */
+function ledgerLines(brief: Brief, seat: number, hands: number): string[] {
+  const read = resultOf(brief, 'opponent_read', seat);
+  if (!read) {
+    return [];
+  }
+  const lines: string[] = [];
+  if (hands > 0) {
+    lines.push(`  folds by bet size: ${read.folds.map((bucket) => `${bucket.label} ${bucket.folded} of ${bucket.faced}`).join(' · ')} · went to showdown ${read.showdowns} of ${read.sawFlop} flops`);
+  }
+  for (const entry of read.reads) {
+    lines.push(`  read: ${entry.label} (${entry.evidence})${entry.hint ? ` → ${entry.hint}` : ''}`);
+  }
+  if (read.shown.length > 0) {
+    lines.push(`  hands shown: ${read.shown.map((hand) => `hand ${hand.hand}: ${hand.cards.join(' ')}, ${CATEGORY_LABELS[hand.made]} (${hand.line}), ${hand.result}`).join('; ')}`);
+  }
+  return lines;
 }
 
 function opponentsSection(ctx: ToolContext, brief: Brief): string[] {
@@ -202,7 +241,7 @@ function opponentsSection(ctx: ToolContext, brief: Brief): string[] {
         likely.push(`on this board about ${percent(range.onBoard.onePair)} one pair, ${percent(range.onBoard.twoPairPlus)} two pair or better, ${percent(range.onBoard.noPair)} no pair${range.onBoard.strongDraw > 0 ? `, ${percent(range.onBoard.strongDraw)} strong draws` : ''}`);
         likely.push(`${percent(range.beatsYou!)} beat you now`);
       }
-      return [[...head, ...stats].join(' · '), `  likely hands: ${likely.join('; ')}`];
+      return [[...head, ...stats].join(' · '), ...ledgerLines(brief, seat, profile.hands), `  likely hands: ${likely.join('; ')}`];
     });
 }
 
@@ -257,7 +296,14 @@ function actionSection(ctx: ToolContext, positions: Map<number, BotPosition>): s
   });
 }
 
-function menuLine(option: MenuOption, context: ToolContext['context']): string {
+type BetEstimate = NonNullable<ReturnType<typeof resultOf<'bet_estimates'>>>['options'][number];
+
+const signed = (value: number) => {
+  const tenths = Math.round(value * 10) / 10;
+  return tenths === 0 ? '0.0 bb' : `${tenths < 0 ? '−' : '+'}${Math.abs(tenths).toFixed(1)} bb`;
+};
+
+function menuLine(option: MenuOption, context: ToolContext['context'], estimate?: BetEstimate): string {
   let action: string;
   switch (option.kind) {
     case 'fold':
@@ -278,8 +324,9 @@ function menuLine(option: MenuOption, context: ToolContext['context']): string {
     `${option.id}  ${action}`,
     bb(option.toBb!),
     potShareLabel(option.potShare!),
-    `bluff needs ${percent(option.bluffBreakEven!)} folds`,
-  ].join(' · ');
+    estimate ? `est. folds ${percent(estimate.fold)} (a bluff needs ${percent(estimate.bluffNeeds)})` : `bluff needs ${percent(option.bluffBreakEven!)} folds`,
+    estimate?.gainBb != null ? `gain vs check ${signed(estimate.gainBb)}` : null,
+  ].filter(Boolean).join(' · ');
 }
 
 export interface UserMessageInput {
@@ -293,22 +340,23 @@ export interface UserMessageInput {
 }
 
 /** The user message: brief, notes, the hand's action and the menu. Seats only, never names or ids. */
-export function renderUserMessage({ ctx, brief, handNumber, notes }: UserMessageInput): string {
+export function renderUserMessage({ ctx, brief, handNumber, notes, format = DEFAULT_BRIEF_FORMAT }: UserMessageInput): string {
   const { context, view } = ctx;
   const positions = buildBotPositionMap(
     view.players.filter((player) => player.status !== 'out' && player.status !== 'sitting_out').map((player) => player.seatIndex),
     view.buttonMarkerSeat,
   );
   const menu = resultOf(brief, 'legal_options')!;
+  const estimates = new Map((resultOf(brief, 'bet_estimates')?.options ?? []).map((estimate) => [estimate.option, estimate]));
   const sections: Array<[string, string[]]> = [
-    ['HAND', handSection(ctx, brief)],
-    ['PRICE', priceSection(ctx, brief)],
+    ['HAND', handSection(ctx, brief, format)],
+    ['PRICE', priceSection(ctx, brief, format)],
     ...(brief.kind === 'full'
       ? [['EQUITY', equitySection(brief)], ['OPPONENTS', opponentsSection(ctx, brief)]] as Array<[string, string[]]>
       : [['SEATS', seatsSection(ctx, positions)]] as Array<[string, string[]]>),
     ['NOTES', [...notes]],
     ['ACTION', actionSection(ctx, positions)],
-    [`MENU (${context.callAmount > 0 && context.canCall ? `to call ${chips(context.callAmount)}` : 'nothing to call'})`, menu.map((option) => menuLine(option, context))],
+    [`MENU (${context.callAmount > 0 && context.canCall ? `to call ${chips(context.callAmount)}` : 'nothing to call'})`, menu.map((option) => menuLine(option, context, estimates.get(option.id)))],
   ];
   return [
     header(ctx, handNumber, positions),

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { emptyBotMemory, type BotSessionMemory, type BotTurnInput, type HandEndInput } from '@aipoker/agent-engine';
+import { emptyBotMemory, emptyLedger, type BotSessionMemory, type BotTurnInput, type HandEndInput, type Ledger } from '@aipoker/agent-engine';
 import { getValidActions } from '@aipoker/game-engine';
 import { buildDecisionContext, type DecisionHand } from '@aipoker/strategy-engine';
 
@@ -56,10 +56,10 @@ function copyMemory(memory: BotSessionMemory | undefined): BotSessionMemory {
 
 /**
  * Everything an LLM bot's decision may read, frozen at the start of its turn. Built only from the
- * bot's viewer hand, the public stats and its own memory: never the deck, other players' cards or
+ * bot's viewer hand, the public stats, the room's public opponent ledger and its own memory: never the deck, other players' cards or
  * `room.coach*` (which hold humans' hole cards). Null when it is not this bot's turn.
  */
-export function buildBotTurnInput(room: RuntimeRoom, botId: string, memory?: BotSessionMemory): BotTurnInput | null {
+export function buildBotTurnInput(room: RuntimeRoom, botId: string, memory?: BotSessionMemory, ledger?: Ledger): BotTurnInput | null {
   const hand = room.hand;
   const actor = hand?.players.find((player) => player.seatIndex === hand.currentActorSeat);
   if (!hand || !actor || actor.id !== botId) {
@@ -85,6 +85,7 @@ export function buildBotTurnInput(room: RuntimeRoom, botId: string, memory?: Bot
     seats: new Map(view.players.map((player) => [player.id, player.seatIndex + 1])),
     stats,
     memory: copyMemory(memory),
+    ledger: structuredClone(ledger ?? emptyLedger()),
     seedBase: `${room.id}:${room.handNumber}:${botId}:${actionIndex}`,
   });
 }

@@ -63,6 +63,13 @@ const PRIOR_FOLD_TO_BET = 0.4;
 // A caller keeps at least this much of their range from the top; the rest would have folded.
 const MIN_CALLING_SHARE = 0.7;
 
+/** The opponent model's priors, for code that reads its evidence the same way (the exploit layer's fold estimates and reads). */
+export const OPPONENT_PRIORS = {
+  weight: PRIOR_WEIGHT,
+  foldToBet: PRIOR_FOLD_TO_BET,
+  postflopAggression: PRIOR_POSTFLOP_AGGRESSION,
+} as const;
+
 interface Tendencies {
   vpip: number;
   preflopRaiseRate: number;

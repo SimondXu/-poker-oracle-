@@ -24,9 +24,9 @@ export const CONFIG: RunConfig = {
   bigBlind: 20,
   claudeVersion: 'test',
   prompts: ['v0'],
-  persona: 'analyst',
+  personas: { v0: 'analyst', 'v1.1': 'exploiter' },
   snapshotPerPair: false,
-  systemSha256: systemPromptsOf(['v0'], 'analyst'),
+  systemSha256: systemPromptsOf(['v0'], { v0: 'analyst' }),
 };
 
 /** A stand-in for `claude -p` that answers with a letter chosen from what it was sent, so the run takes varied actions. */

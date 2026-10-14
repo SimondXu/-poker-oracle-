@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   buildBrief,
   buildMenu,
+  hashJson,
   buildSystemPrompt,
   createToolContext,
   DEFAULT_PROMPT_VERSION,
@@ -16,6 +17,7 @@ import {
   type AgentDecision,
   type Bilingual,
   type BotTurnInput,
+  type Ledger,
   type MenuOption,
   type PromptVersion,
 } from '@aipoker/agent-engine';
@@ -37,7 +39,7 @@ import { buildClaudeArgs, childEnv, parseClaudeOutput, runClaude, type ClaudeCal
 /** Results under this label join later tables only if the prompt digests match (`llm-bots.md`, "CLI players"). */
 export const CLI_PROTO_PROMPT_VERSION = 'cli-proto-0';
 /** The label a prompt version's runs carry. */
-export const CLI_PROTO_LABELS: Record<PromptVersion, string> = { v0: CLI_PROTO_PROMPT_VERSION };
+export const CLI_PROTO_LABELS: Record<PromptVersion, string> = { v0: CLI_PROTO_PROMPT_VERSION, 'v1.1': 'cli-proto-1.1' };
 /** The deep-mode eval deadline (`LLM_AGENT_EVAL_TIMEOUT_MS`). */
 export const DEADLINE_MS = 45_000;
 /**
@@ -52,14 +54,14 @@ const UNCLASSIFIED_IN_A_ROW = 3;
 const PRICE_BLUNDER_GAP = 0.15;
 const RAW_LIMIT = 4_096;
 
-/** A prompt version's system prompt for a persona (the Analyst by default): B2a's assembler, whole. */
-export function cliSystemPrompt(version: PromptVersion = DEFAULT_PROMPT_VERSION, persona: AgentPersonaId = 'analyst'): { text: string; sha256: string } {
+/** A prompt version's system prompt for a persona (the version's own by default; the Analyst for v0): B2a's assembler, whole. */
+export function cliSystemPrompt(version: PromptVersion = DEFAULT_PROMPT_VERSION, persona: AgentPersonaId = PROMPTS[version].defaultPersona): { text: string; sha256: string } {
   const text = buildSystemPrompt(persona, { deep: false }, version);
   return { text, sha256: createHash('sha256').update(text).digest('hex') };
 }
 
 export interface CliRow {
-  /** `cli-claude/<model>/<effort>/<prompt version>`, with `+<persona>` unless it is the Analyst. */
+  /** `cli-claude/<model>/<effort>/<prompt version>`, with `+<persona>` unless it is the version's own persona. */
   id: string;
   model: string;
   effort: string;
@@ -67,8 +69,8 @@ export interface CliRow {
   persona: AgentPersonaId;
 }
 
-export const cliRowId = (model: string, effort: string, prompt: PromptVersion = DEFAULT_PROMPT_VERSION, persona: AgentPersonaId = 'analyst') =>
-  `cli-claude/${model}/${effort}/${prompt}${persona === 'analyst' ? '' : `+${persona}`}`;
+export const cliRowId = (model: string, effort: string, prompt: PromptVersion = DEFAULT_PROMPT_VERSION, persona: AgentPersonaId = PROMPTS[prompt].defaultPersona) =>
+  `cli-claude/${model}/${effort}/${prompt}${persona === PROMPTS[prompt].defaultPersona ? '' : `+${persona}`}`;
 
 /** The run ends here: a stop rule tripped. The checkpoint holds everything finished before it. */
 export class StopRun extends Error {}
@@ -199,10 +201,33 @@ export interface CliDecisionTrace {
   };
   note: Bilingual | null;
   talk: Bilingual | null;
+  /** brief-1 only: the room's opponent ledger the brief was built from, with its hash; null for brief-0. */
+  ledger: { hash: string; json: Ledger } | null;
+  /** brief-1 only: the reads and the per-size estimates the model was shown (what the report scores). */
+  exploit: ExploitTrace | null;
   /** The TAG advice built from the brief's memoised equities, never shown to the model. */
   advice: { equity: number | null; potOdds: number | null; stable: boolean; topKind: CoachActionKind | null };
   verdict: CoachVerdict;
   blunder: 'fold' | 'call' | null;
+}
+
+export interface ExploitTrace {
+  reads: string[];
+  /** The bets the menu priced: option letter, size as a share of the pot, estimated fold, what a bluff needs, river gain in bb. */
+  estimates: Array<{ option: string; share: number; fold: number; bluffNeeds: number; gainBb: number | null }>;
+}
+
+/** What brief-1 showed, read back from the brief's tool runs. */
+function exploitTrace(brief: ReturnType<typeof prepareDecision>['brief']): ExploitTrace | null {
+  const read = brief.tools.find((run) => run.tool === 'opponent_read' && run.ok);
+  const estimates = brief.tools.find((run) => run.tool === 'bet_estimates' && run.ok);
+  if (!read && !estimates) {
+    return null;
+  }
+  return {
+    reads: ((read?.result as { reads: Array<{ label: string }> } | undefined)?.reads ?? []).map((entry) => entry.label),
+    estimates: (estimates?.result as { options: ExploitTrace['estimates'] } | undefined)?.options ?? [],
+  };
 }
 
 function toBotAction(decision: AgentDecision, context: BotDecisionContext): BotAction {
@@ -249,7 +274,7 @@ function priceBlunder(kind: CoachActionKind, context: BotDecisionContext, equity
 export function prepareDecision(input: BotTurnInput, version: PromptVersion = DEFAULT_PROMPT_VERSION) {
   const format = PROMPTS[version].brief;
   const ctx = createToolContext(input);
-  const brief = buildBrief(ctx, 'full');
+  const brief = buildBrief(ctx, 'full', format);
   const userMessage = renderUserMessage({ ctx, brief, handNumber: input.handNumber, notes: [], format });
   return { ctx, brief, userMessage, menu: buildMenu(input.context) };
 }
@@ -348,6 +373,8 @@ export function createCliPolicy(deps: CliPolicyDeps): AsyncPolicy<CliDecisionTra
       decision: { source: fallbackReason === null ? 'llm' : 'fallback', fallbackReason, choice, action, kind: hero.kind },
       note,
       talk,
+      ledger: PROMPTS[row.prompt].brief === 'brief-0' ? null : { hash: hashJson(input.ledger), json: input.ledger },
+      exploit: exploitTrace(brief),
       advice: { equity, potOdds, stable: advice.stable, topKind: advice.options[0]?.kind ?? null },
       verdict: gradeDecision(advice, hero),
       blunder: priceBlunder(hero.kind, context, equity, potOdds, advice.stable),

@@ -23,7 +23,7 @@ export interface PersonaBands {
 
 export interface PersonaSpec {
   id: AgentPersonaId;
-  /** Offered at tables. Nit and chaos wait until B3 measures them: no rule bot anchors their bands. */
+  /** Offered at tables. Nit and chaos wait until B3 measures them: no rule bot anchors their bands; the exploiter is for evals only. */
   enabled: boolean;
   label: string;
   /** The last section of the system prompt. */
@@ -119,6 +119,26 @@ Unpredictable and mischievous. You mix lines so nobody can read you, but you sti
     },
     talkRate: { min: 0.15, max: 0.25 },
     fallback: 'lag',
+  },
+  exploiter: {
+    id: 'exploiter',
+    enabled: false,
+    label: 'the Exploiter',
+    prompt: `## Persona: the Exploiter
+Quiet and single-minded. Your only goal is to win the most chips from these opponents; you have no image to keep up and no statistics to hit.
+- Before the flop: play about the brief's standard width from your seat; against players read as calling a lot, raise more of your better hands instead of limping.
+- After the flop: apply "Playing to win chips" in full.
+- Talk: never; talk is always null.`,
+    // An eval persona with no targets: the bands are wide open so no ring ever flags it.
+    bands: {
+      vpip: { min: 0, max: 1 },
+      pfr: { min: 0, max: 1 },
+      threeBet: { min: 0, max: 1 },
+      foldToOpen: null,
+      maxSizeShare: null,
+    },
+    talkRate: { min: 0, max: 0 },
+    fallback: 'tag',
   },
   showman: {
     id: 'showman',

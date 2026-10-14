@@ -8,6 +8,7 @@ import {
   type Equities,
 } from '@aipoker/strategy-engine';
 
+import type { Ledger } from '../ledger.ts';
 import type { BotSessionMemory } from '../memory.ts';
 
 /** Iterations per equity estimate, as the coach runs them (standard error about 0.02). */
@@ -29,6 +30,8 @@ export interface BotTurnInput {
   seats: ReadonlyMap<string, number>;
   stats: ReadonlyMap<string, BotPlayerStats>;
   memory: BotSessionMemory;
+  /** The room's public opponent ledger as of the start of this hand (or pair), keyed by player id. */
+  ledger: Ledger;
   /** `${room}:${hand}:${bot}:${actionIndex}`; each tool seeds from it. */
   seedBase: string;
 }
@@ -42,6 +45,7 @@ export interface ToolContext {
   seatOf: (playerId: string) => number;
   stats: ReadonlyMap<string, BotPlayerStats>;
   memory: BotSessionMemory;
+  ledger: Ledger;
   seedBase: string;
   /** Equity against every live opponent, computed at most once and shared by the brief and the advisor. */
   equities: Equities;
@@ -69,6 +73,7 @@ export function createToolContext(input: BotTurnInput): ToolContext {
     },
     stats: input.stats,
     memory: input.memory,
+    ledger: input.ledger,
     seedBase: input.seedBase,
     equities: {
       postflop: once(() => analyzePostflop(context, rng(), {

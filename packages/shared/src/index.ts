@@ -12,7 +12,8 @@ export function err<E>(error: E): Result<never, E> {
 
 export type BotPersonality = 'fish' | 'tag' | 'lag';
 export type AgentModel = 'claude' | 'gpt' | 'gemini' | 'grok' | 'minimax';
-export type AgentPersonaId = 'analyst' | 'bully' | 'chaos' | 'nit' | 'showman';
+/** `exploiter` is eval-only (never offered at tables): it plays to win chips and nothing else. */
+export type AgentPersonaId = 'analyst' | 'bully' | 'chaos' | 'exploiter' | 'nit' | 'showman';
 export type BotDecisionPhase = 'preflop' | 'flop' | 'turn' | 'river';
 export type BotPosition = 'sb' | 'bb' | 'btn' | 'co' | 'hj' | 'utg';
 export type BotBettingState = 'unopened' | 'facing_limpers' | 'facing_open' | 'facing_raise' | 'facing_3bet_plus';

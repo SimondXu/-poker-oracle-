@@ -1,10 +1,10 @@
 import { randomInt } from 'node:crypto';
 
-import type { BotTurnInput } from '@aipoker/agent-engine';
+import { emptyLedger, updateLedger, type BotTurnInput, type HandEndInput, type Ledger } from '@aipoker/agent-engine';
 import { applyAction, initializeHand, type HandState } from '@aipoker/game-engine';
 import type { BotAction, BotDecisionContext, BotPlayerStats, Card } from '@aipoker/shared';
 
-import { buildBotTurnInput } from '../game-loop/bot-view.ts';
+import { buildBotHandEnd, buildBotTurnInput } from '../game-loop/bot-view.ts';
 import { recordFinishedHandStats } from '../game-loop/bot-support.ts';
 import type { RuntimeRoom } from '../rooms/types.ts';
 import { createHeadsUpRoom, SMALL_BLIND_RATIO, type HalfDealResult } from './duplicate-hu.ts';
@@ -35,8 +35,20 @@ export function ruleBotPolicy(policy: Policy): AsyncPolicy {
   return async (input, { rng }) => ({ action: policy(input.context, rng) });
 }
 
+/** One action of a finished hand, as the report matches decisions to what the other side did next. */
+export interface LoggedAction {
+  player: string;
+  phase: string;
+  type: string;
+  to: number;
+  potBefore: number;
+}
+
 export interface HalfDealAsyncResult<T> extends HalfDealResult {
   traces: T[];
+  /** The hand's public end state, for the ledger. */
+  handEnd: HandEndInput;
+  actions: LoggedAction[];
 }
 
 export async function playHalfDealAsync<T>(input: {
@@ -49,6 +61,8 @@ export async function playHalfDealAsync<T>(input: {
   playerStats?: RuntimeRoom['playerStats'];
   /** The hand's number in the match, 1-based; the default 0 is what every run before snapshot mode used. */
   handNumber?: number;
+  /** The room's opponent ledger as the hand begins; the players read it, the runner updates it. */
+  ledger?: Ledger;
   onDecision?: (context: BotDecisionContext, action: BotAction) => void;
 }): Promise<HalfDealAsyncResult<T>> {
   const { policiesBySeat, bigBlind } = input;
@@ -83,7 +97,7 @@ export async function playHalfDealAsync<T>(input: {
   while (room.hand.currentActorSeat !== null) {
     const seat = room.hand.currentActorSeat as 0 | 1;
     const actor = room.hand.players.find((player) => player.seatIndex === seat);
-    const turn = actor ? buildBotTurnInput(room, actor.id) : null;
+    const turn = actor ? buildBotTurnInput(room, actor.id, undefined, input.ledger) : null;
     if (!actor || !turn) {
       throw new Error(`No decision context for seat ${seat} in phase ${room.hand.phase}`);
     }
@@ -106,7 +120,12 @@ export async function playHalfDealAsync<T>(input: {
   recordFinishedHandStats(room);
 
   const net = (seat: number) => ((room.hand?.players.find((player) => player.seatIndex === seat)?.stack ?? stack) - stack) / bigBlind;
-  return { netBbBySeat: [net(0), net(1)], deal, traces };
+  const handEnd = buildBotHandEnd(room, idsBySeat[0]);
+  if (!handEnd) {
+    throw new Error('The hand did not end');
+  }
+  const actions = room.hand.actions.map((action): LoggedAction => ({ player: action.playerId, phase: action.phase, type: action.type, to: action.toAmount, potBefore: action.potTotalBefore }));
+  return { netBbBySeat: [net(0), net(1)], deal, traces, handEnd, actions };
 }
 
 export interface DealPairAsyncResult<T> {
@@ -114,6 +133,10 @@ export interface DealPairAsyncResult<T> {
   aBb: number;
   /** Traces by half: 1 is A on the button, 2 is A in the big blind. */
   traces: Array<{ half: 1 | 2; trace: T }>;
+  /** What each half's players did, in order. */
+  hands: Array<{ half: 1 | 2; actions: LoggedAction[] }>;
+  /** The ledger after the pair. */
+  ledger: Ledger;
 }
 
 const copyStats = (stats: RuntimeRoom['playerStats']): RuntimeRoom['playerStats'] =>
@@ -158,6 +181,8 @@ export async function playDealPairAsync<T>(input: {
   stackBb: number;
   bigBlind: number;
   playerStats: RuntimeRoom['playerStats'];
+  /** The ledger before the pair; empty by default. */
+  ledger?: Ledger;
   snapshotPerPair?: boolean;
 }): Promise<DealPairAsyncResult<T>> {
   const dealSeed = mixSeed(input.seed, input.index);
@@ -166,8 +191,11 @@ export async function playDealPairAsync<T>(input: {
   const start = snapshot ? copyStats(input.playerStats) : input.playerStats;
   const firstStats = snapshot ? copyStats(start) : input.playerStats;
   const secondStats = snapshot ? copyStats(start) : input.playerStats;
-  const first = await playHalfDealAsync({ ...shared, playerStats: firstStats, policiesBySeat: [input.a, input.b], idsBySeat: ['a', 'b'], decisionSalt: 1, ...(snapshot ? { handNumber: 2 * input.index + 1 } : {}) });
-  const second = await playHalfDealAsync({ ...shared, playerStats: secondStats, policiesBySeat: [input.b, input.a], idsBySeat: ['b', 'a'], decisionSalt: 2, ...(snapshot ? { handNumber: 2 * input.index + 2 } : {}) });
+  // The ledger follows the statistics: shared by default (no shown cards, so nothing crosses the halves), merged after the pair in snapshot mode.
+  const before = input.ledger ?? emptyLedger();
+  const first = await playHalfDealAsync({ ...shared, playerStats: firstStats, ledger: before, policiesBySeat: [input.a, input.b], idsBySeat: ['a', 'b'], decisionSalt: 1, ...(snapshot ? { handNumber: 2 * input.index + 1 } : {}) });
+  const afterFirst = snapshot ? before : updateLedger(before, first.handEnd, { cards: false });
+  const second = await playHalfDealAsync({ ...shared, playerStats: secondStats, ledger: afterFirst, policiesBySeat: [input.b, input.a], idsBySeat: ['b', 'a'], decisionSalt: 2, ...(snapshot ? { handNumber: 2 * input.index + 2 } : {}) });
   if (snapshot) {
     addBranches(input.playerStats, start, [firstStats, secondStats]);
   }
@@ -177,6 +205,10 @@ export async function playDealPairAsync<T>(input: {
       ...first.traces.map((trace) => ({ half: 1 as const, trace })),
       ...second.traces.map((trace) => ({ half: 2 as const, trace })),
     ],
+    hands: [{ half: 1, actions: first.actions }, { half: 2, actions: second.actions }],
+    ledger: snapshot
+      ? updateLedger(updateLedger(before, first.handEnd, { cards: true }), second.handEnd, { cards: true })
+      : updateLedger(afterFirst, second.handEnd, { cards: false }),
   };
 }
 
@@ -186,6 +218,8 @@ export async function playDealPairAsync<T>(input: {
 export interface MatchState {
   nextDeal: number;
   playerStats: Array<[string, BotPlayerStats]>;
+  /** The room's opponent ledger so far; a state saved before the ledger existed has none. */
+  ledger?: Ledger;
 }
 
 export interface PairRecord<T> extends DealPairAsyncResult<T> {
@@ -218,8 +252,8 @@ export async function playMatchAsync<T>(
   let current = state;
   while (current.nextDeal < untilDeal) {
     const playerStats: RuntimeRoom['playerStats'] = new Map(current.playerStats.map(([id, stats]) => [id, { ...stats }]));
-    const pair = await playDealPairAsync({ ...run, index: current.nextDeal, playerStats });
-    const next: MatchState = { nextDeal: current.nextDeal + 1, playerStats: [...playerStats].map(([id, stats]) => [id, { ...stats }]) };
+    const pair = await playDealPairAsync({ ...run, index: current.nextDeal, playerStats, ...(current.ledger ? { ledger: current.ledger } : {}) });
+    const next: MatchState = { nextDeal: current.nextDeal + 1, playerStats: [...playerStats].map(([id, stats]) => [id, { ...stats }]), ledger: pair.ledger };
     await onPair({ ...pair, deal: current.nextDeal, aStats: playerStats.get('a') ? { ...playerStats.get('a')! } : null }, next);
     current = next;
   }

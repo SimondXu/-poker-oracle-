@@ -75,6 +75,27 @@ export {
   type BotTraceArm,
   type ToolRun,
 } from './trace.ts';
+export {
+  baseFold,
+  betaQuantile,
+  callingEquities,
+  foldEstimate,
+  foldEstimates,
+  foldShift,
+  foldTotals,
+  READ_RULES,
+  readsFor,
+  riverGain,
+  SIZE_BUCKET_EDGES,
+  SIZE_BUCKET_LABELS,
+  sizeBucket,
+  stackOffShare,
+  streetsLeft,
+  type FoldRecord,
+  type OpponentRead,
+  type ReadLabel,
+} from './exploit.ts';
+export { emptyLedger, emptyPlayerLedger, ledgerOf, updateLedger, type Ledger, type PlayerLedger, type ShownHand } from './ledger.ts';
 export { getPersona, minThinkMs, PERSONA_IDS, type Band, type PersonaBands, type PersonaSpec } from './personas.ts';
 export {
   BOT_PROMPT_VERSION,

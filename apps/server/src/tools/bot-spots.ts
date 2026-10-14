@@ -1,5 +1,6 @@
+import { baseFold, emptyLedger, HAND_CATEGORIES, type Ledger, type PlayerLedger } from '@aipoker/agent-engine';
 import { applyAction, getValidActions, initializeHand, type HandState, type PlayerActionInput } from '@aipoker/game-engine';
-import type { BotPlayerStats } from '@aipoker/shared';
+import type { BotPlayerStats, Card } from '@aipoker/shared';
 import { createStableAnalysisRng } from '@aipoker/strategy-engine';
 
 import type { RuntimePlayer, RuntimeRoom } from '../rooms/types.ts';
@@ -9,6 +10,51 @@ type Rng = () => number;
 export interface BotSpot {
   room: RuntimeRoom;
   botId: string;
+  /** Random public ledger for the room's players: counts by bet size, showdowns and a few shown hands. */
+  ledger: Ledger;
+}
+
+const DECK: Card[] = [...'23456789TJQKA'].flatMap((rank) => [...'hdcs'].map((suit) => `${rank}${suit}` as Card));
+const SHOWN_LINES = ['raise 2.5 bb, flop bet 33% pot, turn check, river call', 'call 2.0 bb, flop check, turn bet 75% pot', 'raise 3.0 bb, flop bet 50% pot, turn bet 75% pot, river bet 66% pot', 'raise 2.2 bb, flop check, turn call, river call'];
+
+function randomPlayerLedger(rng: Rng): PlayerLedger {
+  const buckets = [0.33, 0.6, 1, 2].map(() => {
+    const faced = Math.floor(rng() * 9);
+    return { faced, folded: Math.floor(rng() * (faced + 1)) };
+  });
+  const sawFlop = Math.floor(rng() * 40);
+  const shown = Array.from({ length: Math.floor(rng() * 4) }, (_, index) => {
+    const first = Math.floor(rng() * DECK.length);
+    const second = (first + 1 + Math.floor(rng() * (DECK.length - 1))) % DECK.length;
+    return {
+      hand: 40 - index * 7,
+      cards: [DECK[first]!, DECK[second]!] as [Card, Card],
+      made: HAND_CATEGORIES[Math.floor(rng() * 4)]!,
+      line: SHOWN_LINES[Math.floor(rng() * SHOWN_LINES.length)]!,
+      result: (['won', 'lost', 'split'] as const)[Math.floor(rng() * 3)]!,
+    };
+  });
+  return {
+    buckets,
+    sumBase: buckets.reduce((sum, bucket, index) => sum + bucket.faced * baseFold([0.33, 0.6, 1, 2][index]!), 0),
+    sawFlop,
+    showdowns: Math.floor(rng() * (sawFlop + 1)),
+    lightCalldowns: Math.floor(rng() * 4),
+    shown,
+    notable: [],
+  };
+}
+
+/** A ledger for these players with no relation to the hand: the check that nothing in it is ever rendered by id, or confused with hidden cards. */
+export function randomLedger(playerIds: readonly string[], seed: string): Ledger {
+  const rng = createStableAnalysisRng(seed);
+  const ledger = emptyLedger();
+  for (const id of playerIds) {
+    if (rng() < 0.85) {
+      ledger.players[id] = randomPlayerLedger(rng);
+    }
+  }
+  return ledger;
 }
 
 /** A random legal action, biased toward calls so hands reach later streets. */
@@ -95,8 +141,10 @@ export function seededBotSpots(count: number, seed: string): BotSpot[] {
       continue;
     }
 
+    const spotIndex = spots.length;
     spots.push({
       botId: actor.id,
+      ledger: randomLedger(players.map((player) => player.id), `${seed}:ledger:${spotIndex}`),
       room: {
         ...emptyRoom(players),
         stateVersion: 1 + Math.floor(rng() * 400),

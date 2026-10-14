@@ -1,6 +1,7 @@
 import type { AgentPersonaId } from '@aipoker/shared';
 
 import type { BriefFormat } from './brief.ts';
+import { READ_RULES } from './exploit.ts';
 import { getPersona, PERSONA_IDS } from './personas.ts';
 import { hashJson, type BotChatMessage } from './trace.ts';
 
@@ -69,7 +70,7 @@ const ADVISOR_LINE = `
 export type PromptMode = { deep: false } | { deep: true; maxRounds: number; withAdvisor: boolean };
 
 /** The prompt versions evals can compare. A version fixes the system text and the brief format it goes with. */
-export const PROMPT_VERSIONS = ['v0'] as const;
+export const PROMPT_VERSIONS = ['v0', 'v1.1'] as const;
 export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
 export const DEFAULT_PROMPT_VERSION: PromptVersion = 'v0';
 
@@ -78,21 +79,93 @@ export interface PromptTexts {
   /** Bump with any change to the text of this version; the digest test pins the text to it. */
   botVersion: string;
   brief: BriefFormat;
+  /** The persona a run plays this version with unless told otherwise. */
+  defaultPersona: AgentPersonaId;
   common: string;
   deep: string;
   advisor: string;
+  /** The read thresholds this version shows reads under, hashed into its digest; none for a version without reads. */
+  reads?: typeof READ_RULES;
   /** The personas whose text the digest covers. */
   personas: readonly AgentPersonaId[];
 }
+
+/** v1.1 is v0 with the edits below (v1, never run, differed only in the read thresholds), each checked against the text it replaces so a change to v0 cannot slip past it. */
+function revise(text: string, edits: ReadonlyArray<readonly [from: string, to: string]>): string {
+  return edits.reduce((result, [from, to]) => {
+    if (!result.includes(from)) {
+      throw new Error(`prompt v1.1: the text to replace is not in v0: ${from.slice(0, 60)}`);
+    }
+    return result.replace(from, () => to);
+  }, text);
+}
+
+const V1_COMMON = revise(COMMON_SECTIONS, [
+  [
+    "- The engine's numbers are estimates. Equity is a simulation against each opponent's likely hands, given what they did and their statistics, and comes with a standard error; when two choices are closer than that error, treat them as close. Statistics from fewer than 30 opportunities are weak evidence.",
+    `- The engine's numbers are estimates. Equity is a simulation against each opponent's likely hands, given what they did and their statistics, and comes with a standard error; when two choices are closer than that error, treat them as close. Equity already accounts for how loose or aggressive each opponent has been: don't adjust for that a second time.
+- Opponent statistics come from this session, each with its sample size n. The engine's fold estimates and reads start from a typical player and move only as evidence builds, so they already weigh n: rely on them rather than on a raw percentage, and never change your play because of one or two hands.`,
+  ],
+  [
+    '- PRICE: the pot, what it costs you to call, pot odds (the equity a call needs to break even), the stack-to-pot ratio (SPR) when the street began, and the effective stack.',
+    '- PRICE: the pot, what it costs you to call, pot odds (the equity a call needs to break even), the stack-to-pot ratio (SPR) when the street began, the effective stack, and on the flop and turn the stack-off size: the bet per street, as a share of the pot, that would put the effective stack in by the river if every bet is called.',
+  ],
+  [
+    '- OPPONENTS: one line per live opponent: seat, position, stack, hands observed, VPIP (put chips in voluntarily before the flop), PFR (raised before the flop), aggression after the flop and fold to a bet, each with its sample size n; then an estimate of their likely hands.',
+    '- OPPONENTS: one line per live opponent: seat, position, stack, hands observed, VPIP (put chips in voluntarily before the flop), PFR (raised before the flop), aggression after the flop and fold to a bet, each with its sample size n; how often they folded to bets of each size and how often they went to showdown; a read, only once the evidence is strong enough to act on; hands they showed this session; then an estimate of their likely hands.',
+  ],
+  [
+    "- NOTES: what you saw earlier this session, and your own statistics against your persona's targets.",
+    "- NOTES: your own recent hands and, for some personas, your statistics against your persona's targets.",
+  ],
+  [
+    '- Options are lettered A, B, C and so on. Each shows the action and its street total; bets and raises also show the size in bb, the size as a share of the pot, and how often it must win the pot at once to break even as a pure bluff.',
+    '- Options are lettered A, B, C and so on. Each shows the action and its street total; bets and raises also show the size in bb and as a share of the pot. Against a single opponent, bets also show the engine\'s estimate of how often that opponent folds to that size, next to how often a pure bluff needs them to fold; on the river they also show the expected gain over checking, in bb, counting their folds and your equity against the hands that would call. The estimates assume they only call or fold.',
+  ],
+  [
+    '## Answer',
+    `## Playing to win chips
+Win as many chips as you can from these particular opponents. Play a sound standard game until an opponent has shown a tendency, then exploit it.
+- Value: bet when you are ahead of the hands that would call. Against a player who rarely folds, bet bigger, not smaller: they call large bets about as often as small ones. With a strong hand against such a player, bet about the stack-off size on the flop and turn so that the stacks go in by the river.
+- River: take the bet with the highest expected gain unless this hand's action gives a clear reason the estimate is wrong. When all-in shows the highest gain, it is the best value bet, however large it looks.
+- Bluffs: with a hand that seldom wins at a showdown, bluff only at a size whose fold estimate beats what the bluff needs by about 10 points or more; otherwise check or fold. Never bluff a player read as calling a lot.
+- Calls: equity already reflects how often an opponent bluffs, so call when it beats the pot odds. A read of "rarely bets" means their bets and raises are stronger than their likely hands suggest: fold more medium hands to them.
+- Your persona may limit how far you go, for example by bluffing less; within its style, apply these.
+
+## Answer`,
+  ],
+]);
+
+const V1_DEEP = revise(DEEP_SECTION, [
+  [
+    "- opponent_profile(seat): that opponent's full public statistics and notable earlier hands.",
+    `- opponent_profile(seat): that opponent's full public statistics and notable earlier hands.
+- opponent_read(seat): how often that opponent folded to bets of each size, how often they went to showdown, the hands they showed this session, and any read on them.
+- bet_estimates(): against a single opponent, the engine's fold estimate for each bet on the menu, what a bluff needs and, on the river, the expected gain over checking.`,
+  ],
+]);
 
 export const PROMPTS: Record<PromptVersion, PromptTexts> = {
   v0: {
     id: 'v0',
     botVersion: 'bot-2026-10-13.1',
     brief: 'brief-0',
+    defaultPersona: 'analyst',
     common: COMMON_SECTIONS,
     deep: DEEP_SECTION,
     advisor: ADVISOR_LINE,
+    // The five personas of the time; the digest must not move when a persona is added.
+    personas: ['analyst', 'nit', 'bully', 'chaos', 'showman'],
+  },
+  'v1.1': {
+    id: 'v1.1',
+    botVersion: 'bot-2026-10-14.2',
+    brief: 'brief-1',
+    defaultPersona: 'exploiter',
+    common: V1_COMMON,
+    deep: V1_DEEP,
+    advisor: ADVISOR_LINE,
+    reads: READ_RULES,
     personas: PERSONA_IDS,
   },
 };
@@ -128,6 +201,7 @@ export function botPromptDigest(version: PromptVersion = DEFAULT_PROMPT_VERSION)
     common: texts.common,
     deep: texts.deep,
     advisor: texts.advisor,
+    ...(texts.reads ? { reads: texts.reads } : {}),
     personas: texts.personas.map((id) => getPersona(id).prompt),
   });
 }

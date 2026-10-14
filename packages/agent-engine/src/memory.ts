@@ -80,7 +80,7 @@ const STREETS: Record<string, BotDecisionPhase> = {
   betting_river: 'river',
 };
 
-interface PublicAction {
+export interface PublicAction {
   playerId: string;
   street: BotDecisionPhase;
   type: string;
@@ -93,7 +93,7 @@ interface PublicAction {
   potShare: number;
 }
 
-function replay(view: DecisionHand): PublicAction[] {
+export function replay(view: DecisionHand): PublicAction[] {
   let street = '';
   let currentMax = 0;
   return view.actions.flatMap((action) => {
@@ -121,7 +121,7 @@ function replay(view: DecisionHand): PublicAction[] {
 }
 
 /** Hole cards shown at the showdown (two or more players still in); everyone else's, the bot's own included, are dropped. */
-function shownCards(view: DecisionHand): Map<string, [Card, Card]> {
+export function shownCards(view: DecisionHand): Map<string, [Card, Card]> {
   const stillIn = view.players.filter((player) => player.status !== 'folded');
   const shown = new Map<string, [Card, Card]>();
   if (stillIn.length >= 2) {
@@ -134,12 +134,12 @@ function shownCards(view: DecisionHand): Map<string, [Card, Card]> {
   return shown;
 }
 
-function categoryOf(cards: readonly Card[], board: readonly Card[]): { category: HandCategory; owned: number } {
+export function categoryOf(cards: readonly Card[], board: readonly Card[]): { category: HandCategory; owned: number } {
   const { rank, madeHandRank } = describeHand({ holeCards: [...cards], communityCards: [...board] });
   return { category: HAND_CATEGORIES[rank[0] ?? 0]!, owned: madeHandRank };
 }
 
-function eventsFor(
+export function eventsFor(
   playerId: string,
   actions: readonly PublicAction[],
   hand: number,
@@ -181,7 +181,7 @@ function eventsFor(
 }
 
 /** The bot's own actions in a few words, e.g. "raise 2.5 bb, flop bet 33% pot, turn check". */
-function ownLine(actions: readonly PublicAction[], bigBlind: number): string {
+export function ownLine(actions: readonly PublicAction[], bigBlind: number): string {
   const bb = (chips: number) => `${(chips / bigBlind).toFixed(1)} bb`;
   return actions.map((action) => {
     let verb: string;
