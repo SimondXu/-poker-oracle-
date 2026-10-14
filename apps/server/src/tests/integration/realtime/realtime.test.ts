@@ -2662,11 +2662,13 @@ test('game loop auto-runs bot turns and returns control to human or ends hand', 
   assert.deepEqual(startAck, { ok: true });
   await startState;
 
+  // Real bot pacing: if the bot checks preflop it also opens the flop, so the human waits two thinking
+  // delays (up to 2.1s each) plus the new-street pause (1.8s), about 6s before CPU time.
   const handProgressAfterBotActions = waitForState(
     human,
     (payload) =>
       payload.hand.actions.length >= 2 && (payload.hand.currentActorSeat === 0 || payload.hand.phase === 'hand_end'),
-    5000
+    10_000
   );
   const actionAck = await emitWithAck<{ ok: boolean; error?: string }>(human, 'game:action', {
     roomId: 'AAAAAK',
