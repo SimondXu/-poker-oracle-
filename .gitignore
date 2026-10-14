@@ -42,5 +42,3 @@ apps/server/.eval/
 .env.*
 !.env.example
 
-# Eval runs: traces, checkpoints and the CLI canary stamp
-apps/server/.eval/
