@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { parseServerConfig } from '../../../config.ts';
+import { LLM_PROFILES } from '../../../llm/profiles.ts';
 
 test('parseServerConfig uses defaults when env is empty', () => {
   const result = parseServerConfig({});
@@ -31,7 +32,13 @@ test('parseServerConfig uses defaults when env is empty', () => {
     llmAgentMaxToolRoundsEval: 3,
     llmAgentMaxPromptTokens: 4000,
     llmAgentMaxCompletionTokens: 600,
-    llmAgentRoomCostLimitUsd: 1
+    llmAgentRoomCostLimitUsd: 1,
+    llmProfiles: {},
+    coachCommentaryProfile: null,
+    coachJudgeProfile: null,
+    llmBotProfiles: {},
+    llmDailyBudgetUsd: 1,
+    llmCassette: { mode: 'off' }
   });
 });
 
@@ -141,4 +148,80 @@ test('parseServerConfig rejects enabled llm agent runtime without an OpenRouter 
     ok: false,
     error: 'invalid_server_config',
   });
+});
+
+test('parseServerConfig resolves the LLM profiles it references', () => {
+  const result = parseServerConfig({
+    OPENROUTER_API_KEY: 'or-key',
+    ANTHROPIC_API_KEY: 'anthropic-key',
+    COACH_COMMENTARY_PROFILE: 'openrouter-gpt-6-luna',
+    COACH_JUDGE_PROFILE: 'anthropic-claude-haiku-5-5',
+    LLM_BOT_PROFILES: 'claude:openrouter-claude-haiku-5-5, gpt:openrouter-gpt-6-luna',
+    LLM_DAILY_BUDGET_USD: '2.5',
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.coachCommentaryProfile, 'openrouter-gpt-6-luna');
+  assert.equal(result.value.coachJudgeProfile, 'anthropic-claude-haiku-5-5');
+  assert.deepEqual(result.value.llmBotProfiles, {
+    claude: 'openrouter-claude-haiku-5-5',
+    gpt: 'openrouter-gpt-6-luna',
+  });
+  assert.equal(result.value.llmDailyBudgetUsd, 2.5);
+  assert.deepEqual(Object.keys(result.value.llmProfiles).sort(), [
+    'anthropic-claude-haiku-5-5',
+    'openrouter-claude-haiku-5-5',
+    'openrouter-gpt-6-luna',
+  ]);
+  const luna = result.value.llmProfiles['openrouter-gpt-6-luna']!;
+  assert.equal(luna.endpoint, 'https://openrouter.ai/api/v1');
+  assert.equal(luna.apiKey, 'or-key');
+  assert.equal(result.value.llmProfiles['anthropic-claude-haiku-5-5']!.apiKey, 'anthropic-key');
+});
+
+test('parseServerConfig rejects a referenced profile that is unknown or missing its env vars', () => {
+  const invalid = { ok: false, error: 'invalid_server_config' };
+
+  assert.deepEqual(parseServerConfig({ COACH_COMMENTARY_PROFILE: 'openai-gpt-6-luna' }), invalid);
+  assert.deepEqual(parseServerConfig({ LLM_RELAY_API_KEY: 'k', COACH_JUDGE_PROFILE: 'relay-gpt-6-luna' }), invalid);
+  assert.deepEqual(parseServerConfig({ OPENAI_API_KEY: 'k', COACH_COMMENTARY_PROFILE: 'no-such-profile' }), invalid);
+  assert.deepEqual(parseServerConfig({ LLM_BOT_PROFILES: 'claude:openai-gpt-6-luna' }), invalid);
+});
+
+test('parseServerConfig rejects malformed LLM_BOT_PROFILES', () => {
+  const env = { OPENAI_API_KEY: 'k' };
+  for (const value of ['robot:openai-gpt-6-luna', 'gpt', 'gpt:a:b', 'gpt:openai-gpt-6-luna,gpt:openai-gpt-6-luna']) {
+    assert.deepEqual(parseServerConfig({ ...env, LLM_BOT_PROFILES: value }), {
+      ok: false,
+      error: 'invalid_server_config',
+    }, value);
+  }
+});
+
+test('parseServerConfig requires a cassette directory to record or replay', () => {
+  assert.deepEqual(parseServerConfig({ LLM_CASSETTE: 'replay' }), { ok: false, error: 'invalid_server_config' });
+
+  const result = parseServerConfig({ LLM_CASSETTE: 'replay', LLM_CASSETTE_DIR: 'cassettes' });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.llmCassette, { mode: 'replay', dir: 'cassettes' });
+});
+
+test('every checked-in LLM profile resolves from the env vars config knows', () => {
+  const env = {
+    OPENROUTER_API_KEY: 'k',
+    OPENAI_API_KEY: 'k',
+    ANTHROPIC_API_KEY: 'k',
+    LLM_RELAY_BASE_URL: 'https://relay.example/v1/',
+    LLM_RELAY_API_KEY: 'k',
+  };
+
+  for (const profile of LLM_PROFILES) {
+    const result = parseServerConfig({ ...env, COACH_COMMENTARY_PROFILE: profile.id });
+    assert.equal(result.ok, true, profile.id);
+    if (!result.ok) return;
+    assert.equal(result.value.llmProfiles[profile.id]!.endpoint.endsWith('/'), false, profile.id);
+  }
 });
