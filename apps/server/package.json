@@ -32,6 +32,8 @@
     "test": "node --conditions=source --experimental-strip-types --test \"src/**/*.test.ts\"",
     "simulate:bots": "node --conditions=source --experimental-strip-types src/tools/bot-simulator.ts",
     "coach:samples": "node --conditions=source --experimental-strip-types src/tools/coach-samples.ts",
-    "bench:bot-brief": "node --conditions=source --experimental-strip-types src/tools/bot-brief-bench.ts"
+    "bench:bot-brief": "node --conditions=source --experimental-strip-types src/tools/bot-brief-bench.ts",
+    "eval:llm-hu": "node --conditions=source --experimental-strip-types src/tools/llm-hu.ts",
+    "eval:cli-canary": "node --conditions=source --experimental-strip-types src/tools/cli-canary.ts"
   }
 }
