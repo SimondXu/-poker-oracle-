@@ -19,7 +19,7 @@ const MIN_VALUE_BET_EQUITY = 0.5;
 // Only near-locks slowplay, and only heads-up.
 const SLOWPLAY_MIN_EQUITY = 0.8;
 // How often a strong draw bets when it has the initiative, before the personality's bluff scale.
-const DRAW_BET_FREQUENCY = 0.6;
+export const DRAW_BET_FREQUENCY = 0.6;
 // A value hand facing a bet raises this often and calls the rest, so calls aren't all weak.
 const VALUE_RAISE_FREQUENCY = 0.7;
 // Equity margin over which a call goes from about 27% to 73% likely.

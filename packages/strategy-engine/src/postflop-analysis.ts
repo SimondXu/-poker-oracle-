@@ -56,7 +56,7 @@ function countRanks(cards: readonly Card[]): Map<number, number> {
 }
 
 // Made-hand category the hero actually owns: 0 when the best hand is just the board playing.
-function getEffectiveMadeHandRank(context: BotDecisionContext, heroRank: RankVector): number {
+function getEffectiveMadeHandRank(context: Pick<BotDecisionContext, 'communityCards'>, heroRank: RankVector): number {
   const heroCategory = heroRank[0] ?? 0;
   const board = context.communityCards;
   if (heroCategory === 0 || board.length < 3) {
@@ -89,7 +89,7 @@ function getEffectiveMadeHandRank(context: BotDecisionContext, heroRank: RankVec
   return 0;
 }
 
-function buildPostflopFeatures(context: BotDecisionContext, madeHandRank: number): PostflopFeatures {
+function buildPostflopFeatures(context: Pick<BotDecisionContext, 'holeCards' | 'communityCards'>, madeHandRank: number): PostflopFeatures {
   const allCards = [...context.holeCards, ...context.communityCards];
   const isRiver = context.communityCards.length >= 5;
   const suitCounts = new Map<string, number>();
@@ -151,6 +151,20 @@ function buildPostflopFeatures(context: BotDecisionContext, madeHandRank: number
     boardMonotone: context.communityCards.length >= 3 && [...boardSuitCounts.values()].some((count) => count === context.communityCards.length),
     boardConnected,
   };
+}
+
+export interface HandDescription {
+  rank: RankVector;
+  /** The made-hand category the hero owns: 0 when the board plays. */
+  madeHandRank: number;
+  features: PostflopFeatures;
+}
+
+/** The hero's made hand, draws and board features after the flop, as analyzePostflop reads them, without any equity. */
+export function describeHand(context: Pick<BotDecisionContext, 'holeCards' | 'communityCards'>): HandDescription {
+  const rank = evaluateBestSevenCards([...context.holeCards, ...context.communityCards]).rank;
+  const madeHandRank = getEffectiveMadeHandRank(context, rank);
+  return { rank, madeHandRank, features: buildPostflopFeatures(context, madeHandRank) };
 }
 
 function simulateShowdownEquity(

@@ -31,7 +31,7 @@ const rangeCache = new Map<string, WeightedRange>();
 const boardRankCache = new Map<string, ReadonlyArray<{ index: number; rank: RankVector }>>();
 
 /** Every starting hand that doesn't clash with the board, strongest first. The same for every player. */
-function rankedOnBoard(board: readonly Card[]): ReadonlyArray<{ index: number; rank: RankVector }> {
+export function rankedOnBoard(board: readonly Card[]): ReadonlyArray<{ index: number; rank: RankVector }> {
   const key = board.join('');
   const cached = boardRankCache.get(key);
   if (cached) {
@@ -76,7 +76,7 @@ function smoothedRate(count: number, opportunities: number, prior: number): numb
 }
 
 /** Posterior mean rates from the player's history, rounded so near-identical histories share a cached range. */
-function estimateTendencies(stats: BotPlayerStats | undefined): Tendencies {
+export function estimateTendencies(stats: BotPlayerStats | undefined): Tendencies {
   const round = (value: number) => Math.round(value * 50) / 50;
   return {
     vpip: round(smoothedRate(stats?.preflopVoluntary ?? 0, stats?.hands ?? 0, PRIOR_VPIP)),
@@ -131,7 +131,7 @@ function preflopWeights(
   return byKey;
 }
 
-function isStrongDraw(combo: Combo, board: readonly Card[]): boolean {
+export function isStrongDraw(combo: Combo, board: readonly Card[]): boolean {
   if (board.length >= 5) {
     return false;
   }
