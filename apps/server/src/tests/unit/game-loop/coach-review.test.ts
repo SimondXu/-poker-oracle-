@@ -5,7 +5,7 @@ import { applyAction, getValidActions, initializeHand, type PlayerActionInput } 
 import { gradeDecision, type CoachAdvice } from '@aipoker/shared';
 import { chooseBotAction } from '@aipoker/strategy-engine';
 
-import { captureCoachDecision, forgetCoachPlayer, takeHandReviews } from '../../../game-loop/coach-review.ts';
+import { captureCoachDecision, clientReview, forgetCoachPlayer, takeHandReviews } from '../../../game-loop/coach-review.ts';
 import { buildBotDecisionContext, recordFinishedHandStats } from '../../../game-loop/bot-support.ts';
 import { selectEmergencyBotActionInput } from '../../../game-loop/realtime-bot-fallback.ts';
 import type { RuntimeRoom } from '../../../rooms/types.ts';
@@ -103,10 +103,15 @@ test('every hero decision gets one record, graded against the advice they were (
     assert.deepEqual([...room.coachRecords.keys()].filter((id) => id !== 'hero'), [], 'bots are not recorded');
     assert.equal(records.length, room.hand!.actions.filter((action) => action.playerId === 'hero').length);
     assert.deepEqual(records.map((record) => record.advice), expected);
-    for (const record of records) {
+    for (const [recordIndex, record] of records.entries()) {
       assert.equal(record.street, record.advice.street);
       assert.equal(record.heroAction.source, 'player');
       assert.equal(record.verdict, gradeDecision(record.advice, record.heroAction));
+      // The line is every action before this one, and the hero's entries read exactly as their recorded actions.
+      assert.equal(record.line.length, record.advice.actionIndex);
+      const heroLine = record.line.filter((entry) => entry.isHero);
+      assert.deepEqual(heroLine.map(({ kind, to }) => ({ kind, to })), records.slice(0, recordIndex).map(({ heroAction: { kind, to } }) => ({ kind, to })));
+      assert.ok(heroLine.every((entry) => entry.position === record.advice.position));
     }
     heroDecisions += records.length;
 
@@ -192,6 +197,37 @@ test('the advice is built when the decision is recorded, not when it is captured
   room.stateVersion += 1;
   record();
   assert.deepEqual(room.coachRecords.get('hero')!.map((decision) => decision.advice), [advice]);
+});
+
+test('the line is the public actions before the decision, by position, sized like the hero’s own', () => {
+  const room = createRoom();
+  // Hero on the button of six: UTG (b3) raises, HJ (b4) calls, CO (b5) raises to everything behind.
+  startHand(room, 0);
+  act(room, { playerId: 'b3', type: 'raise_to', amount: 60 });
+  act(room, { playerId: 'b4', type: 'call' });
+  act(room, { playerId: 'b5', type: 'raise_to', amount: 2_000 });
+  act(room, { playerId: 'hero', type: 'fold' });
+
+  const [record] = room.coachRecords.get('hero')!;
+  assert.deepEqual(record!.line, [
+    { street: 'preflop', position: 'utg', isHero: false, kind: 'raise', to: 60 },
+    { street: 'preflop', position: 'hj', isHero: false, kind: 'call' },
+    { street: 'preflop', position: 'co', isHero: false, kind: 'all_in', to: 2_000 },
+  ]);
+});
+
+test('the client gets the review without the line, which stays on the server', () => {
+  const room = createRoom();
+  startHand(room, 0);
+  while (room.hand!.currentActorSeat !== null) {
+    act(room, { playerId: currentActorId(room), type: 'fold' });
+  }
+  const [review] = takeHandReviews(room);
+  assert.equal(review!.decisions[0]!.line.length, 3);
+  const { line, ...decision } = review!.decisions[0]!;
+  void line;
+  assert.deepEqual(clientReview(review!), { ...review!, decisions: [decision] });
+  assert.equal(room.coachReviews.get('hero'), review, 'the kept review still has its line');
 });
 
 test('a departed player’s coach state is forgotten', () => {

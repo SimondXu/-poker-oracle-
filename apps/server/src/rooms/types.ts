@@ -1,4 +1,4 @@
-import type { BotConfig, BotPlayerStats, CoachAdvice, CoachReviewDecision, CoachSessionTally, GameReviewEvent } from '@aipoker/shared';
+import type { BotConfig, BotPlayerStats, CoachAdvice, CoachReviewRecord, CoachSessionTally, GameReviewEvent } from '@aipoker/shared';
 import type { HandState } from '@aipoker/game-engine';
 
 export interface RoomMembership {
@@ -37,7 +37,12 @@ export interface RuntimeRoom {
   // Coach review, by human player id: the advice built for their open decision (its stateVersion says
   // which), their graded decisions this hand, verdict counts over the session, and the last review sent.
   coachAdvice: Map<string, CoachAdvice>;
-  coachRecords: Map<string, CoachReviewDecision[]>;
+  coachRecords: Map<string, CoachReviewRecord[]>;
   coachSessions: Map<string, CoachSessionTally>;
-  coachReviews: Map<string, GameReviewEvent>;
+  coachReviews: Map<string, CoachHandReview>;
+}
+
+/** A review as the server keeps it, each decision with its betting line; clientReview() is what is sent. */
+export interface CoachHandReview extends Omit<GameReviewEvent, 'decisions'> {
+  decisions: CoachReviewRecord[];
 }
