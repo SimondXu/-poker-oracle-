@@ -248,13 +248,14 @@ function ints(value: string | undefined, fallback: number, name: string, max = I
 
 const list = (value: string | undefined, fallback: string) => (value ?? fallback).split(',').map((item) => item.trim()).filter(Boolean);
 
-export function parseConfig(argv: string[]): { config: RunConfig; smoke: boolean; pilot: boolean; resume: string | undefined } {
+export function parseConfig(argv: string[]): { config: RunConfig; smoke: boolean; pilot: boolean; resume: string | undefined; sameDealsAs: string | undefined } {
   const { values } = parseArgs({
     args: argv,
     options: {
       smoke: { type: 'boolean' },
       pilot: { type: 'boolean' },
       resume: { type: 'string' },
+      'same-deals-as': { type: 'string' },
       models: { type: 'string' },
       effort: { type: 'string' },
       opponents: { type: 'string' },
@@ -278,6 +279,7 @@ export function parseConfig(argv: string[]): { config: RunConfig; smoke: boolean
     smoke: values.smoke ?? false,
     pilot: values.pilot ?? false,
     resume: values.resume,
+    sameDealsAs: values['same-deals-as'],
     config: {
       runId: `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${randomBytes(2).toString('hex')}`,
       models,
@@ -327,6 +329,18 @@ async function main(): Promise<void> {
     console.log(`claude ${version}, subscription ${subscriptionType ?? 'unknown'}, canary valid for this version and flag set`);
   }
 
+  // Replays a finished run's deals, so its rows and this run's are paired. That seed is already revealed,
+  // so this run relies on the tool isolation alone (`llm-bots.md`, "CLI players", Isolation).
+  let seed: number | undefined;
+  if (parsed.sameDealsAs) {
+    const finished = JSON.parse(readFileSync(`${EVAL_DIR}${parsed.sameDealsAs}/checkpoint.json`, 'utf8')) as Checkpoint;
+    if (finished.status !== 'done' || finished.seed === null) {
+      throw new Error(`Run ${parsed.sameDealsAs} is not finished, so its seed is not revealed`);
+    }
+    seed = finished.seed;
+    console.log(`Deals: the same as run ${parsed.sameDealsAs}`);
+  }
+
   const dir = `${EVAL_DIR}${parsed.smoke ? `smoke-${config.runId}` : config.runId}`;
   const control = new RunControl(config.maxCalls);
   if (resume) {
@@ -338,6 +352,7 @@ async function main(): Promise<void> {
     dir,
     control,
     log: console.log,
+    ...(seed === undefined ? {} : { seed }),
     cliPolicyOf: (row) => createCliPolicy({ row: { id: row.id, model: row.model!, effort: config.effort }, control, system, claudeVersion: config.claudeVersion ?? 'unknown' }),
   };
 
