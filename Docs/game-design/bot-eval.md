@@ -63,3 +63,26 @@ Six-max ring (fish, tag and lag twice each, 6000 hands across 100/40/20/10bb, se
 | LAG win rate | −0.1 ± 17 | +1.6 ± 18 |
 
 The ring is not duplicated, so win rates move by luck as much as by play: the difference in TAG's rate is well inside the noise, and these runs can't show whether the change helps or costs. The bots fold to opens often (75-86%), which rewards wide steals, so a tighter cutoff may cost a little against them while being the standard play against people. The changes rest on standard ranges, not on a measured gain.
+
+## Claude Haiku through Claude Code (2026-10-14)
+
+The first CLI player run (`llm-bots.md`, "CLI players", step L1): `claude-haiku-5-5` through `claude -p` on the user's subscription, effort low, prompt `cli-proto-0` (sha256 `f5a054b3…`, the Analyst persona and the arm A1 brief), Claude Code 2.1.296. Run `20261014054614-d528`, secret seed 309780431 revealed at the end; 4 matches × 25 deals per opponent, and the rule bots replay the same deals as player A. Command: `pnpm --filter @aipoker/server eval:llm-hu`.
+
+| A vs B | bb/100 | A − TAG, same deals | A − Fish, same deals |
+|---|---|---|---|
+| haiku vs station | +1080 ± 299 | −664 ± 398 | +646 ± 335 |
+| fish vs station | +434 ± 219 | −1310 ± 426 | |
+| tag vs station | +1744 ± 403 | | +1310 ± 426 |
+| lag vs station | +1781 ± 428 | +37 ± 228 | +1347 ± 432 |
+| haiku vs tag | +134 ± 198 | +59 ± 183 | +13 ± 258 |
+| fish vs tag | +121 ± 183 | +46 ± 236 | |
+| tag vs tag | +74 ± 182 | | −46 ± 236 |
+| lag vs tag | −34 ± 181 | −109 ± 195 | −155 ± 201 |
+
+- **Mechanics:** 1,271 decisions, 1,271 calls (cap 1,350). One CLI error fell back to TAG (0.1%); every other choice was valid. Wall time p50 4.4-5.3 s, p95 7.3-9.1 s, max 33.8 s; about 2,800 cached input and 420-580 output tokens per decision, 290-430 of them thinking, even at effort low. The isolation canary passed first, including its positive control.
+- **Style:** VPIP 78%, PFR 49-69%, postflop aggression 38-55%, fold to a bet 47% against TAG (TAG's own 42.5%). Agreement with the TAG advice: 79% [76, 82] against the station, 84% [81, 87] against TAG; no price blunders in 159 decisions facing a bet.
+- **What it shows:** Haiku beats the station by more than Fish does and holds its own against TAG, but it wins about 660 bb/100 less than TAG against the station. Against TAG, 100 deals can't separate it from the rule bots.
+
+**Where Haiku loses value against the station.** It doesn't bluff it: at equity under 35% it bet 2 times in 201 spots. Its thin bets at 35-50% equity (38 of 98 spots, where TAG mostly checks) cost about 15 bb in all. The loss is sizing with near-locks. In 47 spots with equity of 80% or more where the TAG advice was all-in, Haiku moved in 8 times and bet 0.5-1.5 pot the other 39. On the river, where a station calls any size, that leaves (2·equity − 1) × the difference: about 1,486 bb over the 100 deal pairs (23 of 30 river spots), against a measured gap to TAG of 1,327 bb. For example, 2♠K♥ made the nuts on the river and Haiku bet 60 chips, 1.5 pot, where TAG's line is all-in. The brief shows the station's fold-to-bet rate, but the menu describes the all-in as "49.5× the pot · bluff needs 99% folds", which reads as a bluff price; a value line for each size (how often a caller calls) is the first thing to try in prompt v1.
+
+Equities are against the engine's modelled range, not the station's actual cards, and the rule bots' own lines on these deals weren't traced, so the 1,486 bb is an estimate of the cause, not an accounting of the gap.
