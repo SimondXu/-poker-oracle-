@@ -86,3 +86,21 @@ The first CLI player run (`llm-bots.md`, "CLI players", step L1): `claude-haiku-
 **Where Haiku loses value against the station.** It doesn't bluff it: at equity under 35% it bet 2 times in 201 spots. Its thin bets at 35-50% equity (38 of 98 spots, where TAG mostly checks) cost about 15 bb in all. The loss is sizing with near-locks. In 47 spots with equity of 80% or more where the TAG advice was all-in, Haiku moved in 8 times and bet 0.5-1.5 pot the other 39. On the river, where a station calls any size, that leaves (2·equity − 1) × the difference: about 1,486 bb over the 100 deal pairs (23 of 30 river spots), against a measured gap to TAG of 1,327 bb. For example, 2♠K♥ made the nuts on the river and Haiku bet 60 chips, 1.5 pot, where TAG's line is all-in. The brief shows the station's record ("fold to a bet 0% (n 46)"), but the menu prices every size only as a bluff; in one river spot it chose a pot bet over "all-in 1,880 · 94.0 bb · 7.8× the pot · bluff needs 89% folds". A value line for each size (how often a caller calls) is the first thing to try in prompt v1.
 
 Equities are against the engine's modelled range, not the station's actual cards, and the rule bots' own lines on these deals weren't traced, so the 1,486 bb is an estimate of the cause, not an accounting of the gap.
+
+### Claude Sonnet on the same deals (2026-10-14)
+
+`claude-sonnet-5-5`, same settings and prompt (sha256 `f5a054b3…`), run `20261014075701-7fd4` with `--same-deals-as 20261014054614-d528`, so every deal pairs with Haiku's (the rule-bot rows came out identical, which confirms it).
+
+| A vs B | bb/100 | A − TAG, same deals | A − Fish, same deals |
+|---|---|---|---|
+| sonnet vs station | +1623 ± 399 | −121 ± 363 | +1189 ± 428 |
+| sonnet vs tag | 0 ± 223 | −75 ± 186 | −121 ± 288 |
+
+| Sonnet − Haiku, same deals | bb/100 |
+|---|---|
+| vs station | +542 ± 376 |
+| vs tag | −134 ± 203 |
+
+- **Mechanics:** 1,294 decisions, 1,294 calls, no fallbacks. Wall time p50 3.9-4.5 s, p95 about 13 s, max 33 s. At effort low Sonnet hardly thinks (18-56 thinking tokens per decision, against Haiku's 290-430), so the comparison is of the two models as the CLI runs them at that setting, not at equal thinking.
+- **Against the station** Sonnet wins about as much as TAG and clearly more than Haiku. It fixes about half of Haiku's sizing leak: with equity of 80% or more where the TAG advice was all-in, it moved in 19 of 49 times (Haiku 8 of 47), 18 of 34 on the river (Haiku 7 of 30), leaving about 953 bb on the river by the same estimate (Haiku about 1,486). It also stopped the thin bets: at 35-50% equity it bet 7 of 111 times (Haiku 38 of 98).
+- **Against TAG** neither model separates from the rule bots or from each other. Sonnet's main departures from the advice are preflop calls where TAG folds or raises (16 of 28 "off" verdicts), and it folds to a bet more than TAG does (53% against 42.5%). No price blunders in 169 decisions facing a bet.
