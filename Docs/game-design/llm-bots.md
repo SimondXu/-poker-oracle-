@@ -751,7 +751,7 @@ The model must not reach the deck, the opponent's cards, the seed or anything th
    - The child process gets an allow-listed environment (`PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `TMPDIR`).
    - The runner refuses to start if any of these is set: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, or a `CLAUDE_CODE_USE_*` provider switch. They would move billing or routing off the subscription.
    - Preflight: `claude auth status` must report `authMethod` `claude.ai`. Only that field and `subscriptionType` are read.
-   - The seed comes from `crypto.randomInt` inside the runner. It stays off the command line, out of the environment and off disk until the run ends; then it is written to the results. All rows of a batch share it.
+   - The seed comes from `crypto.randomInt` inside the runner. It stays off the command line, out of the environment and off disk until the run ends; then it is written to the results. All rows of a batch share it. A later run can replay a finished run's deals with `--same-deals-as <run-id>`, so its rows pair with that run's; that seed is already revealed, so such a run relies on layer 1 alone.
    - The deck and the opponent's cards live only in the runner's memory. Traces hold the bot's own cards and public data. The deal is never written.
 3. **Nothing in the prompt.** The prompt is B2a's renderer output from the bot view: no deck, no other hole cards, no ids, names or rule-bot labels. B2a's permutation test covers it.
 4. **Nothing carried.** One process per decision. Memory is off in the first run; when it comes on, duplicate runs keep it per half-stream (see Memory).
