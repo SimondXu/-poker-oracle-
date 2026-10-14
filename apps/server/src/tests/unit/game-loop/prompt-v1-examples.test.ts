@@ -32,10 +32,10 @@ const FOLDER: ExampleSpot = {
   hole: ['7h', '6h'],
   board: ['Kd', 'Tc', '3s', '2d', 'Js'],
   handNumber: 41,
-  opponentStats: { hands: 40, preflopVoluntary: 15, preflopRaises: 7, preflopOversizedRaises: 0, postflopActions: 52, postflopAggressive: 16, postflopFacingBets: 25, postflopFoldsToBets: 17 },
+  opponentStats: { hands: 40, preflopVoluntary: 15, preflopRaises: 7, preflopOversizedRaises: 0, postflopActions: 52, postflopAggressive: 16, postflopFacingBets: 30, postflopFoldsToBets: 22 },
   opponentLedger: {
-    buckets: [{ faced: 8, folded: 5 }, { faced: 10, folded: 7 }, { faced: 6, folded: 5 }, { faced: 1, folded: 0 }],
-    sumBase: 8 * 0.25 + 10 * 0.375 + 6 * 0.5 + 0.667,
+    buckets: [{ faced: 10, folded: 7 }, { faced: 12, folded: 9 }, { faced: 7, folded: 6 }, { faced: 1, folded: 0 }],
+    sumBase: 10 * 0.25 + 12 * 0.375 + 7 * 0.5 + 0.667,
     sawFlop: 22,
     showdowns: 6,
   },
@@ -113,9 +113,9 @@ EQUITY
 2% (exact) against Seat 2's likely hands
 
 OPPONENTS
-Seat 2 · BB · stack 2,074 · 40 hands · VPIP 38% (n 40) · PFR 18% (n 40) · aggression after the flop 31% (n 52) · fold to a bet 68% (n 25)
-  folds by bet size: under ½ pot 5 of 8 · ½-¾ pot 7 of 10 · about pot 5 of 6 · over pot 0 of 1 · went to showdown 6 of 22 flops
-  read: folds a lot (folded 17 of 25 bets) → bluff where a size's fold estimate clears what the bluff needs
+Seat 2 · BB · stack 2,074 · 40 hands · VPIP 38% (n 40) · PFR 18% (n 40) · aggression after the flop 31% (n 52) · fold to a bet 73% (n 30)
+  folds by bet size: under ½ pot 7 of 10 · ½-¾ pot 9 of 12 · about pot 6 of 7 · over pot 0 of 1 · went to showdown 6 of 22 flops
+  read: folds a lot (folded 22 of 30 bets) → bluff where a size's fold estimate clears what the bluff needs
   likely hands: about 32% of starting hands; on this board about 62% one pair, 8% two pair or better, 30% no pair; 98% beat you now
 
 ACTION
@@ -126,12 +126,12 @@ River Js (pot 148): Seat 2 BB check
 
 MENU (nothing to call)
 A  check
-B  bet 49 · 2.5 bb · 33% of the pot · est. folds 56% (a bluff needs 25%) · gain vs check +2.9 bb
-C  bet 74 · 3.7 bb · 50% of the pot · est. folds 65% (a bluff needs 33%) · gain vs check +3.4 bb
-D  bet 111 · 5.5 bb · 75% of the pot · est. folds 68% (a bluff needs 43%) · gain vs check +3.1 bb
-E  bet 148 · 7.4 bb · pot · est. folds 78% (a bluff needs 50%) · gain vs check +4.0 bb
-F  bet 222 · 11.1 bb · 1.5× the pot · est. folds 78% (a bluff needs 60%) · gain vs check +3.2 bb
-G  all-in 1,926 · 96.3 bb · 13.0× the pot · est. folds 78% (a bluff needs 93%) · gain vs check −15.7 bb`);
+B  bet 49 · 2.5 bb · 33% of the pot · est. folds 64% (a bluff needs 25%) · gain vs check +3.7 bb
+C  bet 74 · 3.7 bb · 50% of the pot · est. folds 71% (a bluff needs 33%) · gain vs check +4.1 bb
+D  bet 111 · 5.5 bb · 75% of the pot · est. folds 73% (a bluff needs 43%) · gain vs check +3.8 bb
+E  bet 148 · 7.4 bb · pot · est. folds 82% (a bluff needs 50%) · gain vs check +4.5 bb
+F  bet 222 · 11.1 bb · 1.5× the pot · est. folds 82% (a bluff needs 60%) · gain vs check +3.9 bb
+G  all-in 1,926 · 96.3 bb · 13.0× the pot · est. folds 82% (a bluff needs 93%) · gain vs check −11.9 bb`);
 
   const margins = estimatesOf(FOLDER).map((option) => option.fold - option.bluffNeeds);
   assert.ok(margins.slice(0, 5).every((margin) => margin >= 0.1));

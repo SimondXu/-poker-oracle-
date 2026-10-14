@@ -24,7 +24,7 @@ export const CONFIG: RunConfig = {
   bigBlind: 20,
   claudeVersion: 'test',
   prompts: ['v0'],
-  personas: { v0: 'analyst', v1: 'exploiter' },
+  personas: { v0: 'analyst', 'v1.1': 'exploiter' },
   snapshotPerPair: false,
   systemSha256: systemPromptsOf(['v0'], { v0: 'analyst' }),
 };

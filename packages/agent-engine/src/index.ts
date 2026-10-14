@@ -83,6 +83,7 @@ export {
   foldEstimates,
   foldShift,
   foldTotals,
+  READ_RULES,
   readsFor,
   riverGain,
   SIZE_BUCKET_EDGES,

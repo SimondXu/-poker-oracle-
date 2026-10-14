@@ -39,7 +39,7 @@ import { buildClaudeArgs, childEnv, parseClaudeOutput, runClaude, type ClaudeCal
 /** Results under this label join later tables only if the prompt digests match (`llm-bots.md`, "CLI players"). */
 export const CLI_PROTO_PROMPT_VERSION = 'cli-proto-0';
 /** The label a prompt version's runs carry. */
-export const CLI_PROTO_LABELS: Record<PromptVersion, string> = { v0: CLI_PROTO_PROMPT_VERSION, v1: 'cli-proto-1' };
+export const CLI_PROTO_LABELS: Record<PromptVersion, string> = { v0: CLI_PROTO_PROMPT_VERSION, 'v1.1': 'cli-proto-1.1' };
 /** The deep-mode eval deadline (`LLM_AGENT_EVAL_TIMEOUT_MS`). */
 export const DEADLINE_MS = 45_000;
 /**

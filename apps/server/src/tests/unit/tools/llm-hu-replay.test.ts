@@ -69,8 +69,8 @@ test('walkRun can stop each job early, and visits only the model seat', async ()
 });
 
 test('a run with both prompt versions: v1 rows carry the ledger and what they were shown, hands line up with decisions, and the gate holds for brief-1', async () => {
-  const personas = { v0: 'analyst', v1: 'exploiter' } as const;
-  const config = { ...CONFIG, prompts: ['v0', 'v1'] as const, personas, snapshotPerPair: true, systemSha256: systemPromptsOf(['v0', 'v1'], personas) };
+  const personas = { v0: 'analyst', 'v1.1': 'exploiter' } as const;
+  const config = { ...CONFIG, prompts: ['v0', 'v1.1'] as const, personas, snapshotPerPair: true, systemSha256: systemPromptsOf(['v0', 'v1.1'], personas) };
   const { dir, cleanup } = await finishedRun({ ...config, prompts: [...config.prompts] });
   try {
     const run = loadRun('replay-test', dir);
@@ -80,17 +80,17 @@ test('a run with both prompt versions: v1 rows carry the ledger and what they we
     assert.equal(gate.identical, gate.decisions);
 
     const lines = loadDeals(join(dir, 'deals.jsonl')).filter((line) => line.row.startsWith('cli-'));
-    assert.deepEqual([...new Set(lines.map((line) => line.row))].sort(), [`cli-claude/${MODEL}/low/v0`, `cli-claude/${MODEL}/low/v1`]);
+    assert.deepEqual([...new Set(lines.map((line) => line.row))].sort(), [`cli-claude/${MODEL}/low/v0`, `cli-claude/${MODEL}/low/v1.1`]);
     for (const line of lines) {
       for (const { half, trace } of line.traces) {
         const actions = line.hands!.find((hand) => hand.half === half)!.actions;
         assert.equal(actions[trace.actionIndex]!.player, 'a', 'the decision is the bot\'s own action in the hand log');
-        assert.equal(trace.prompt, line.row.endsWith('/v1') ? 'v1' : 'v0');
+        assert.equal(trace.prompt, line.row.endsWith('/v1.1') ? 'v1.1' : 'v0');
         assert.equal(trace.ledger === null, trace.prompt === 'v0');
         assert.equal(trace.exploit === null, trace.prompt === 'v0');
       }
     }
-    const v1 = lines.filter((line) => line.row.endsWith('/v1')).flatMap((line) => line.traces.map((entry) => entry.trace));
+    const v1 = lines.filter((line) => line.row.endsWith('/v1.1')).flatMap((line) => line.traces.map((entry) => entry.trace));
     assert.ok(v1.some((trace) => trace.exploit!.estimates.length > 0));
     assert.ok(v1.every((trace) => trace.ledger!.hash.length === 64));
     assert.match(v1[0]!.userMessage, /^HAND \d+/);

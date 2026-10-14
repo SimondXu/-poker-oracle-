@@ -1,6 +1,7 @@
 import type { AgentPersonaId } from '@aipoker/shared';
 
 import type { BriefFormat } from './brief.ts';
+import { READ_RULES } from './exploit.ts';
 import { getPersona, PERSONA_IDS } from './personas.ts';
 import { hashJson, type BotChatMessage } from './trace.ts';
 
@@ -69,7 +70,7 @@ const ADVISOR_LINE = `
 export type PromptMode = { deep: false } | { deep: true; maxRounds: number; withAdvisor: boolean };
 
 /** The prompt versions evals can compare. A version fixes the system text and the brief format it goes with. */
-export const PROMPT_VERSIONS = ['v0', 'v1'] as const;
+export const PROMPT_VERSIONS = ['v0', 'v1.1'] as const;
 export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
 export const DEFAULT_PROMPT_VERSION: PromptVersion = 'v0';
 
@@ -83,15 +84,17 @@ export interface PromptTexts {
   common: string;
   deep: string;
   advisor: string;
+  /** The read thresholds this version shows reads under, hashed into its digest; none for a version without reads. */
+  reads?: typeof READ_RULES;
   /** The personas whose text the digest covers. */
   personas: readonly AgentPersonaId[];
 }
 
-/** v1 is v0 with the edits below, each checked against the text it replaces so a change to v0 cannot slip past it. */
+/** v1.1 is v0 with the edits below (v1, never run, differed only in the read thresholds), each checked against the text it replaces so a change to v0 cannot slip past it. */
 function revise(text: string, edits: ReadonlyArray<readonly [from: string, to: string]>): string {
   return edits.reduce((result, [from, to]) => {
     if (!result.includes(from)) {
-      throw new Error(`prompt v1: the text to replace is not in v0: ${from.slice(0, 60)}`);
+      throw new Error(`prompt v1.1: the text to replace is not in v0: ${from.slice(0, 60)}`);
     }
     return result.replace(from, () => to);
   }, text);
@@ -154,14 +157,15 @@ export const PROMPTS: Record<PromptVersion, PromptTexts> = {
     // The five personas of the time; the digest must not move when a persona is added.
     personas: ['analyst', 'nit', 'bully', 'chaos', 'showman'],
   },
-  v1: {
-    id: 'v1',
-    botVersion: 'bot-2026-10-14.1',
+  'v1.1': {
+    id: 'v1.1',
+    botVersion: 'bot-2026-10-14.2',
     brief: 'brief-1',
     defaultPersona: 'exploiter',
     common: V1_COMMON,
     deep: V1_DEEP,
     advisor: ADVISOR_LINE,
+    reads: READ_RULES,
     personas: PERSONA_IDS,
   },
 };
@@ -197,6 +201,7 @@ export function botPromptDigest(version: PromptVersion = DEFAULT_PROMPT_VERSION)
     common: texts.common,
     deep: texts.deep,
     advisor: texts.advisor,
+    ...(texts.reads ? { reads: texts.reads } : {}),
     personas: texts.personas.map((id) => getPersona(id).prompt),
   });
 }

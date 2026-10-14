@@ -1,6 +1,6 @@
 # LLM bots: the agent harness and the bot AI
 
-Status: proposed (2026-10-12), awaiting approval. Uses the provider layer in `coach-commentary.md`. If approved, it supersedes parts of `Docs/plans/agent-engine/` (the table under "What this keeps and overturns"), and `Docs/plans/agent-engine/tracking.md`, which still shows every phase as todo although phases 0-2 are partly built, is marked superseded. Amended 2026-10-14: CLI players (eval only); prompt v1 and the opponent ledger (offline, eval only).
+Status: proposed (2026-10-12), awaiting approval. Uses the provider layer in `coach-commentary.md`. If approved, it supersedes parts of `Docs/plans/agent-engine/` (the table under "What this keeps and overturns"), and `Docs/plans/agent-engine/tracking.md`, which still shows every phase as todo although phases 0-2 are partly built, is marked superseded. Amended 2026-10-14: CLI players (eval only); prompt v1.1 and the opponent ledger (offline, eval only).
 
 ## Summary
 
@@ -45,7 +45,7 @@ Every decision writes a structured trace; evals, replay and debugging read only 
 ## Non-goals
 
 - Human chat input to bots (no user text enters prompts in v1).
-- Memory across sessions, accounts, persistence. (Prompt v1's opponent ledger lives in one room for one match; see "Opponent ledger and prompt v1".)
+- Memory across sessions, accounts, persistence. (Prompt v1.1's opponent ledger lives in one room for one match; see "Opponent ledger and prompt v1.1".)
 - Ranking close bots by strength: affordable sample sizes only separate "broken" from "competent".
 - An LLM judge for bot play (deterministic metrics first).
 - Subscription-backed CLI players at tables other people use.
@@ -401,7 +401,7 @@ interface ToolContext {
   seatOf: (playerId: string) => number;
   stats: ReadonlyMap<string, BotPlayerStats>;
   memory: BotSessionMemory;
-  ledger: Ledger;     // the room's public opponent ledger (prompt v1); empty when not kept
+  ledger: Ledger;     // the room's public opponent ledger (prompt v1.1); empty when not kept
   seedBase: string;
   equities: Equities; // memoised, shared with the brief
 }
@@ -429,8 +429,8 @@ interface ToolSpec<O> {
 | `equity` | Equity ± its standard error, against everyone or one seat | `{equity, stdErr, against: range \| random, opponents, iterations, exact}` | `analyzePostflop` with forced simulation at 512 iterations, as the coach does; preflop `preflopEquityVsCallers`; one seat: `simulateRangeEquity` (`range.ts`); an exact heads-up river via `enumerateRiverRangeEquity`; standard error √(e(1−e)/N) as in `coach.ts` | p50 28 ms, p95 74 ms, multiway p95 150 ms | Opponents' public actions and stats only | Eager (all); deep (per seat) |
 | `opponent_profile` | Public stats with sample sizes, plus notable hands | `{seat, position, stack, hands, vpip, pfr, oversizedRaise, aggression, foldToBet (each {rate, n}), smoothed: {vpip, pfr, aggression, foldToBet}, notable: NotableEvent[]}` | `BotPlayerStats` from `recordHandStats`, which replays the public log; `estimateTendencies` (`range.ts`, exported); memory | < 1 ms | Public | Eager (one line); deep (full) |
 | `opponent_range` | Likely hands, and how much beats us | `{seat, share, onBoard: {noPair, onePair, twoPairPlus, strongDraw}, beatsYou}` | `buildOpponentRange` (cached); `rankedOnBoard` and `isStrongDraw` (`range.ts`, exported); a new composition summary (about 20 lines) | 2-10 ms cached; up to 30 ms the first time a board is ranked | Public | Eager (one line); deep (full) |
-| `opponent_read` | How the opponent has answered bets of each size, their showdowns, hands they showed, and the reads that hold (prompt v1) | `{seat, folds: [{label, faced, folded}], sawFlop, showdowns, reads: [{label, evidence, hint}], shown: [{hand, cards, made, line, result}], notable}` | The opponent ledger and `BotPlayerStats`; `readsFor` (`exploit.ts`) | < 1 ms | Public | Eager heads-up in brief-1; deep |
-| `bet_estimates` | Per-size fold estimates for the bets on the menu, what a bluff needs, and on the river the expected gain over checking (prompt v1), against exactly one opponent | `{seat, options: [{option, share, fold, bluffNeeds, gainBb \| null}]}` | `foldEstimates`, `callingEquities`, `riverGain` (`exploit.ts`) over `buildOpponentRange` | 2-10 ms | Public | Eager heads-up after the flop in brief-1; deep |
+| `opponent_read` | How the opponent has answered bets of each size, their showdowns, hands they showed, and the reads that hold (prompt v1.1) | `{seat, folds: [{label, faced, folded}], sawFlop, showdowns, reads: [{label, evidence, hint}], shown: [{hand, cards, made, line, result}], notable}` | The opponent ledger and `BotPlayerStats`; `readsFor` (`exploit.ts`) | < 1 ms | Public | Eager heads-up in brief-1; deep |
+| `bet_estimates` | Per-size fold estimates for the bets on the menu, what a bluff needs, and on the river the expected gain over checking (prompt v1.1), against exactly one opponent | `{seat, options: [{option, share, fold, bluffNeeds, gainBb \| null}]}` | `foldEstimates`, `callingEquities`, `riverGain` (`exploit.ts`) over `buildOpponentRange` | 2-10 ms | Public | Eager heads-up after the flop in brief-1; deep |
 | `preflop_chart` | Standard width from this seat, and the chart's mix for this hand | `{handKey, handClass, percentile, standardWidth, buttonWidth, tagMix: {fold, call, raise, jam} \| null}` | `preflopPlayShare` (`coach.ts`); `getPreflopMix('tag', …)` | Cached, < 1 ms | Own cards | Eager without `tagMix`; deep and consultant with it |
 | `own_range` | How my line looks if I take this option | `{shareAbove, valueShare, isDraw, airBetFrequency}` | `readOwnRange` (`range.ts`) with TAG's draw frequency | 2-10 ms | The public view of my own actions | Deep |
 | `advisor` | The TAG policy's options and frequencies | `{options: [{kind, to, frequency, reasons: [code]}], stable, equity}` | `adviseFromEquities` (`coach.ts`) with the brief's memoised equities, so no extra Monte Carlo | Microseconds | Viewer projection | Consultant arm only |
@@ -451,7 +451,7 @@ interface ToolSpec<O> {
 - **Realtime brief (arm A1)** runs these tools eagerly: `hand_strength`, `board_texture`, `price`, `legal_options`, `equity` against everyone, a compact `opponent_profile` and a one-line `opponent_range` per live opponent, and preflop `preflop_chart` without `tagMix`.
 - **Deep mode's minimal brief (arm A3)** holds `hand_strength`, `board_texture`, `price`, `legal_options` and the seats with stacks. Everything else must be asked for.
 - **Same functions, same seeds:** a tool called in deep mode returns exactly what the brief would have shown.
-- **brief-1** (prompt v1) adds `opponent_read` per opponent, and `bet_estimates` after the flop, to the realtime brief when exactly one opponent is live.
+- **brief-1** (prompt v1.1) adds `opponent_read` per opponent, and `bet_estimates` after the flop, to the realtime brief when exactly one opponent is live.
 
 #### Tool calls across providers
 
@@ -535,11 +535,11 @@ interface OwnHandLine {
 
 No persistence.
 
-**Duplicate runs.** The second half of a duplicate deal replays the first half's deck with the seats swapped, so a bot that remembered the first half would know its opponent's cards and the board. In duplicate runs each seat order keeps its own memory, and nothing from a deal's first half reaches its second half (tested). The opponent ledger and the statistics use the other rule, one snapshot per deal pair (see "Opponent ledger and prompt v1").
+**Duplicate runs.** The second half of a duplicate deal replays the first half's deck with the seats swapped, so a bot that remembered the first half would know its opponent's cards and the board. In duplicate runs each seat order keeps its own memory, and nothing from a deal's first half reaches its second half (tested). The opponent ledger and the statistics use the other rule, one snapshot per deal pair (see "Opponent ledger and prompt v1.1").
 
-### Opponent ledger and prompt v1 (the exploit layer; offline, eval only)
+### Opponent ledger and prompt v1.1 (the exploit layer; offline, eval only)
 
-Status: built 2026-10-14 for evals; nothing here reaches a table. The design came from traces of the two CLI runs (`bot-eval.md`, Haiku `20261014054614-d528` and Sonnet `20261014075701-7fd4`); the gates are pre-registered in `bot-eval.md`, "Prompt v1".
+Status: built 2026-10-14 for evals; nothing here reaches a table. The design came from traces of the two CLI runs (`bot-eval.md`, Haiku `20261014054614-d528` and Sonnet `20261014075701-7fd4`); the gates are pre-registered in `bot-eval.md`, "Prompt v1.1".
 
 #### Why
 
@@ -550,11 +550,11 @@ The first CLI runs lose value against a calling station in a few specific ways:
 - **Bluffing is unmeasured.** With equity under 35% and nothing to call, Haiku bet 2 times in 200 against the station and 4 in 70 against TAG; no over-folding opponent was in the set.
 - **The text switches adjustment off.** "Statistics from fewer than 30 opportunities are weak evidence" and the Analyst's "lean on opponent statistics only once their sample is solid" meant that within a 50-hand match the opponent's record was rarely used (the postflop fold-to-bet sample reached 25 in 20 of 268 Haiku decisions against TAG).
 
-#### What v1 changes
+#### What v1.1 changes
 
-- **Text.** Prompt v1 is v0 with the edits below. `PROMPTS[version]` holds each version's common sections, deep section, advisor line and brief format; `buildSystemPrompt(persona, mode, version)` and `botPromptDigest(version)` take it. The v0 digest (`4645f1f6…`), the `cli-proto-0` Analyst sha256 (`f5a054b3…`) and the v1 digest are pinned in `prompt.test.ts`; v0's persona list is fixed to the five personas of the time, so adding the Exploiter moved nothing.
+- **Text.** Prompt v1.1 is v0 with the edits below. (A v1 with the same text and looser read thresholds existed for two days and was never run; Stage A showed those reads firing on TAG, see "Reads", and v1.1 replaced it before any model call, so the row ids and the docs name `v1.1`.) `PROMPTS[version]` holds each version's common sections, deep section, advisor line and brief format; `buildSystemPrompt(persona, mode, version)` and `botPromptDigest(version)` take it. The v0 digest (`4645f1f6…`), the `cli-proto-0` Analyst sha256 (`f5a054b3…`) and the v1.1 digest (`5c2370ea…`, which also hashes the read thresholds, `READ_RULES`) are pinned in `prompt.test.ts`; v0's persona list is fixed to the five personas of the time, so adding the Exploiter moved nothing.
 - **Brief.** `renderUserMessage({ …, format })` takes `brief-0` (v0, unchanged) or `brief-1`. brief-1 adds lines **only against exactly one live opponent**; at a bigger table it keeps the brief-0 lines, apart from the hand-rank wording.
-- **Persona.** The Exploiter (`exploiter`, eval only, `enabled: false`, fallback TAG, no talk, bands wide open) removes the Analyst's six-max VPIP anchor and its TAG-agreement bias from the strength rows. v1 plays it by default (`PROMPTS.v1.defaultPersona`); `--persona` overrides.
+- **Persona.** The Exploiter (`exploiter`, eval only, `enabled: false`, fallback TAG, no talk, bands wide open) removes the Analyst's six-max VPIP anchor and its TAG-agreement bias from the strength rows. v1.1 plays it by default (`PROMPTS['v1.1'].defaultPersona`); `--persona` overrides.
 - **Tools.** `opponent_read(seat)` and `bet_estimates()` (both `eager+deep`), so "the brief is the tools run eagerly" still holds. `ToolContext` and `BotTurnInput` gain `ledger`.
 
 System text, replacing the v0 passages (the rest is v0 verbatim):
@@ -619,18 +619,20 @@ F(x) = (folds_bucket + 4·p(x)) / (n_bucket + 4)         # buckets: under 0.45 /
 - **Stack-off size** `g = ((1 + 2·SPR)^(1/k) − 1) / 2`, `k` = streets left (flop 3, turn 2), shown on the flop and turn.
 - **Estimates are for bets into an unopened pot after the flop.** Raises keep the v0 line ("bluff needs …").
 
-**Reads** have a closed vocabulary and are deterministic. Bounds are 80%, one-sided, on a Beta posterior from the engine's own prior (no second smoothing); the thresholds are frozen with the prompt.
+**Reads** have a closed vocabulary and are deterministic. Bounds are 80% (90% for "folds a lot"), one-sided, on a Beta posterior from the engine's own prior (no second smoothing); the thresholds are `READ_RULES`, frozen with the prompt version and hashed into its digest.
 
 | Read | Condition | Hint shown |
 |---|---|---|
 | calls a lot | fold-to-bet upper bound < 0.25 | value-bet big; never bluff |
-| folds a lot | fold-to-bet lower bound > 0.50 | bluff where a size's fold estimate clears what the bluff needs |
+| folds a lot | fold-to-bet lower bound > 0.50 (**90%** bound) | bluff where a size's fold estimate clears what the bluff needs |
 | folds to big bets | fold rate at about pot or more minus the rate below it > 0.35, at least 4 bets each side | bluff big, value-bet small |
 | bets a lot | aggression lower bound > 0.45 | none |
 | rarely bets | aggression upper bound < 0.15 and at least 15 actions | none |
-| calls down light | at least 2 showdowns calling the river with one pair or worse | none |
+| calls down light | at least 2 showdowns calling the river with **no pair at all** (the board playing is no pair) | none |
 
-Checks in `exploit.test.ts`: a station that folded 0 of 11 gives no read (upper bound 0.278) and 0 of 16 does (0.23); a folder at 17 of 25 does (lower bound 0.522); a lucky 13 of 20 does not (0.484). Because the prior is worth 12 actions at 30%, "rarely bets" needs about 23 actions without a bet, not 15.
+Checks in `exploit.test.ts`: a station that folded 0 of 11 gives no read (upper bound 0.278) and 0 of 16 does (0.23); a folder at 22 of 30 does (90% lower bound 0.542) and 17 of 25 does not (0.485); a lucky 13 of 20 does not (0.444). Because the prior is worth 12 actions at 30%, "rarely bets" needs about 23 actions without a bet, not 15.
+
+*Why 90% and "no pair" (the v1 to v1.1 change).* In 3,000 deals of TAG against TAG (21,483 decisions of either player) the first thresholds showed a read in 3.65% of decisions: "folds a lot" 2.00% (TAG folds 49.7% of the time, a coin flip a lower bound of 80% still often puts above 50%) and "calls down light" 1.59% (a river call with one pair is not light). With the 90% bound and "no pair" the same decisions show 1.08% (see `bot-eval.md`, Stage A). The cost: the folder is read as "folds a lot" in 15.2% of TAG's decisions instead of 27.9%.
 
 #### Rendering
 
@@ -653,7 +655,7 @@ F  bet 360 · 18.0 bb · 1.5× the pot · est. folds 39% (a bluff needs 60%) · 
 G  all-in 1,880 · 94.0 bb · 7.8× the pot · est. folds 77% (a bluff needs 89%) · gain vs check +21.7 bb
 ```
 
-The estimate is deliberately conservative for the shove (77% folds against a player who has folded 0 of 11) and converges as the over-pot bucket fills; with the same record at n = 46 and two all-ins called, a `read: calls a lot (folded 0 of 46 bets) → value-bet big; never bluff` line appears. A weak hand against a player who folds a lot (17 of 25) shows `est. folds` of 56%, 65%, 68%, 78%, 78% against bluff prices of 25%, 33%, 43%, 50%, 60% and a negative gain for the shove (the cap and the running maximum), and the same hand against a typical player (10 of 24) clears no price by 10 points, so the rule says check. brief-1 also words a hand in the worst half of starting hands as "bottom 2%" where brief-0 said "top 98%"; the PRICE line gains `stack-off size about 1.3× the pot per street` on the flop and turn.
+The estimate is deliberately conservative for the shove (77% folds against a player who has folded 0 of 11) and converges as the over-pot bucket fills; with the same record at n = 46 and two all-ins called, a `read: calls a lot (folded 0 of 46 bets) → value-bet big; never bluff` line appears. A weak hand against a player who folds a lot (22 of 30) shows `est. folds` of 64%, 71%, 73%, 82%, 82% against bluff prices of 25%, 33%, 43%, 50%, 60% and a negative gain for the shove (the cap and the running maximum), and the same hand against a typical player (10 of 24) clears no price by 10 points, so the rule says check. brief-1 also words a hand in the worst half of starting hands as "bottom 2%" where brief-0 said "top 98%"; the PRICE line gains `stack-off size about 1.3× the pot per street` on the flop and turn.
 
 #### The ledger (`packages/agent-engine/src/ledger.ts`, "progress memory")
 
@@ -670,7 +672,7 @@ A room-level, public-only record keyed by player id and rendered by seat. Plain 
 #### Eval harness
 
 - **Replay gate** (`llm-hu-replay.ts`, `eval:llm-hu-replay <run>`): replays a finished run from its seed and recorded actions and checks every decision's user message byte for byte. 2,565 of 2,565 for the two CLI runs, on this commit and the one before it.
-- **Flags:** `--prompts v0,v1`, `--persona <id>` or `v0=analyst,v1=exploiter`, `--snapshot-per-pair`, `--spots <file>`. Row ids carry the version (`cli-claude/<model>/<effort>/<prompt>`, `+<persona>` when it is not the version's own).
+- **Flags:** `--prompts v0,v1.1`, `--persona <id>` or `v0=analyst,v1.1=exploiter`, `--snapshot-per-pair`, `--spots <file>`. Row ids carry the version (`cli-claude/<model>/<effort>/<prompt>`, `+<persona>` when it is not the version's own).
 - **Spot replay** (`llm-hu-spots.ts`): a spot file names decisions of a finished run (selectors over the recorded decisions) or of a TAG-vs-probe simulation; `llm-hu --spots` rebuilds the exact inputs and asks each row each spot, so two prompts are compared decision by decision on the same states.
 - **Comparison** (`llm-hu-compare.ts`): B − A on the same deals across runs with the sd per pair, and a check that shared rule-bot rows came out identical.
 - **Probes** `folder` (TAG, but folds to a bet after the flop unless it has top pair or better, or a flush or open-ended draw before the river; never raises a bet) and `calldown` (TAG before the flop; after it never folds a pair or any draw, folds otherwise; never bets or raises) are defined by hand class (`describeHand`), not engine equity, so they do not share the model's equity.

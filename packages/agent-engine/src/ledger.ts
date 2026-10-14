@@ -27,7 +27,7 @@ export interface PlayerLedger {
   /** Hands that reached the flop with the player still in, and how many of those they took to a showdown. */
   sawFlop: number;
   showdowns: number;
-  /** Showdowns where they called the river with one pair or worse. Needs shown cards. */
+  /** Showdowns where they called the river with no pair at all (the board playing is no pair). Needs shown cards. */
   lightCalldowns: number;
   /** The last 3 hands shown at a showdown, newest first. Needs shown cards. */
   shown: ShownHand[];
@@ -112,7 +112,7 @@ export function updateLedger(ledger: Ledger, input: HandEndInput, options: { car
 
     const cards = shown.get(player.id);
     const fresh = eventsFor(player.id, actions, input.handNumber, view.bigBlind, cards, view.communityCards).reverse();
-    entry.lightCalldowns += fresh.filter((event) => event.kind === 'called_down_light').length;
+    entry.lightCalldowns += cards && fresh.some((event) => event.kind === 'called_down_light') && categoryOf(cards, view.communityCards).owned === 0 ? 1 : 0;
     entry.notable = [...fresh, ...entry.notable].slice(0, MAX_NOTABLE);
     if (cards) {
       const won = input.payouts.filter((payout) => payout.playerId === player.id).reduce((sum, payout) => sum + payout.amount, 0);

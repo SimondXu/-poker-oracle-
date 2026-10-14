@@ -43,7 +43,7 @@ const CONFIG: RunConfig = {
   bigBlind: 20,
   claudeVersion: 'test',
   prompts: ['v0'],
-  personas: { v0: 'analyst', v1: 'exploiter' },
+  personas: { v0: 'analyst', 'v1.1': 'exploiter' },
   snapshotPerPair: false,
   systemSha256: systemPromptsOf(['v0'], { v0: 'analyst' }),
 };
@@ -237,16 +237,16 @@ test('the command line takes prompt versions, a persona, snapshot mode and a spo
   assert.throws(() => parseConfig(['--persona', 'v9=bully']), /--persona/);
 
   // Each version plays its own persona unless told otherwise; a pair per version sets them apart.
-  const both = parseConfig(['--prompts', 'v0,v1', '--snapshot-per-pair']).config;
-  assert.deepEqual(both.personas, { v0: 'analyst', v1: 'exploiter' });
-  assert.deepEqual(parseConfig(['--prompts', 'v0,v1', '--persona', 'v1=analyst']).config.personas, { v0: 'analyst', v1: 'analyst' });
-  assert.deepEqual(parseConfig(['--prompts', 'v0,v1', '--persona', 'bully']).config.personas, { v0: 'bully', v1: 'bully' });
-  assert.notEqual(both.systemSha256.v1, both.systemSha256.v0);
+  const both = parseConfig(['--prompts', 'v0,v1.1', '--snapshot-per-pair']).config;
+  assert.deepEqual(both.personas, { v0: 'analyst', 'v1.1': 'exploiter' });
+  assert.deepEqual(parseConfig(['--prompts', 'v0,v1.1', '--persona', 'v1.1=analyst']).config.personas, { v0: 'analyst', 'v1.1': 'analyst' });
+  assert.deepEqual(parseConfig(['--prompts', 'v0,v1.1', '--persona', 'bully']).config.personas, { v0: 'bully', 'v1.1': 'bully' });
+  assert.notEqual(both.systemSha256['v1.1'], both.systemSha256.v0);
 
   assert.equal(cliRowId(MODEL, 'low', 'v0'), 'cli-claude/claude-haiku-5-5/low/v0');
   assert.equal(cliRowId(MODEL, 'low', 'v0', 'bully'), 'cli-claude/claude-haiku-5-5/low/v0+bully');
-  assert.equal(cliRowId(MODEL, 'low', 'v1'), 'cli-claude/claude-haiku-5-5/low/v1');
-  assert.equal(cliRowId(MODEL, 'low', 'v1', 'analyst'), 'cli-claude/claude-haiku-5-5/low/v1+analyst');
+  assert.equal(cliRowId(MODEL, 'low', 'v1.1'), 'cli-claude/claude-haiku-5-5/low/v1.1');
+  assert.equal(cliRowId(MODEL, 'low', 'v1.1', 'analyst'), 'cli-claude/claude-haiku-5-5/low/v1.1+analyst');
 });
 
 test('snapshot mode runs the same deals with real hand numbers; the default keeps HAND 0', async () => {
