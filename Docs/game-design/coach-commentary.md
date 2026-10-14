@@ -52,7 +52,8 @@ export type CoachLocale = 'en' | 'zh';
 
 /** A public action before the hero's decision, by position: never a name or id. */
 export interface CoachLineAction { street: BotDecisionPhase; position: BotPosition; isHero: boolean; kind: CoachActionKind; to?: number }
-// CoachReviewDecision gains `line: CoachLineAction[]`, captured with the record from the pre-action hand.
+// The server's record, CoachReviewRecord (CoachReviewDecision plus `line: CoachLineAction[]`), captures the line
+// from the pre-action hand. game:review sends each decision without it (open question 7; server-only for now).
 // GameReviewEvent gains `commentary: boolean`: whether explain requests are served for this review.
 
 // client -> server 'coach:explain', answered by ack (as other requests are, ws/ack.ts)
@@ -75,7 +76,7 @@ export interface CoachCommentary {
 - **Lookup:** the server finds the decision in `room.coachReviews` by hand number and `advice.actionIndex`. That review is this hand's or the last one's, exactly what the client can show, so nothing new is stored. Answers are cached per player and cleared when the review is replaced.
 - **No LLM call inside the room task queue.** The handler copies the immutable record and awaits the provider outside it, as `Docs/plans/agent-engine/decisions.md` §3 already requires.
 - **Client:** `gameStore.commentary` keyed `${handNumber}:${actionIndex}:${locale}`. A late answer for a review no longer shown is stored and not rendered. The record is immutable, so no `stateVersion` check is needed.
-- **Why `line` joins the shared record:** without the betting line the model guesses it; with it the eval sample is self-contained. It is public and costs a few dozen bytes per decision (open question 8: send it to the client, or keep it server-only).
+- **Why `line` joins the shared record:** without the betting line the model guesses it; with it the eval sample is self-contained. It is public and costs a few dozen bytes per decision (open question 7: send it to the client, or keep it server-only).
 
 ### Provider layer (`apps/server/src/llm/`, shared with the bots)
 
@@ -167,12 +168,13 @@ The validator cannot catch a wrong direction ("your equity cleared the price" wh
 
 **Dataset.**
 
-- **A new tool `apps/server/src/tools/coach-samples.ts`.** A seeded six-max table where the hero's seat is not a bot. The hero's policy is drawn per hand from a mix (TAG 40%, Fish 15%, LAG 15%, calling station 10%, a uniformly random legal action 20%; tuned to hit the targets below).
-- **It records through the production functions** (advice, capture, `takeHandReviews`), so samples are production records, written as JSONL. It must bump `stateVersion` per action, because the kept advice is keyed by it, and `playSimulatedHand` in the simulator does not bump it.
+- **A new tool `apps/server/src/tools/coach-samples.ts`** (`pnpm --filter @aipoker/server coach:samples`). A seeded six-max table where the hero's seat is not a bot. The hero's policy is drawn per hand from a mix (TAG 40%, Fish 15%, LAG 15%, calling station 10%, a uniformly random legal action 20%), and 3% of hero decisions time out, played as the server's timeout plays them (the mix alone never times out).
+- **Opponents:** the training table's rule bots, with one seat a calling station. The rule bots all fold to bets too often for the policy to read anyone as sticky, so without that seat `sticky_opponent` never appears.
+- **It records through the production functions** (advice, capture, `takeHandReviews`), so samples are production records, written as JSONL to the git-ignored `apps/server/.eval/coach-samples/`. It must bump `stateVersion` per action, because the kept advice is keyed by it, and `playSimulatedHand` in the simulator does not bump it.
 - **Bot play is untouched:** this is a new tool, and `bot-play-digest.test.ts` stays as is.
 - **Size and split:**
-  - about 1,000 hands, giving 2,000-3,000 decisions;
-  - a dev set of 150 for prompt work and a held-out golden set of 150, stratified street × verdict (12 cells, at least 10 each);
+  - 1,500 hands by default (about 2,900 decisions); at 1,000, river × close had too few for both sets;
+  - a dev set of 150 for prompt work and a held-out golden set of 150 from disjoint hands, each stratified street × verdict (12 cells, at least 10 each); the golden set fills from at most half of each cell, so the rare cells leave enough for the dev set;
   - the golden set holds at least 20 unstable, 30 multiway and 10 each with `price_*`, `jam`, `sticky_opponent`, `position_range` and timeouts.
 - **Golden labels by the author:**
   - the key reason codes per item (proposed automatically, then reviewed);
