@@ -20,7 +20,7 @@ import { buildBotTurnInput } from '../../../game-loop/bot-view.ts';
 import type { RuntimeRoom } from '../../../rooms/types.ts';
 import { playerNameFor, seededBotSpots, type BotSpot } from '../../../tools/bot-spots.ts';
 
-/** Every tool call deep mode could make here, plus both briefs: everything a prompt can be built from. */
+/** Every tool call deep mode could make here, plus both briefs in both formats: everything a prompt can be built from. */
 function everythingTheBotSees(input: BotTurnInput, seedBase = input.seedBase) {
   const ctx = createToolContext({ ...input, seedBase });
   const seats = (input.context.opponents ?? []).map((opponent) => ctx.seatOf(opponent.id));
@@ -28,16 +28,18 @@ function everythingTheBotSees(input: BotTurnInput, seedBase = input.seedBase) {
     ['equity', { seat: null, option: null }],
     ['preflop_chart', { seat: null, option: null }],
     ['advisor', { seat: null, option: null }],
+    ['bet_estimates', { seat: null, option: null }],
     ...seats.flatMap((seat): Array<[ToolName, ToolArgs]> => [
       ['equity', { seat, option: null }],
       ['opponent_profile', { seat, option: null }],
       ['opponent_range', { seat, option: null }],
+      ['opponent_read', { seat, option: null }],
     ]),
     ...buildMenu(input.context).filter((option) => option.potShare !== null)
       .map((option): [ToolName, ToolArgs] => ['own_range', { seat: null, option: option.id }]),
   ];
-  const messages = (['full', 'minimal'] as const).map((kind) =>
-    renderUserMessage({ ctx, brief: buildBrief(ctx, kind), handNumber: input.handNumber, notes: [] }));
+  const messages = (['brief-0', 'brief-1'] as const).flatMap((format) => (['full', 'minimal'] as const).map((kind) =>
+    renderUserMessage({ ctx, brief: buildBrief(ctx, kind, format), handNumber: input.handNumber, notes: [], format })));
   const tools = calls.map(([name, args]) => {
     const run = runTool(ctx, name, args);
     return { tool: run.tool, args: run.args, ok: run.ok, error: run.error, result: run.result };
@@ -45,8 +47,8 @@ function everythingTheBotSees(input: BotTurnInput, seedBase = input.seedBase) {
   return { messages, tools };
 }
 
-function seen(spot: BotSpot): string {
-  const input = buildBotTurnInput(spot.room, spot.botId);
+function seen(spot: Pick<BotSpot, 'room' | 'botId' | 'ledger'>): string {
+  const input = buildBotTurnInput(spot.room, spot.botId, undefined, spot.ledger);
   assert.ok(input);
   return canonicalJson({ input: hashJson(input), ...everythingTheBotSees(input) });
 }
@@ -98,12 +100,22 @@ const CANDIDATES = seededBotSpots(400, 'bot-view-hidden');
 const SPOTS = ['betting_preflop', 'betting_flop', 'betting_turn', 'betting_river']
   .flatMap((phase) => CANDIDATES.filter((spot) => spot.room.hand!.phase === phase).slice(0, 4));
 
-test('prompts and tool outputs are unchanged when hidden cards, the deck and room.coach* are permuted', () => {
+/** Heads-up, nothing to bet into yet, after the flop: where brief-1 prices the bets. Two per street. */
+const HU_UNOPENED = ['betting_flop', 'betting_turn', 'betting_river'].flatMap((phase) =>
+  CANDIDATES.filter((spot) => {
+    const input = buildBotTurnInput(spot.room, spot.botId);
+    return spot.room.hand!.phase === phase && input!.context.opponentCount === 1 && input!.context.currentBetToMatch === 0;
+  }).slice(0, 2));
+const ALL_SPOTS = [...SPOTS, ...HU_UNOPENED];
+
+test('prompts and tool outputs are unchanged when hidden cards, the deck and room.coach* are permuted, ledger and brief-1 included', () => {
   assert.equal(SPOTS.length, 16);
-  for (const [index, spot] of SPOTS.entries()) {
+  assert.equal(HU_UNOPENED.length, 6);
+  assert.ok(ALL_SPOTS.every((spot) => Object.keys(spot.ledger.players).length > 0));
+  for (const [index, spot] of ALL_SPOTS.entries()) {
     const permuted = permuteHidden(spot.room, spot.botId, `hidden-${index}`);
     assert.notDeepEqual(permuted.hand!.deck, spot.room.hand!.deck);
-    assert.equal(seen({ room: permuted, botId: spot.botId }), seenBefore(spot), `spot ${index}`);
+    assert.equal(seen({ room: permuted, botId: spot.botId, ledger: spot.ledger }), seenBefore(spot), `spot ${index}`);
   }
 });
 
@@ -113,11 +125,11 @@ test("the permutation check would catch a leak: the bot's own cards do change wh
   const self = room.hand!.players.find((player) => player.id === spot.botId)!;
   const swapIndex = room.hand!.deck.findIndex((card) => !self.holeCards.includes(card));
   [self.holeCards[0], room.hand!.deck[swapIndex]] = [room.hand!.deck[swapIndex]!, self.holeCards[0]!];
-  assert.notEqual(seen({ room, botId: spot.botId }), seenBefore(spot));
+  assert.notEqual(seen({ room, botId: spot.botId, ledger: spot.ledger }), seenBefore(spot));
 });
 
 test('no player id or name appears in any prompt or tool output', () => {
-  for (const spot of SPOTS) {
+  for (const spot of ALL_SPOTS) {
     const text = seenBefore(spot);
     for (const player of spot.room.players.values()) {
       assert.ok(!text.includes(player.id), `id ${player.id}`);
@@ -131,8 +143,8 @@ test('no player id or name appears in any prompt or tool output', () => {
 test('the same seed gives the same tool outputs; another seed moves the sampled equity', () => {
   let moved = 0;
   for (const spot of SPOTS.filter((_, index) => index % 4 === 0)) {
-    const input = buildBotTurnInput(spot.room, spot.botId)!;
-    assert.deepEqual(everythingTheBotSees(input), everythingTheBotSees(buildBotTurnInput(spot.room, spot.botId)!));
+    const input = buildBotTurnInput(spot.room, spot.botId, undefined, spot.ledger)!;
+    assert.deepEqual(everythingTheBotSees(input), everythingTheBotSees(buildBotTurnInput(spot.room, spot.botId, undefined, spot.ledger)!));
     const equity = (seedBase: string) => everythingTheBotSees(input, seedBase).tools.find((run) => run.tool === 'equity')!.result;
     moved += canonicalJson(equity(input.seedBase)) === canonicalJson(equity(`${input.seedBase}:other`)) ? 0 : 1;
   }
@@ -150,4 +162,42 @@ test("the turn input is frozen, holds only the bot's cards and is null off turn"
   assert.deepEqual(Object.keys(input.view.players[0]!).sort(), ['handCommitted', 'holeCards', 'id', 'seatIndex', 'stack', 'status', 'streetCommitted']);
   const other = [...spot.room.players.keys()].find((id) => id !== spot.botId)!;
   assert.equal(buildBotTurnInput(spot.room, other), null);
+});
+
+test('brief-1 prices the bets heads-up and adds the ledger lines; the tools say the same', () => {
+  let withShown = 0;
+  for (const spot of HU_UNOPENED) {
+    const input = buildBotTurnInput(spot.room, spot.botId, undefined, spot.ledger)!;
+    const ctx = createToolContext(input);
+    const message = renderUserMessage({ ctx, brief: buildBrief(ctx, 'full', 'brief-1'), handNumber: 1, notes: [], format: 'brief-1' });
+    const river = input.context.phase === 'river';
+    assert.match(message, /folds by bet size: under ½ pot \d+ of \d+/);
+    assert.match(message, /est\. folds \d+%|est\. folds <1%/);
+    assert.equal(/gain vs check/.test(message), river, input.context.phase);
+    assert.equal(/stack-off size/.test(message), !river, input.context.phase);
+    withShown += /hands shown: /.test(message) ? 1 : 0;
+
+    const estimates = runTool(ctx, 'bet_estimates', { seat: null, option: null });
+    assert.ok(estimates.ok);
+    const options = (estimates.result as { options: Array<{ fold: number; bluffNeeds: number }> }).options;
+    assert.ok(options.length > 0 && options.every((option) => option.fold > 0 && option.fold < 1));
+    // The bet lines the message prints are the tool's, in menu order.
+    assert.equal(message.split('\n').filter((line) => /^[A-H] {2}(bet|all-in).*est\. folds/.test(line)).length, options.length);
+
+    // brief-0 of the same spot has none of it.
+    const old = renderUserMessage({ ctx, brief: buildBrief(ctx, 'full', 'brief-0'), handNumber: 1, notes: [] });
+    assert.ok(!/est\. folds|folds by bet size|stack-off|hands shown/.test(old));
+  }
+  assert.ok(withShown > 0);
+});
+
+test('at a bigger table brief-1 keeps the brief-0 lines for prices, folds and the menu, and only rewords the hand rank', () => {
+  const multiway = CANDIDATES.filter((spot) => spot.room.hand!.phase !== 'betting_preflop' && buildBotTurnInput(spot.room, spot.botId)!.context.opponentCount >= 2).slice(0, 4);
+  assert.equal(multiway.length, 4);
+  for (const spot of multiway) {
+    const input = buildBotTurnInput(spot.room, spot.botId, undefined, spot.ledger)!;
+    const ctx = createToolContext(input);
+    const render = (format: 'brief-0' | 'brief-1') => renderUserMessage({ ctx, brief: buildBrief(ctx, 'full', format), handNumber: 1, notes: [], format });
+    assert.equal(render('brief-1').replace(/bottom \d+%/, 'top XX%').replace(/top \d+%/, 'top XX%'), render('brief-0').replace(/top \d+%/, 'top XX%'));
+  }
 });

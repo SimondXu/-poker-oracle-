@@ -25,6 +25,8 @@ import {
 } from '@aipoker/strategy-engine';
 import { z } from 'zod';
 
+import { callingEquities, foldEstimates, readsFor, riverGain, SIZE_BUCKET_LABELS } from '../exploit.ts';
+import { ledgerOf } from '../ledger.ts';
 import { HAND_CATEGORIES, type HandCategory } from '../memory.ts';
 import { buildMenu, MENU_IDS, type MenuId } from '../menu.ts';
 import { EQUITY_ITERATIONS, liveOpponent, liveOpponents, ToolArgumentError, toolSeed, type ToolContext } from './context.ts';
@@ -37,6 +39,8 @@ export const TOOL_NAMES = [
   'equity',
   'opponent_profile',
   'opponent_range',
+  'opponent_read',
+  'bet_estimates',
   'preflop_chart',
   'own_range',
   'advisor',
@@ -446,6 +450,110 @@ const opponentRange: ToolSpec<RangeOutput> = {
   },
 };
 
+// ---- opponent_read
+
+const READ_LABELS = ['calls a lot', 'folds a lot', 'folds to big bets', 'bets a lot', 'rarely bets', 'calls down light'] as const;
+const cardPair = z.tuple([z.string(), z.string()]);
+
+const opponentReadOutput = z.object({
+  seat: z.number().int(),
+  /** Folds to bets after the flop, by size. */
+  folds: z.array(z.object({ label: z.string(), faced: z.number().int(), folded: z.number().int() })),
+  sawFlop: z.number().int(),
+  showdowns: z.number().int(),
+  reads: z.array(z.object({ label: z.enum(READ_LABELS), evidence: z.string(), hint: z.string().nullable() })),
+  /** Hands shown at a showdown, newest first; empty when the run does not keep them. */
+  shown: z.array(z.object({ hand: z.number().int(), cards: cardPair, made: z.enum(HAND_CATEGORIES), line: z.string(), result: z.enum(['won', 'lost', 'split']) })),
+  notable: z.array(notableEvent),
+});
+
+const opponentRead: ToolSpec<z.infer<typeof opponentReadOutput>> = {
+  name: 'opponent_read',
+  mode: 'eager+deep',
+  args: 'seat',
+  output: opponentReadOutput,
+  execute(ctx, { seat }) {
+    const opponent = liveOpponent(ctx, seat);
+    const entry = ledgerOf(ctx.ledger, opponent.id);
+    return {
+      seat: seat!,
+      folds: entry.buckets.map((bucket, index) => ({ label: SIZE_BUCKET_LABELS[index]!, faced: bucket.faced, folded: bucket.folded })),
+      sawFlop: entry.sawFlop,
+      showdowns: entry.showdowns,
+      reads: readsFor({ record: entry, stats: opponent.stats, lightCalldowns: entry.lightCalldowns }),
+      shown: entry.shown.map((hand) => ({ ...hand, cards: [hand.cards[0], hand.cards[1]] as [string, string] })),
+      notable: entry.notable,
+    };
+  },
+};
+
+// ---- bet_estimates
+
+interface BetEstimate {
+  option: MenuId;
+  /** The bet as a share of the pot. */
+  share: number;
+  /** How often this opponent is estimated to fold to it. */
+  fold: number;
+  /** How often a pure bluff needs them to fold. */
+  bluffNeeds: number;
+  /** River only: expected gain over checking, in bb; the opponent only calls or folds. */
+  gainBb: number | null;
+}
+
+const betEstimates: ToolSpec<{ seat: number | null; options: BetEstimate[] }> = {
+  name: 'bet_estimates',
+  mode: 'eager+deep',
+  args: 'none',
+  output: z.object({
+    seat: z.number().int().nullable(),
+    options: z.array(z.object({ option: z.enum(MENU_IDS), share: z.number(), fold: z.number(), bluffNeeds: z.number(), gainBb: z.number().nullable() })),
+  }),
+  execute(ctx) {
+    const { context } = ctx;
+    const opponents = liveOpponents(ctx);
+    if (opponents.length !== 1) {
+      throw new ToolArgumentError('bet_estimates is for a hand against exactly one opponent');
+    }
+    const opponent = opponents[0]!;
+    const seat = ctx.seatOf(opponent.id);
+    // Bets into an unopened pot after the flop; a raise is priced by the v0 lines only.
+    const bets = context.phase === 'preflop' || context.currentBetToMatch > 0
+      ? []
+      : buildMenu(context).filter((option) => (option.kind === 'bet' || option.kind === 'all_in') && option.potShare !== null);
+    if (bets.length === 0) {
+      return { seat, options: [] };
+    }
+
+    const entry = ledgerOf(ctx.ledger, opponent.id);
+    const folds = foldEstimates(entry, bets.map((option) => option.potShare!));
+    let gains: Array<number | null> = bets.map(() => null);
+    if (context.phase === 'river') {
+      const range = buildOpponentRange(opponent, context);
+      const [equity] = callingEquities(context, range, [1]);
+      const called = callingEquities(context, range, folds.map((fold) => 1 - fold));
+      gains = bets.map((option, index) => riverGain({
+        pot: context.potTotal,
+        bet: option.to! - context.myStreetCommitted,
+        equity: equity!,
+        calledEquity: called[index]!,
+        fold: folds[index]!,
+        bigBlind: context.bigBlind,
+      }));
+    }
+    return {
+      seat,
+      options: bets.map((option, index) => ({
+        option: option.id,
+        share: option.potShare!,
+        fold: folds[index]!,
+        bluffNeeds: option.bluffBreakEven!,
+        gainBb: gains[index]!,
+      })),
+    };
+  },
+};
+
 // ---- preflop_chart
 
 const mix = z.object({ fold: z.number(), call: z.number(), raise: z.number(), jam: z.number() });
@@ -545,6 +653,8 @@ export const TOOLS = {
   equity,
   opponent_profile: opponentProfile,
   opponent_range: opponentRange,
+  opponent_read: opponentRead,
+  bet_estimates: betEstimates,
   preflop_chart: preflopChart,
   own_range: ownRange,
   advisor,

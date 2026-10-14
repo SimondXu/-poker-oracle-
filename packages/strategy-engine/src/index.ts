@@ -13,6 +13,7 @@ export {
   enumerateRiverRangeEquity,
   estimateTendencies,
   isStrongDraw,
+  OPPONENT_PRIORS,
   rankedOnBoard,
   readOwnRange,
   simulateRangeEquity,

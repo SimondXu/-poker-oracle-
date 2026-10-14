@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import type { BotPlayerStats, CoachVerdict } from '@aipoker/shared';
 
+import type { LoggedAction } from './duplicate-hu-async.ts';
 import type { CliDecisionTrace } from './llm-cli-policy.ts';
 import { FALLBACK_LIMIT } from './llm-cli-policy.ts';
 import { addToSample, createSample, mulberry32, summarizeSample, type WinRateSummary } from './eval-utils.ts';
@@ -17,6 +18,8 @@ export interface DealLine {
   aBb: number;
   aStats: BotPlayerStats | null;
   traces: Array<{ half: 1 | 2; trace: CliDecisionTrace }>;
+  /** What both players did in each half, in order, for matching decisions to responses. Runs before v1 lack it. */
+  hands?: Array<{ half: 1 | 2; actions: LoggedAction[] }>;
 }
 
 export interface RowMeta {
@@ -31,8 +34,7 @@ export interface ReportMeta {
   status: string;
   claudeVersion: string | null;
   /** The system prompts the CLI rows were played with: version, run label and sha256. */
-  prompts: Array<{ prompt: string; label: string; sha256: string }>;
-  persona: string;
+  prompts: Array<{ prompt: string; label: string; persona: string; sha256: string }>;
   effort: string;
 }
 
@@ -68,6 +70,20 @@ export interface DecisionMetrics {
   flopTurnValue: { spots: number; bets: number; atLeastPot: number; medianPotShare: number | null };
   /** After the flop, nothing to call, equity under 35%: how often it bet. */
   bluff: { spots: number; bets: number; share: number | null };
+}
+
+/** What prompt v1 showed (`trace.exploit`) against what the model did and what the opponent did next. */
+export interface ExploitMetrics {
+  /** Decisions that carried v1's numbers. */
+  decisions: number;
+  /** River, nothing to call: the model took the option with the highest estimated gain over checking (check counts as 0). */
+  riverArgmax: { spots: number; agree: number; allInBest: number; allInTaken: number; gainLeftBb: number };
+  /** Weak hands (equity under 35%, nothing to call after the flop) by how far the best size's fold estimate cleared its price. */
+  bluffBins: Array<{ label: string; spots: number; bets: number; betShare: number | null }>;
+  /** Estimated fold of the bet it made against whether the opponent folded; bets whose answer is on record only. */
+  foldCalibration: { bets: number; brier: number | null; bins: Array<{ from: number; to: number; bets: number; predicted: number | null; realised: number | null }> };
+  /** Reads shown, by label (decisions), and in how many matches one appeared and at what deal on median. */
+  reads: { byLabel: Record<string, number>; matchesWithRead: number; matches: number; medianFirstDeal: number | null };
 }
 
 const RIVER_BUCKETS: Array<[number, number]> = [[0.5, 0.65], [0.65, 0.8], [0.8, 1.01]];
@@ -109,6 +125,90 @@ export function decisionMetrics(traces: readonly CliDecisionTrace[]): DecisionMe
   };
 }
 
+const BLUFF_BINS: Array<{ label: string; test: (margin: number) => boolean }> = [
+  { label: 'margin under 0', test: (margin) => margin < 0 },
+  { label: 'margin 0 to 10 points', test: (margin) => margin >= 0 && margin < 0.1 },
+  { label: 'margin 10 points or more', test: (margin) => margin >= 0.1 },
+];
+
+/** Needs v1 traces; null when none carried the numbers. */
+export function exploitMetrics(lines: readonly DealLine[]): ExploitMetrics | null {
+  const entries = lines.flatMap((line) => line.traces.map((entry) => ({ line, half: entry.half, trace: entry.trace })));
+  const shown = entries.filter(({ trace }) => trace.decision.source === 'llm' && (trace.exploit?.estimates.length ?? 0) > 0);
+  if (entries.every(({ trace }) => !trace.exploit)) {
+    return null;
+  }
+
+  const unbet = (trace: CliDecisionTrace) => trace.phase !== 'preflop' && trace.menu.some((option) => option.kind === 'check');
+  const river = shown.filter(({ trace }) => trace.phase === 'river' && unbet(trace));
+  let agree = 0;
+  let allInBest = 0;
+  let allInTaken = 0;
+  let gainLeftBb = 0;
+  for (const { trace } of river) {
+    const gains = trace.exploit!.estimates.map((estimate) => ({ option: estimate.option, gain: estimate.gainBb ?? 0 }));
+    const check = trace.menu.find((option) => option.kind === 'check')!;
+    const best = [{ option: check.id as string, gain: 0 }, ...gains].reduce((top, candidate) => (candidate.gain > top.gain ? candidate : top));
+    const chosen = trace.decision.choice;
+    agree += chosen === best.option ? 1 : 0;
+    const allIn = trace.menu.find((option) => option.kind === 'all_in')?.id;
+    allInBest += allIn !== undefined && best.option === allIn ? 1 : 0;
+    allInTaken += trace.decision.kind === 'all_in' ? 1 : 0;
+    gainLeftBb += best.gain - (chosen === check.id ? 0 : (gains.find((candidate) => candidate.option === chosen)?.gain ?? 0));
+  }
+
+  const weak = shown.filter(({ trace }) => unbet(trace) && trace.advice.equity !== null && trace.advice.equity < 0.35);
+  const bluffBins = BLUFF_BINS.map(({ label, test }) => {
+    const inBin = weak.filter(({ trace }) => test(Math.max(...trace.exploit!.estimates.map((estimate) => estimate.fold - estimate.bluffNeeds))));
+    const bets = inBin.filter(({ trace }) => trace.decision.kind === 'bet' || trace.decision.kind === 'all_in').length;
+    return { label, spots: inBin.length, bets, betShare: inBin.length === 0 ? null : bets / inBin.length };
+  });
+
+  // The opponent's answer to the model's own bet: the next action of the hand, if it is theirs on the same street.
+  const answered: Array<{ fold: number; folded: boolean }> = [];
+  for (const { line, half, trace } of shown) {
+    const estimate = trace.exploit!.estimates.find((candidate) => candidate.option === trace.decision.choice);
+    const actions = line.hands?.find((hand) => hand.half === half)?.actions;
+    const mine = actions?.[trace.actionIndex];
+    const reply = actions?.[trace.actionIndex + 1];
+    if (estimate && mine && reply && reply.player !== mine.player && reply.phase === mine.phase) {
+      answered.push({ fold: estimate.fold, folded: reply.type === 'fold' });
+    }
+  }
+  const calibrationBins = [0, 0.2, 0.4, 0.6, 0.8].map((from) => {
+    const inBin = answered.filter((bet) => bet.fold >= from && bet.fold < (from === 0.8 ? 1.01 : from + 0.2));
+    return {
+      from,
+      to: Math.min(1, from + 0.2),
+      bets: inBin.length,
+      predicted: inBin.length === 0 ? null : mean(inBin.map((bet) => bet.fold)),
+      realised: inBin.length === 0 ? null : mean(inBin.map((bet) => (bet.folded ? 1 : 0))),
+    };
+  });
+
+  const byLabel: Record<string, number> = {};
+  for (const { trace } of entries) {
+    trace.exploit?.reads.forEach((label) => (byLabel[label] = (byLabel[label] ?? 0) + 1));
+  }
+  const matches = new Map<string, number | null>();
+  for (const { line, trace } of entries) {
+    if (!matches.has(line.key)) {
+      matches.set(line.key, null);
+    }
+    if ((trace.exploit?.reads.length ?? 0) > 0) {
+      matches.set(line.key, Math.min(matches.get(line.key) ?? Infinity, line.deal));
+    }
+  }
+  const firsts = [...matches.values()].filter((deal): deal is number => deal !== null);
+  return {
+    decisions: shown.length,
+    riverArgmax: { spots: river.length, agree, allInBest, allInTaken, gainLeftBb },
+    bluffBins,
+    foldCalibration: { bets: answered.length, brier: answered.length === 0 ? null : mean(answered.map((bet) => (bet.fold - (bet.folded ? 1 : 0)) ** 2)), bins: calibrationBins },
+    reads: { byLabel, matchesWithRead: firsts.length, matches: matches.size, medianFirstDeal: median(firsts) },
+  };
+}
+
 export interface CliMetrics {
   decisions: number;
   fallbackRate: number;
@@ -129,6 +229,8 @@ export interface CliMetrics {
   priceBlunders: { count: number; ofDecisionsFacingABet: number; rate: number };
   /** How it played its good and its weak hands; see `DecisionMetrics`. */
   play: DecisionMetrics;
+  /** What prompt v1 showed and how the model used it; null for v0 rows. */
+  exploit: ExploitMetrics | null;
   models: string[];
 }
 
@@ -251,6 +353,7 @@ function cliMetrics(lines: DealLine[]): CliMetrics {
     },
     priceBlunders: { count: blunders, ofDecisionsFacingABet: priceSpots.length, rate: priceSpots.length === 0 ? 0 : blunders / priceSpots.length },
     play: decisionMetrics(traces),
+    exploit: exploitMetrics(lines),
     models: [...new Set(metas.flatMap((meta) => meta.models))],
   };
 }
@@ -329,10 +432,21 @@ export function formatPlay(play: DecisionMetrics): string[] {
   ];
 }
 
+export function formatExploit(exploit: ExploitMetrics): string[] {
+  const ratio = (part: number, whole: number) => (whole === 0 ? '-' : `${part}/${whole} (${f((part / whole) * 100)}%)`);
+  const { riverArgmax: river, foldCalibration: calibration, reads } = exploit;
+  return [
+    `  v1 numbers shown on ${exploit.decisions} decisions · reads ${JSON.stringify(reads.byLabel)} · a read appeared in ${reads.matchesWithRead} of ${reads.matches} matches, median first at deal ${reads.medianFirstDeal ?? '-'}`,
+    `  river EV-argmax: took the best-gain option ${ratio(river.agree, river.spots)} · all-in was best ${river.allInBest}, taken ${river.allInTaken} · model gain left ${f(river.gainLeftBb)} bb`,
+    `  weak hands, bet rate by margin (best fold estimate minus what a bluff needs): ${exploit.bluffBins.map((bin) => `${bin.label} ${ratio(bin.bets, bin.spots)}`).join(' · ')}`,
+    `  fold estimates: Brier ${calibration.brier === null ? '-' : f(calibration.brier, 3)} on ${calibration.bets} answered bets · ${calibration.bins.filter((bin) => bin.bets > 0).map((bin) => `${f(bin.from * 100)}-${f(bin.to * 100)}%: said ${f((bin.predicted ?? 0) * 100)}% got ${f((bin.realised ?? 0) * 100)}% (${bin.bets})`).join(' · ') || 'none'}`,
+  ];
+}
+
 export function formatReport(report: Report): string {
   const { meta } = report;
   const out = [
-    `Run ${meta.runId} (${meta.status}) · claude ${meta.claudeVersion ?? 'n/a'} · effort ${meta.effort} · persona ${meta.persona} · prompts ${meta.prompts.map((prompt) => `${prompt.prompt} (${prompt.label}) sha256 ${prompt.sha256.slice(0, 12)}`).join(', ')}`,
+    `Run ${meta.runId} (${meta.status}) · claude ${meta.claudeVersion ?? 'n/a'} · effort ${meta.effort} · prompts ${meta.prompts.map((prompt) => `${prompt.prompt} (${prompt.label}) persona ${prompt.persona} sha256 ${prompt.sha256.slice(0, 12)}`).join(', ')}`,
     `Seed: ${meta.seed ?? 'withheld until the run ends'}`,
   ];
   for (const opponent of [...new Set(report.groups.map((group) => group.opponent))]) {
@@ -355,6 +469,7 @@ export function formatReport(report: Report): string {
         `    postflop ${agree(cli.agreement.postflop)}`,
         `  price blunders ${cli.priceBlunders.count} of ${cli.priceBlunders.ofDecisionsFacingABet} decisions facing a bet (${pct(cli.priceBlunders.rate)}) · models ${cli.models.join(', ') || 'n/a'}`,
         ...formatPlay(cli.play),
+        ...(cli.exploit ? formatExploit(cli.exploit) : []),
       );
     }
   }

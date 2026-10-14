@@ -37,6 +37,7 @@
     "eval:llm-hu-replay": "node --conditions=source --experimental-strip-types src/tools/llm-hu-replay.ts",
     "eval:llm-hu-spots": "node --conditions=source --experimental-strip-types src/tools/llm-hu-spots.ts",
     "eval:llm-hu-compare": "node --conditions=source --experimental-strip-types src/tools/llm-hu-compare.ts",
+    "eval:exploit-calibration": "node --conditions=source --experimental-strip-types src/tools/exploit-calibration.ts",
     "eval:cli-canary": "node --conditions=source --experimental-strip-types src/tools/cli-canary.ts"
   }
 }

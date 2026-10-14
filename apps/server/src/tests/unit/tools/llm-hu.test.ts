@@ -43,9 +43,9 @@ const CONFIG: RunConfig = {
   bigBlind: 20,
   claudeVersion: 'test',
   prompts: ['v0'],
-  persona: 'analyst',
+  personas: { v0: 'analyst', v1: 'exploiter' },
   snapshotPerPair: false,
-  systemSha256: systemPromptsOf(['v0'], 'analyst'),
+  systemSha256: systemPromptsOf(['v0'], { v0: 'analyst' }),
 };
 
 const depsFor = (dir: string, control: RunControl, run: RunFn): EvalDeps => ({
@@ -221,22 +221,32 @@ test('the command line takes full model ids, caps concurrency at 3 and prints a 
 test('the command line takes prompt versions, a persona, snapshot mode and a spot file; row ids carry the prompt version', () => {
   const defaults = parseConfig([]);
   assert.deepEqual(defaults.config.prompts, ['v0']);
-  assert.equal(defaults.config.persona, 'analyst');
+  assert.deepEqual(defaults.config.personas, { v0: 'analyst' });
   assert.equal(defaults.config.snapshotPerPair, false);
   assert.equal(defaults.spots, undefined);
   assert.equal(defaults.config.systemSha256.v0, 'f5a054b314bddb33a38ad3023e7e98c47cc954b05e89d41f3a4bdfbd4963b962');
 
   const given = parseConfig(['--prompts', 'v0', '--persona', 'bully', '--snapshot-per-pair', '--spots', 'x.json']);
-  assert.equal(given.config.persona, 'bully');
+  assert.deepEqual(given.config.personas, { v0: 'bully' });
   assert.equal(given.config.snapshotPerPair, true);
   assert.equal(given.spots, 'x.json');
   assert.notEqual(given.config.systemSha256.v0, defaults.config.systemSha256.v0);
   assert.throws(() => parseConfig(['--prompts', 'v9']), /--prompts takes distinct versions/);
   assert.throws(() => parseConfig(['--prompts', 'v0,v0']), /distinct/);
   assert.throws(() => parseConfig(['--persona', 'pirate']), /--persona/);
+  assert.throws(() => parseConfig(['--persona', 'v9=bully']), /--persona/);
+
+  // Each version plays its own persona unless told otherwise; a pair per version sets them apart.
+  const both = parseConfig(['--prompts', 'v0,v1', '--snapshot-per-pair']).config;
+  assert.deepEqual(both.personas, { v0: 'analyst', v1: 'exploiter' });
+  assert.deepEqual(parseConfig(['--prompts', 'v0,v1', '--persona', 'v1=analyst']).config.personas, { v0: 'analyst', v1: 'analyst' });
+  assert.deepEqual(parseConfig(['--prompts', 'v0,v1', '--persona', 'bully']).config.personas, { v0: 'bully', v1: 'bully' });
+  assert.notEqual(both.systemSha256.v1, both.systemSha256.v0);
 
   assert.equal(cliRowId(MODEL, 'low', 'v0'), 'cli-claude/claude-haiku-5-5/low/v0');
   assert.equal(cliRowId(MODEL, 'low', 'v0', 'bully'), 'cli-claude/claude-haiku-5-5/low/v0+bully');
+  assert.equal(cliRowId(MODEL, 'low', 'v1'), 'cli-claude/claude-haiku-5-5/low/v1');
+  assert.equal(cliRowId(MODEL, 'low', 'v1', 'analyst'), 'cli-claude/claude-haiku-5-5/low/v1+analyst');
 });
 
 test('snapshot mode runs the same deals with real hand numbers; the default keeps HAND 0', async () => {
