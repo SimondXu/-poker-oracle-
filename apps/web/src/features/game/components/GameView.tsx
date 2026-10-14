@@ -128,6 +128,7 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
         bigBlind={hand?.bigBlind ?? null}
         onBack={handleBack}
         onToggleHUD={toggleTrainingHUD}
+        isTrainingHUDVisible={isTrainingHUDVisible}
         onTogglePanel={togglePanel}
         isPanelOpen={isPanelSheetOpen}
       />
@@ -201,6 +202,7 @@ export function GameView({ roomId, currentUserId, screen, onAction, onReturnToLo
           championStack={screenState.championStack}
           heroResult={heroResult}
           coachHint={isTrainingHUDVisible ? screenState.trainingData : undefined}
+          isPanelCollapsed={isPanelCollapsed}
           handNumber={hand?.handNumber ?? null}
           onAction={onAction}
           onSpectate={handleSpectate}

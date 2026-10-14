@@ -6,10 +6,11 @@ import { coachVerdict, formatSpr, frequencyLabel, optionText, percent, sizeText,
 import { OPTION_CLASS } from '../side-panel/CoachView';
 
 /**
- * One line of the coach above the action buttons, for screens where the side panel is a closed
- * sheet (below xl): the policy's most likely action, how mixed it is, and the hand's strength.
+ * One line of the coach above the action buttons, for screens where the Coach tab is not on screen
+ * (below xl the panel is a closed sheet; at xl the panel column may be collapsed): the policy's
+ * most likely action, how mixed it is, and the hand's strength.
  */
-export function CoachHint({ data }: { data: CoachData | undefined }) {
+export function CoachHint({ data, isPanelCollapsed }: { data: CoachData | undefined; isPanelCollapsed: boolean }) {
   const t = useT();
   const advice = data?.advice;
   const top = advice?.options[0];
@@ -25,7 +26,10 @@ export function CoachHint({ data }: { data: CoachData | undefined }) {
         : null;
 
   return (
-    <p data-layout-box="coach-hint" className="flex items-baseline gap-snug truncate text-body text-text-2 xl:hidden">
+    <p
+      data-layout-box="coach-hint"
+      className={cn('flex items-baseline gap-snug truncate text-body text-text-2', !isPanelCollapsed && 'xl:hidden')}
+    >
       <span className="label-index text-micro text-text-3">{t('panel.tab.coach')}</span>
       <span className={cn('shrink-0 font-semibold', OPTION_CLASS[top.kind])}>{optionText(top, t)}</span>
       {size && <span className="shrink-0 text-text-3">{size}</span>}

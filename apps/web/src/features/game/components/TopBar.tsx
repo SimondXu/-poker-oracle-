@@ -43,6 +43,8 @@ export function TopBar({
   smallBlind,
   bigBlind,
   onBack,
+  onToggleHUD,
+  isTrainingHUDVisible,
   onTogglePanel,
   isPanelOpen,
 }: TopBarProps) {
@@ -63,7 +65,7 @@ export function TopBar({
   return (
     <header
       data-layout-box="top-bar"
-      className="col-span-full flex h-12 min-w-0 items-center gap-2 overflow-hidden border-b border-line bg-panel px-3 sm:gap-3 md:px-4"
+      className="col-span-full flex h-12 min-w-0 items-center gap-tight overflow-hidden border-b border-line bg-panel px-3 sm:gap-3 md:px-4"
     >
       <button
         type="button"
@@ -76,7 +78,8 @@ export function TopBar({
         </svg>
       </button>
 
-      <div className="flex min-w-0 shrink items-center gap-2">
+      {/* Below 360px the spade and the short hand number give way so the buttons fit. */}
+      <div className="flex min-w-0 shrink items-center gap-2 max-[360px]:hidden">
         <SpadeMark />
         <span className="label-index hidden truncate text-label font-bold tracking-caps-wide text-text sm:inline">
           {t('common.appName')}
@@ -112,7 +115,7 @@ export function TopBar({
             <span className="label-index text-micro text-text-3">{t('common.game.hand')}</span>
             <span className="text-body font-semibold text-text">{handNumber}</span>
           </span>
-          <span className="font-index shrink-0 text-body font-semibold text-text-2 md:hidden">
+          <span className="font-index shrink-0 text-body font-semibold text-text-2 md:hidden max-[360px]:hidden">
             {t('common.game.handShort', { number: handNumber })}
           </span>
         </>
@@ -130,6 +133,22 @@ export function TopBar({
         </span>
 
         <LocaleToggle />
+
+        {/* Below md the rail is hidden; the top bar carries its coach toggle. */}
+        <button
+          type="button"
+          onClick={onToggleHUD}
+          aria-pressed={isTrainingHUDVisible}
+          aria-label={t('common.rail.coach')}
+          title={t('common.rail.coach')}
+          data-layout-box="coach-toggle"
+          className="flex size-9 touch-manipulation items-center justify-center rounded-[var(--radius-control)] border border-line-2 text-text-2 outline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--color-brass)] aria-pressed:border-brass/60 aria-pressed:text-text md:hidden"
+        >
+          <svg width="18" height="18" {...ICON}>
+            <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
 
         <button
           type="button"
