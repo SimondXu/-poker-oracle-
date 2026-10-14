@@ -582,6 +582,25 @@ export interface CoachReviewDecision {
   verdict: CoachVerdict;
 }
 
+/** A public action before the hero's decision, by position: never a name or id. */
+export interface CoachLineAction {
+  street: BotDecisionPhase;
+  position: BotPosition;
+  isHero: boolean;
+  /** Read like the hero's own action: a raise for everything behind is an all-in, an all-in for no more than the bet a call. */
+  kind: CoachActionKind;
+  /** Street total for bet / raise / all_in. */
+  to?: number;
+}
+
+/**
+ * The server's record of a decision: the review row plus the betting line before it, so it is a
+ * self-contained eval sample. The line stays on the server; the client gets the decision without it.
+ */
+export interface CoachReviewRecord extends CoachReviewDecision {
+  line: CoachLineAction[];
+}
+
 export type CoachSessionTally = Record<CoachVerdict, number>;
 
 const AGGRESSIVE_KINDS: ReadonlySet<CoachActionKind> = new Set(['bet', 'raise', 'all_in']);

@@ -2979,6 +2979,7 @@ test('game:review goes only to each player’s own sockets at hand end, with the
   assert.equal(review.decisions[0].street, 'preflop');
   assert.deepEqual(review.decisions[0].heroAction, { kind: 'raise', to: 60, source: 'player' });
   assert.deepEqual(review.decisions[0].advice, advice);
+  assert.equal('line' in review.decisions[0], false, 'the betting line stays on the server');
   assert.deepEqual(review.session, { matched: 0, close: 0, off: 0, [review.decisions[0].verdict]: 1 });
   assert.equal(bobReviews[0].playerId, 'p1');
   assert.deepEqual(bobReviews[0].decisions.map((decision: any) => decision.heroAction), [{ kind: 'fold', source: 'player' }]);

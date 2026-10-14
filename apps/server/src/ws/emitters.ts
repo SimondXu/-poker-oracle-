@@ -8,7 +8,7 @@ import {
 } from '@aipoker/shared';
 import type { Server } from 'socket.io';
 
-import { takeHandReviews } from '../game-loop/coach-review.ts';
+import { clientReview, takeHandReviews } from '../game-loop/coach-review.ts';
 import { getTableLifecycleSnapshot } from '../rooms/table-lifecycle.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildHandResultPayload } from './view-models/hand-result.ts';
@@ -206,7 +206,7 @@ export function emitHandReviews(io: Server, room: RuntimeRoom, memberships: Map<
     const membership = memberships.get(socketId);
     const review = membership?.roomId === room.id ? reviews.find((candidate) => candidate.playerId === membership.playerId) : undefined;
     if (review) {
-      io.to(socketId).emit('game:review', review);
+      io.to(socketId).emit('game:review', clientReview(review));
     }
   }
 }
@@ -264,6 +264,6 @@ export function emitGameStateToSocket(
   // first decision of the next; it decides which, so replay either.
   const review = viewerPlayerId ? room.coachReviews.get(viewerPlayerId) : undefined;
   if (review && review.handNumber >= room.handNumber - 1) {
-    io.to(socketId).emit('game:review', review);
+    io.to(socketId).emit('game:review', clientReview(review));
   }
 }
