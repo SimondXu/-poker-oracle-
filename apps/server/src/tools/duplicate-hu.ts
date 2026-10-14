@@ -35,9 +35,9 @@ export interface HalfDealResult {
 }
 
 const DEFAULT_SEED = 20260307;
-const SMALL_BLIND_RATIO = 2;
+export const SMALL_BLIND_RATIO = 2;
 
-function createHeadsUpRoom(idsBySeat: readonly [string, string], playerStats: RuntimeRoom['playerStats']): RuntimeRoom {
+export function createHeadsUpRoom(idsBySeat: readonly [string, string], playerStats: RuntimeRoom['playerStats']): RuntimeRoom {
   const players = new Map<string, RuntimePlayer>(
     idsBySeat.map((id, seatIndex) => [id, { id, name: `Seat ${seatIndex}`, seatIndex, stack: 0, isBot: true }])
   );
