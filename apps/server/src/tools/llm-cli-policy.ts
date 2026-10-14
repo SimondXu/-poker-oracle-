@@ -27,8 +27,11 @@ import { buildClaudeArgs, childEnv, parseClaudeOutput, runClaude, type ClaudeCal
 export const CLI_PROTO_PROMPT_VERSION = 'cli-proto-0';
 /** The deep-mode eval deadline (`LLM_AGENT_EVAL_TIMEOUT_MS`). */
 export const DEADLINE_MS = 45_000;
-/** Two turns with `--json-schema` (measured); the smoke reports the maximum it sees. More stops the run. */
-export const MAX_TURNS = 2;
+/**
+ * Two turns with `--json-schema`, three when the structured output is retried once (the smoke saw
+ * 3 in 18 Haiku calls, 2026-10-14). More stops the run.
+ */
+export const MAX_TURNS = 3;
 /** An arm with more fallbacks than this is contaminated: the TAG fallback inflates measured strength. */
 export const FALLBACK_LIMIT = 0.02;
 const FALLBACK_CHECK_AFTER = 100;
