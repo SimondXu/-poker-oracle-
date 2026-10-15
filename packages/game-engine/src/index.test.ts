@@ -1124,3 +1124,83 @@ test('hand_end returns an uncalled all-in excess instead of paying it out as a p
   assert.equal((big?.stack ?? 0) + (short?.stack ?? 0), 1300);
   assert.ok((big?.stack ?? 0) >= 700, 'the uncalled 700 is back in the big stack');
 });
+
+test('an action that closes the street logs the totals it made, not the next street reset', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'p0', seatIndex: 0, stack: 1000 },
+      { id: 'p1', seatIndex: 1, stack: 1000 },
+      { id: 'p2', seatIndex: 2, stack: 1000 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(103)
+  });
+  assert.ok(initialized.ok);
+
+  const raised = applyAction(initialized.value, { playerId: 'p0', type: 'raise_to', amount: 60 });
+  assert.ok(raised.ok);
+  const folded = applyAction(raised.value, { playerId: 'p1', type: 'fold' });
+  assert.ok(folded.ok);
+  const called = applyAction(folded.value, { playerId: 'p2', type: 'call' });
+  assert.ok(called.ok);
+  assert.equal(called.value.phase, 'betting_flop');
+  assert.deepEqual(called.value.actions.at(-1), {
+    playerId: 'p2',
+    type: 'call',
+    amount: 40,
+    addedAmount: 40,
+    toAmount: 60,
+    phase: 'betting_preflop',
+    stackBefore: 980,
+    potTotalBefore: 90,
+    timestamp: 0
+  });
+
+  const checked = applyAction(called.value, { playerId: 'p2', type: 'check' });
+  assert.ok(checked.ok);
+  const closed = applyAction(checked.value, { playerId: 'p0', type: 'check' });
+  assert.ok(closed.ok);
+  assert.equal(closed.value.phase, 'betting_turn');
+  assert.equal(closed.value.actions.at(-1)?.toAmount, 0);
+});
+
+test('an action that ends the hand logs what was put in, before the uncalled part goes back', () => {
+  const initialized = initializeHand({
+    players: [
+      { id: 'big', seatIndex: 0, stack: 1000 },
+      { id: 'short', seatIndex: 1, stack: 300 }
+    ],
+    buttonMarkerSeat: 0,
+    smallBlind: 10,
+    bigBlind: 20,
+    rng: sequenceRng(42)
+  });
+  assert.ok(initialized.ok);
+
+  // The short stack calls all-in for less and ends the hand.
+  const shove = applyAction(initialized.value, { playerId: 'big', type: 'all_in' });
+  assert.ok(shove.ok);
+  const call = applyAction(shove.value, { playerId: 'short', type: 'call' });
+  assert.ok(call.ok);
+  assert.equal(call.value.phase, 'hand_end');
+  assert.deepEqual(
+    call.value.actions.map(({ playerId, type, amount, addedAmount, toAmount }) => ({ playerId, type, amount, addedAmount, toAmount })),
+    [
+      { playerId: 'big', type: 'all_in', amount: 1000, addedAmount: 990, toAmount: 1000 },
+      { playerId: 'short', type: 'call', amount: 280, addedAmount: 280, toAmount: 300 }
+    ]
+  );
+
+  // The big stack's all-in over a short all-in ends the hand; the log keeps the full shove.
+  const shortShove = applyAction(initialized.value, { playerId: 'big', type: 'call' });
+  assert.ok(shortShove.ok);
+  const jam = applyAction(shortShove.value, { playerId: 'short', type: 'all_in' });
+  assert.ok(jam.ok);
+  const overJam = applyAction(jam.value, { playerId: 'big', type: 'all_in' });
+  assert.ok(overJam.ok);
+  assert.equal(overJam.value.phase, 'hand_end');
+  const { type, amount, addedAmount, toAmount } = overJam.value.actions.at(-1)!;
+  assert.deepEqual({ type, amount, addedAmount, toAmount }, { type: 'all_in', amount: 1000, addedAmount: 980, toAmount: 1000 });
+});

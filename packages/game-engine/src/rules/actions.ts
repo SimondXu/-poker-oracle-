@@ -366,20 +366,24 @@ export function applyAction(
     };
   }
 
+  // Takes the record before finalizing: moving to the next street or ending the hand resets and refunds
+  // the same player objects the record reads.
+  const finish = (
+    record: Omit<HandActionRecord, 'phase' | 'stackBefore' | 'potTotalBefore' | 'timestamp'>
+  ): EngineResult<HandState, ApplyActionError> =>
+    ok(withActionLog(finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting), record));
+
   if (action.type === 'fold') {
     actor.status = 'folded';
     actor.hasActedThisStreet = true;
     pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
-    return ok(
-      withActionLog(nextState, {
-        playerId: actor.id,
-        type: 'fold',
-        amount: 0,
-        addedAmount: 0,
-        toAmount: actor.streetCommitted
-      })
-    );
+    return finish({
+      playerId: actor.id,
+      type: 'fold',
+      amount: 0,
+      addedAmount: 0,
+      toAmount: actor.streetCommitted
+    });
   }
 
   if (action.type === 'check') {
@@ -389,16 +393,13 @@ export function applyAction(
     actor.hasActedThisStreet = true;
     actor.matchedBetToMatchAtLastAction = state.betting.currentBetToMatch;
     pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
-    return ok(
-      withActionLog(nextState, {
-        playerId: actor.id,
-        type: 'check',
-        amount: 0,
-        addedAmount: 0,
-        toAmount: actor.streetCommitted
-      })
-    );
+    return finish({
+      playerId: actor.id,
+      type: 'check',
+      amount: 0,
+      addedAmount: 0,
+      toAmount: actor.streetCommitted
+    });
   }
 
   if (action.type === 'call') {
@@ -417,16 +418,13 @@ export function applyAction(
     }
 
     pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
-    return ok(
-      withActionLog(nextState, {
-        playerId: actor.id,
-        type: 'call',
-        amount: contribution,
-        addedAmount: contribution,
-        toAmount: actor.streetCommitted
-      })
-    );
+    return finish({
+      playerId: actor.id,
+      type: 'call',
+      amount: contribution,
+      addedAmount: contribution,
+      toAmount: actor.streetCommitted
+    });
   }
 
   if (action.type === 'raise_to') {
@@ -442,16 +440,13 @@ export function applyAction(
 
     pendingActorIds = raised.value.pendingActorIds;
     betting = raised.value.betting;
-    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
-    return ok(
-      withActionLog(nextState, {
-        playerId: actor.id,
-        type: 'raise_to',
-        amount: toAmount,
-        addedAmount: stackBefore - actor.stack,
-        toAmount
-      })
-    );
+    return finish({
+      playerId: actor.id,
+      type: 'raise_to',
+      amount: toAmount,
+      addedAmount: stackBefore - actor.stack,
+      toAmount
+    });
   }
 
   if (action.type === 'all_in') {
@@ -469,16 +464,13 @@ export function applyAction(
       actor.hasActedThisStreet = true;
       actor.matchedBetToMatchAtLastAction = state.betting.currentBetToMatch;
       pendingActorIds = pendingActorIds.filter((playerId) => playerId !== actor.id);
-      const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
-      return ok(
-        withActionLog(nextState, {
-          playerId: actor.id,
-          type: 'all_in',
-          amount: actor.streetCommitted,
-          addedAmount: contribution,
-          toAmount: actor.streetCommitted
-        })
-      );
+      return finish({
+        playerId: actor.id,
+        type: 'all_in',
+        amount: actor.streetCommitted,
+        addedAmount: contribution,
+        toAmount: actor.streetCommitted
+      });
     }
 
     const raised = applyRaiseTo(state, players, actor, allInTo);
@@ -487,16 +479,13 @@ export function applyAction(
     }
     pendingActorIds = raised.value.pendingActorIds;
     betting = raised.value.betting;
-    const nextState = finalizeActionResult(state, players, actor.seatIndex, pendingActorIds, betting);
-    return ok(
-      withActionLog(nextState, {
-        playerId: actor.id,
-        type: 'all_in',
-        amount: actor.streetCommitted,
-        addedAmount: stackBefore - actor.stack,
-        toAmount: actor.streetCommitted
-      })
-    );
+    return finish({
+      playerId: actor.id,
+      type: 'all_in',
+      amount: actor.streetCommitted,
+      addedAmount: stackBefore - actor.stack,
+      toAmount: actor.streetCommitted
+    });
   }
 
   return err('invalid_action');

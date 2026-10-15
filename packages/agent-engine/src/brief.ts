@@ -256,10 +256,7 @@ function seatsSection(ctx: ToolContext, positions: Map<number, BotPosition>): st
     ].join(' · '));
 }
 
-/**
- * The hand so far, street by street. Calls are shown at the price they matched: the engine logs a
- * call that closes a street after the street resets, so its own total reads 0.
- */
+/** The hand so far, street by street; calls are shown at the price they matched. */
 function actionSection(ctx: ToolContext, positions: Map<number, BotPosition>): string[] {
   const { view, context } = ctx;
   const streets = Object.keys(STREET_LABELS).slice(0, Object.keys(STREET_LABELS).indexOf(view.phase) + 1);
