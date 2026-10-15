@@ -39,7 +39,7 @@ import { buildClaudeArgs, childEnv, parseClaudeOutput, runClaude, type ClaudeCal
 /** Results under this label join later tables only if the prompt digests match (`llm-bots.md`, "CLI players"). */
 export const CLI_PROTO_PROMPT_VERSION = 'cli-proto-0';
 /** The label a prompt version's runs carry. */
-export const CLI_PROTO_LABELS: Record<PromptVersion, string> = { v0: CLI_PROTO_PROMPT_VERSION, 'v1.1': 'cli-proto-1.1' };
+export const CLI_PROTO_LABELS: Record<PromptVersion, string> = { v0: CLI_PROTO_PROMPT_VERSION, 'v1.1': 'cli-proto-1.1', 'v1.2': 'cli-proto-1.2' };
 /** The deep-mode eval deadline (`LLM_AGENT_EVAL_TIMEOUT_MS`). */
 export const DEADLINE_MS = 45_000;
 /**
@@ -273,7 +273,7 @@ function priceBlunder(kind: CoachActionKind, context: BotDecisionContext, equity
 /** Arm A1 for one decision: the full brief of the prompt version with empty NOTES, then the menu. */
 export function prepareDecision(input: BotTurnInput, version: PromptVersion = DEFAULT_PROMPT_VERSION) {
   const format = PROMPTS[version].brief;
-  const ctx = createToolContext(input);
+  const ctx = createToolContext(input, { foldModel: PROMPTS[version].foldModel });
   const brief = buildBrief(ctx, 'full', format);
   const userMessage = renderUserMessage({ ctx, brief, handNumber: input.handNumber, notes: [], format });
   return { ctx, brief, userMessage, menu: buildMenu(input.context) };

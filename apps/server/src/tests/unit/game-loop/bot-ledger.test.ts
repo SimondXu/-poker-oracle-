@@ -62,6 +62,19 @@ test("the ledger counts the same bets as the room's statistics, and its other co
   assert.ok([...Object.values(ledger.players)].some((entry) => entry.lightCalldowns > 0));
   // Every bucket gets bets in a corpus of random sizes.
   assert.ok([0, 1, 2, 3].every((bucket) => Object.values(ledger.players).some((entry) => entry.buckets[bucket]!.faced > 0)));
+
+  // Bets by line (prompt v1.2) are a part of the bets in each size bucket: the ones into an unopened pot.
+  const lines = new Set<string>();
+  for (const entry of Object.values(ledger.players)) {
+    entry.buckets.forEach((bucket, index) => {
+      const cells = Object.values(entry.byLine).map((cell) => cell[index]!);
+      assert.ok(cells.reduce((sum, cell) => sum + cell.faced, 0) <= bucket.faced);
+      assert.ok(cells.reduce((sum, cell) => sum + cell.folded, 0) <= bucket.folded);
+      assert.ok(cells.every((cell) => cell.folded <= cell.faced && cell.sumBase <= cell.faced));
+    });
+    Object.entries(entry.byLine).forEach(([line, cells]) => cells.some((cell) => cell.faced > 0) && lines.add(line));
+  }
+  assert.ok(lines.size >= 3, [...lines].join('; '));
 });
 
 test("the ledger is identical when folded players' cards and the bot's own unshown cards are permuted", () => {

@@ -32,6 +32,21 @@ test('the v1.1 prompt digest is pinned to its bot version', () => {
   assert.equal(botPromptDigest('v1.1'), PINNED_V1.digest);
 });
 
+/** Prompt v1.2: v1.1's text with the line fold model; the digest covers the model's rules (`FOLD_LINE_RULES`). */
+const PINNED_V12 = { version: 'bot-2026-10-15.1', digest: '6806de7e07b3a75cbf0f5499d83af51a4b56edf96012127eb14f320530b37268' };
+
+test('the v1.2 prompt digest is pinned to its bot version; its text is v1.1\'s and only the fold model differs', () => {
+  assert.equal(PROMPTS['v1.2'].botVersion, PINNED_V12.version);
+  assert.equal(botPromptDigest('v1.2'), PINNED_V12.digest);
+  const { id, botVersion, foldModel, ...text } = PROMPTS['v1.2'];
+  const { id: oldId, botVersion: oldVersion, foldModel: oldModel, ...oldText } = PROMPTS['v1.1'];
+  assert.deepEqual([id, oldId, foldModel, oldModel], ['v1.2', 'v1.1', 'line', 'size']);
+  assert.notEqual(botVersion, oldVersion);
+  assert.deepEqual(text, oldText);
+  assert.equal(PROMPTS.v0.foldModel, 'size');
+  assert.equal(buildSystemPrompt('exploiter', { deep: false }, 'v1.2'), buildSystemPrompt('exploiter', { deep: false }, 'v1.1'));
+});
+
 test('v1.1 is v0 with the exploit edits: the same sections, the persona texts and the v0 deep tools, plus the new lines', () => {
   const sections = (text: string) => text.split('\n').filter((line) => line.startsWith('## '));
   assert.deepEqual(sections(PROMPTS['v1.1'].common), [...sections(PROMPTS.v0.common).slice(0, -2), '## Playing to win chips', ...sections(PROMPTS.v0.common).slice(-2)]);

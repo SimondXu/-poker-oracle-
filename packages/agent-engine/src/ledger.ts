@@ -1,6 +1,6 @@
 import type { Card } from '@aipoker/shared';
 
-import { baseFold, SIZE_BUCKET_EDGES, sizeBucket } from './exploit.ts';
+import { baseFold, foldLine, lineKey, SIZE_BUCKET_EDGES, sizeBucket, type LineBucket } from './exploit.ts';
 import { categoryOf, eventsFor, ownLine, replay, shownCards, type HandCategory, type HandEndInput, type NotableEvent } from './memory.ts';
 
 /**
@@ -24,6 +24,8 @@ export interface PlayerLedger {
   buckets: Array<{ faced: number; folded: number }>;
   /** The sum over those bets of the fold rate a rational defender would have shown (`baseFold`). */
   sumBase: number;
+  /** The bets of those into an unopened pot, by the player's line this hand (`lineKey`), then by size bucket (prompt v1.2). */
+  byLine: Record<string, LineBucket[]>;
   /** Hands that reached the flop with the player still in, and how many of those they took to a showdown. */
   sawFlop: number;
   showdowns: number;
@@ -46,6 +48,7 @@ const FLOP_ON = ['betting_flop', 'betting_turn', 'betting_river'];
 export const emptyPlayerLedger = (): PlayerLedger => ({
   buckets: Array.from({ length: SIZE_BUCKET_EDGES.length + 1 }, () => ({ faced: 0, folded: 0 })),
   sumBase: 0,
+  byLine: {},
   sawFlop: 0,
   showdowns: 0,
   lightCalldowns: 0,
@@ -72,24 +75,28 @@ export function updateLedger(ledger: Ledger, input: HandEndInput, options: { car
   const reachedShowdown = seated.filter((player) => player.status !== 'folded').length >= 2 && view.communityCards.length === 5;
   const shown = options.cards ? shownCards(view) : new Map<string, [Card, Card]>();
 
-  // Bets faced after the flop, from the price and the pot at the time.
-  const facing = new Map<string, Array<{ x: number; folded: boolean }>>();
+  // Bets faced after the flop, from the price and the pot at the time; a bet into an unopened pot also keeps the line it came on.
+  const facing = new Map<string, Array<{ x: number; folded: boolean; line: string | null }>>();
   let street = '';
   let currentMax = 0;
+  let raises = 0;
   const committed = new Map<string, number>();
-  for (const action of view.actions) {
+  for (const [index, action] of view.actions.entries()) {
     if (action.phase !== street) {
       street = action.phase;
       currentMax = street === 'betting_preflop' ? view.bigBlind : 0;
+      raises = 0;
       committed.clear();
     }
     const before = committed.get(action.playerId) ?? 0;
     if (FLOP_ON.includes(street) && currentMax > before) {
       const toCall = currentMax - before;
-      facing.set(action.playerId, [...(facing.get(action.playerId) ?? []), { x: toCall / Math.max(1, action.potTotalBefore - toCall), folded: action.type === 'fold' }]);
+      const line = raises === 1 && before === 0 ? lineKey(foldLine(view.actions.slice(0, index), action.playerId, street)) : null;
+      facing.set(action.playerId, [...(facing.get(action.playerId) ?? []), { x: toCall / Math.max(1, action.potTotalBefore - toCall), folded: action.type === 'fold', line }]);
     }
     if ((action.type === 'raise_to' || action.type === 'all_in') && action.toAmount > currentMax) {
       currentMax = action.toAmount;
+      raises += 1;
       committed.set(action.playerId, action.toAmount);
     } else if (action.type === 'call') {
       committed.set(action.playerId, currentMax);
@@ -100,11 +107,18 @@ export function updateLedger(ledger: Ledger, input: HandEndInput, options: { car
 
   for (const player of seated) {
     const entry = next.players[player.id] ?? emptyPlayerLedger();
-    for (const { x, folded } of facing.get(player.id) ?? []) {
+    entry.byLine ??= {};
+    for (const { x, folded, line } of facing.get(player.id) ?? []) {
       const bucket = entry.buckets[sizeBucket(x)]!;
       bucket.faced += 1;
       bucket.folded += folded ? 1 : 0;
       entry.sumBase += baseFold(x);
+      if (line !== null) {
+        const cell = (entry.byLine[line] ??= entry.buckets.map(() => ({ faced: 0, folded: 0, sumBase: 0 })))[sizeBucket(x)]!;
+        cell.faced += 1;
+        cell.folded += folded ? 1 : 0;
+        cell.sumBase += baseFold(x);
+      }
     }
     const sawFlop = view.communityCards.length >= 3 && !view.actions.some((action) => action.playerId === player.id && action.phase === 'betting_preflop' && action.type === 'fold');
     entry.sawFlop += sawFlop ? 1 : 0;

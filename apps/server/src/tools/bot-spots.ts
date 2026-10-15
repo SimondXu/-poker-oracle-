@@ -1,4 +1,4 @@
-import { baseFold, emptyLedger, HAND_CATEGORIES, type Ledger, type PlayerLedger } from '@aipoker/agent-engine';
+import { baseFold, emptyLedger, HAND_CATEGORIES, lineKey, type Ledger, type PlayerLedger } from '@aipoker/agent-engine';
 import { applyAction, getValidActions, initializeHand, type HandState, type PlayerActionInput } from '@aipoker/game-engine';
 import type { BotPlayerStats, Card } from '@aipoker/shared';
 import { createStableAnalysisRng } from '@aipoker/strategy-engine';
@@ -37,6 +37,7 @@ function randomPlayerLedger(rng: Rng): PlayerLedger {
   return {
     buckets,
     sumBase: buckets.reduce((sum, bucket, index) => sum + bucket.faced * baseFold([0.33, 0.6, 1, 2][index]!), 0),
+    byLine: {},
     sawFlop,
     showdowns: Math.floor(rng() * (sawFlop + 1)),
     lightCalldowns: Math.floor(rng() * 4),
@@ -45,13 +46,28 @@ function randomPlayerLedger(rng: Rng): PlayerLedger {
   };
 }
 
+/** Bets by line (prompt v1.2), from a stream of their own so the rest of the ledger is what it was before lines existed. */
+function randomLines(rng: Rng): PlayerLedger['byLine'] {
+  const byLine: PlayerLedger['byLine'] = {};
+  for (const calledEarlier of [false, true]) {
+    for (const checkedThrough of [false, true]) {
+      byLine[lineKey({ calledEarlier, checkedThrough })] = [0.33, 0.6, 1, 2].map((x) => {
+        const faced = Math.floor(rng() * 5);
+        return { faced, folded: Math.floor(rng() * (faced + 1)), sumBase: faced * baseFold(x) };
+      });
+    }
+  }
+  return byLine;
+}
+
 /** A ledger for these players with no relation to the hand: the check that nothing in it is ever rendered by id, or confused with hidden cards. */
 export function randomLedger(playerIds: readonly string[], seed: string): Ledger {
   const rng = createStableAnalysisRng(seed);
+  const lines = createStableAnalysisRng(`${seed}:lines`);
   const ledger = emptyLedger();
   for (const id of playerIds) {
     if (rng() < 0.85) {
-      ledger.players[id] = randomPlayerLedger(rng);
+      ledger.players[id] = { ...randomPlayerLedger(rng), byLine: randomLines(lines) };
     }
   }
   return ledger;

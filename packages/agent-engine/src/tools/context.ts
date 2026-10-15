@@ -36,6 +36,9 @@ export interface BotTurnInput {
   seedBase: string;
 }
 
+/** How `bet_estimates` estimates folds: by size alone (v1.1), or by size and the opponent's line this hand (v1.2). */
+export type FoldModel = 'size' | 'line';
+
 /** What a tool can read. No room, so a tool cannot reach hidden cards even by mistake. */
 export interface ToolContext {
   /** The bot's own id, to tell its actions apart; never rendered. */
@@ -46,6 +49,7 @@ export interface ToolContext {
   stats: ReadonlyMap<string, BotPlayerStats>;
   memory: BotSessionMemory;
   ledger: Ledger;
+  foldModel: FoldModel;
   seedBase: string;
   /** Equity against every live opponent, computed at most once and shared by the brief and the advisor. */
   equities: Equities;
@@ -57,7 +61,7 @@ export function toolSeed(seedBase: string, tool: string, seat: number | null): s
   return `${seedBase}:${tool}:${seat ?? 'all'}`;
 }
 
-export function createToolContext(input: BotTurnInput): ToolContext {
+export function createToolContext(input: BotTurnInput, options: { foldModel?: FoldModel } = {}): ToolContext {
   const { context, seats } = input;
   const rng = () => createStableAnalysisRng(toolSeed(input.seedBase, 'equity', null));
   return {
@@ -74,6 +78,7 @@ export function createToolContext(input: BotTurnInput): ToolContext {
     stats: input.stats,
     memory: input.memory,
     ledger: input.ledger,
+    foldModel: options.foldModel ?? 'size',
     seedBase: input.seedBase,
     equities: {
       postflop: once(() => analyzePostflop(context, rng(), {
