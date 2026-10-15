@@ -250,3 +250,55 @@ pnpm eval:llm-hu --models claude-haiku-5-5 --prompts v1.1 --snapshot-per-pair --
 pnpm eval:llm-hu --models claude-haiku-5-5 --prompts v0,v1.1 --snapshot-per-pair --opponents folder --baselines tag --matches 2 --deals-per-match 50
 pnpm eval:llm-hu-compare 20261014054614-d528:cli <v1.1 run id>:cli
 ```
+
+## Prompt v1.1: results (2026-10-14/15, Haiku 5.5, effort low)
+
+3,064 calls in all (stage B 872, stage C 2,094); no fallbacks, no stop rule tripped, no price blunders in any row.
+
+### Stage B: spot replay, v0 and v1.1 on the same spots
+
+Runs `spots-20261014203604-b4f8` (316 spots from Haiku's v0 run) and `spots-20261014205638-2516` (120 spots from a TAG vs folder simulation), both prompts asked fresh.
+
+| Gate | v0 | v1.1 | Result |
+|---|---|---|---|
+| River, equity 80%+, vs station: all-in ≥ 60% | 14/52 | 48/52 (92%) | pass |
+| River highest-gain option ≥ 70% | – | 122/129 (95%) | pass |
+| No price blunders; no river bet under 50% equity vs station | 0; 0 | 0; 0 | pass |
+| Folder spots: bluff ≥ 50% where the best size clears its price by 10 points | – | 41/41 | pass |
+| Folder/v0 spots: bluff ≤ 15% where no size clears its price | – | 0/26 | pass |
+| Choice validity ≥ 98% | 100% | 100% | pass |
+| **Weak-hand bet rate vs TAG ≤ v0 + 10 points** | 5/70 | **33/70** | **fail** |
+
+Flop and turn value bets of pot or more went from 6/64 to 64/64 (median ¾ pot to 1.5× pot). The failed gate assumed that more bluffs against TAG would be a mistake; 30 of the 33 bets cleared the 10-point margin and the 7 river bluffs all showed a positive estimated gain, because TAG folds to 49.7% of bets (stage A) and the fold model is calibrated on it. The failure stands as recorded; the user chose to go on to stage C, whose TAG gate measures the cost directly.
+
+### Stage C: full matches
+
+**Against station and TAG, on v0's deals** (run `20261015075104-bc34`, snapshot per pair, paired with `20261014054614-d528`):
+
+| Opponent | v0 | v1.1 | v1.1 − v0, same deals | Gate |
+|---|---|---|---|---|
+| station | +1080 ± 299 | +2215 ± 473 | **+1135 ± 477** | CI excludes 0: pass |
+| tag | +134 ± 198 | +70 ± 262 | −63 ± 247 | point estimate ≥ −100: pass |
+
+- Against the station v1.1 now wins more than TAG on the same deals (+402 ± 481, inside the noise). River all-in at equity 80%+ 38/40; model value left against an all-in 353 bb (v0 3,314). The "calls a lot" read appeared in every match, at a median deal of 3.5.
+- Against TAG it holds level; agreement with the TAG advice fell from 84% to 60%, as expected for a bot that no longer copies TAG. Reads against TAG were rare ("folds to big bets" 14 decisions).
+- The pairing check: Fish's baseline came out identical on all 200 pairs, so the deals are the same. TAG's and LAG's differ in 13 of 200 because they read opponent statistics, which snapshot mode updates on a different schedule.
+- On the river v1.1 took the highest-gain option 98% of the time against the station: there the engine's numbers, not the model's judgement, did most of the work.
+
+**Against folder** (run `20261015083304-09bf`, new seed, v0 and v1.1 on the same deals, 2 × 50):
+
+| | bb/100 | − TAG, same deals |
+|---|---|---|
+| v0 | −63 ± 110 | −44 ± 190 |
+| v1.1 | −4 ± 208 | +16 ± 268 |
+| rule/tag | −19 ± 172 | |
+| **v1.1 − v0** | **+60 ± 187** | |
+
+- No measurable gain. v1.1 bet 47 of 48 weak hands where nothing was to call (v0 6 of 62), all at a 10-point margin or more, but no "folds a lot" read appeared in either match: against v1.1's bets the folder folded too little to clear the 90% bound.
+- The fold estimates were poorly calibrated here: Brier 0.277 on 127 answered bets; bets estimated at 60-80% folds were folded to 36% of the time (42 bets). The folder folds by hand class (it keeps top pair and draws), so how often it folds depends on the board and the line, which a size-only model can't see. Against TAG the same model calibrated within 4 points (stage A).
+
+### What this shows
+
+- The value side of v1.1 works: against a player who calls too much it more than doubled the win rate, now level with or above the best rule bot, and it cost nothing measurable against TAG.
+- The bluffing side is not shown to pay. The model follows the bluff rule faithfully, so the weak link is the fold estimate: it needs hand-class or board context (for example, fold rates split by board texture or by the line taken) before bluffing rules can be trusted against a selective folder.
+- Held-out opponents (`calldown`, `size-reader`) and Sonnet v1.1 (stages D and E) have not been run.
