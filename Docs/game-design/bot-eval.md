@@ -253,7 +253,7 @@ pnpm eval:llm-hu-compare 20261014054614-d528:cli <v1.1 run id>:cli
 
 ## Prompt v1.1: results (2026-10-14/15, Haiku 5.5, effort low)
 
-3,064 calls in all (stage B 872, stage C 2,094); no fallbacks, no stop rule tripped, no price blunders in any row.
+2,966 calls in all (stage B 872, stage C 2,094); no fallbacks, no stop rule tripped, no price blunders in any row.
 
 ### Stage B: spot replay, v0 and v1.1 on the same spots
 
