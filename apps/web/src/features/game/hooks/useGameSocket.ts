@@ -24,7 +24,7 @@ import {
 import { createHoldQueue, type HoldQueue } from '../lib/hold-queue';
 import { useGameSocketTransport } from './useGameSocketTransport';
 import { useHandResultPhaseTimers } from './useHandResultPhaseTimers';
-import type { ActionType, GameActionRequiredEvent, GameCoachEvent, GameReviewEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
+import type { ActionType, BotStatusEvent, GameActionRequiredEvent, GameCoachEvent, GameReviewEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
 
 const GAME_START_ACK_TIMEOUT_MS = 5000;
 const GAME_SPECTATE_ACK_TIMEOUT_MS = 5000;
@@ -167,6 +167,16 @@ export function useGameSocket(
     ],
   );
 
+  // The server turned the Claude bots off (sign-in, usage limit, rate limit); their seats play TAG meanwhile.
+  const handleBotStatus = useCallback(
+    (payload: BotStatusEvent) => {
+      if (payload.status === 'error' && payload.message === 'cli_unavailable') {
+        toast.warning(t('common.game.toast.cliBotsUnavailable'), { id: 'cli-bots-unavailable' });
+      }
+    },
+    [t],
+  );
+
   const handleDisconnected = useCallback(() => {
     setConnectionStatus('disconnected');
     clearNextHandRequested();
@@ -210,6 +220,7 @@ export function useGameSocket(
     onCoach: handleCoach,
     onReview: handleReview,
     onHandResult: handleHandResult,
+    onBotStatus: handleBotStatus,
     onError: handleError,
     onCleanup: () => {
       holdQueue.clear();

@@ -25,6 +25,7 @@
   },
   "scripts": {
     "dev": "node --conditions=source --watch --experimental-strip-types src/main.ts",
+    "dev:claude-bots": "env -u ANTHROPIC_BASE_URL LLM_CLI_BOTS_ENABLED=true node --conditions=source --watch --experimental-strip-types src/main.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "lint": "eslint src",

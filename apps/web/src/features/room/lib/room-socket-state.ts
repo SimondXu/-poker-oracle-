@@ -1,4 +1,4 @@
-import type { BotPersonality, RoomStateEvent, TableLifecycleSnapshot } from '@aipoker/shared';
+import type { BotPersonality, CliAgentModel, RoomStateEvent, TableLifecycleSnapshot } from '@aipoker/shared';
 
 export interface RoomPlayer {
   id: string;
@@ -7,6 +7,8 @@ export interface RoomPlayer {
   stack: number;
   isBot: boolean;
   botStrategy: BotPersonality | null;
+  /** Set for Claude Code bots only. */
+  botModel?: CliAgentModel;
   isReady: boolean;
 }
 
@@ -17,6 +19,8 @@ export interface RoomState {
   isPlaying: boolean;
   table: TableLifecycleSnapshot;
   hostPlayerId: string | null;
+  /** The server offers Claude Code bots. */
+  cliBots?: boolean;
 }
 
 export interface RoomSocketViewState {
@@ -49,6 +53,7 @@ export function toRoomState(state: RoomStateEvent): RoomState {
     isPlaying: state.isPlaying,
     table: state.table,
     hostPlayerId: state.hostPlayerId,
+    cliBots: state.cliBots === true,
   };
 }
 

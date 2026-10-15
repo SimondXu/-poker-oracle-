@@ -1,5 +1,6 @@
 import { getValidActions, type HandState as EngineHandState, type ValidActions as EngineValidActions } from '@aipoker/game-engine';
 import {
+  getCliBotModel,
   getRuleBotPersonality,
   type BotStatusEvent,
   type GameEvent as ClientGameEvent,
@@ -14,6 +15,7 @@ import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { buildHandResultPayload } from './view-models/hand-result.ts';
 import { buildHeroCoachEvent } from './view-models/hero-coach.ts';
 import { buildClientAction, buildViewerHand } from './view-models/viewer-hand.ts';
+import { cliBotsOffered } from './cli-bots-offer.ts';
 
 function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
   return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
@@ -147,15 +149,19 @@ function emitGameEvents(io: Server, room: RuntimeRoom): void {
 }
 
 export function emitRoomState(io: Server, room: RuntimeRoom): void {
-  const players = [...room.players.values()].map((p) => ({
-    id: p.id,
-    name: p.name,
-    seatIndex: p.seatIndex,
-    stack: p.stack,
-    isBot: p.isBot,
-    botStrategy: getRuleBotPersonality(p.botConfig),
-    isReady: room.readyPlayerIds.has(p.id),
-  }));
+  const players = [...room.players.values()].map((p) => {
+    const cliModel = getCliBotModel(p.botConfig);
+    return {
+      id: p.id,
+      name: p.name,
+      seatIndex: p.seatIndex,
+      stack: p.stack,
+      isBot: p.isBot,
+      botStrategy: getRuleBotPersonality(p.botConfig),
+      ...(cliModel ? { botModel: cliModel } : {}),
+      isReady: room.readyPlayerIds.has(p.id),
+    };
+  });
   io.to(room.id).emit('room:state', {
     roomId: room.id,
     stateVersion: room.stateVersion,
@@ -165,6 +171,7 @@ export function emitRoomState(io: Server, room: RuntimeRoom): void {
     isPlaying: room.hand !== null && room.hand.phase !== 'hand_end',
     table: getTableLifecycleSnapshot(room),
     hostPlayerId: room.hostPlayerId,
+    ...(cliBotsOffered(io) ? { cliBots: true } : {}),
   });
 }
 

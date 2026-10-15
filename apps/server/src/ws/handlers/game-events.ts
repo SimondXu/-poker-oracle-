@@ -4,6 +4,7 @@ import {
   type AgentTurnCoordinator,
   type AgentTurnResolution,
 } from '@aipoker/agent-engine';
+import { isCliAgentModel } from '@aipoker/shared';
 import type { Server, Socket } from 'socket.io';
 
 import { isDuplicateOrStaleActionSeq, recordActionSeq, resetActionSeqTracker } from '../../game-loop/action-seq.ts';
@@ -12,6 +13,7 @@ import {
   scheduleRoomActionTimeout,
   type RoomActionTimeouts
 } from '../../game-loop/action-timeout.ts';
+import type { CliBotRuntime } from '../../game-loop/cli-bot-runtime.ts';
 import {
   buildRealtimeFallbackAction,
   type RealtimeFallbackReason,
@@ -63,6 +65,7 @@ interface RegisterGameEventsInput {
   nowMs: () => number;
   botRuntime: BotRuntimeDeps;
   llmAgentRunner: RealtimeLlmAgentRunner;
+  cliBots: CliBotRuntime;
   llmTurnCoordinator: AgentTurnCoordinator<RealtimeLlmDecisionResult>;
   deleteRoom: (roomId: string) => void;
 }
@@ -70,6 +73,8 @@ interface RegisterGameEventsInput {
 const ACTION_RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_ACTIONS_PER_WINDOW = 20;
 const BOTS_ONLY_AUTO_NEXT_DELAY_MS = 1_500;
+/** A Claude Code call is killed at its own deadline; the turn waits this much longer so that outcome (and its reason) arrives first. */
+const CLI_TURN_GRACE_MS = 3_000;
 
 function buildPlayerActionInput(playerId: string, action: AgentDecision): PlayerActionInput {
   switch (action.type) {
@@ -99,6 +104,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     nowMs,
     botRuntime,
     llmAgentRunner,
+    cliBots,
     llmTurnCoordinator,
     deleteRoom,
   } = input;
@@ -106,6 +112,11 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
 
   function getRoomPlayerBySeat(room: RuntimeRoom, seatIndex: number) {
     return [...room.players.values()].find((player) => player.seatIndex === seatIndex);
+  }
+
+  /** How long a model bot may think before the table plays its fallback. */
+  function llmTurnTimeoutMs(botConfig: { model: string }): number {
+    return isCliAgentModel(botConfig.model) ? cliBots.timeoutMs + CLI_TURN_GRACE_MS : llmAgentRunner.realtimeTimeoutMs;
   }
 
   async function emitStateAndProgress(
@@ -126,6 +137,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     }
     await runBotTurns(io, room, memberships, botRuntime, startRealtimeLlmTurn);
     recordFinishedHandStats(room);
+    cliBots.recordHandEnd(room);
     emitHandReviews(io, room, memberships);
     cleanupDisconnectedPlayersAfterHandEnd(io, room, deleteRoom);
     syncActionTimeout(room.id);
@@ -225,14 +237,22 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     llmTurnCoordinator.startTurn({
       roomId: input.room.id,
       playerId: input.actor.id,
-      timeoutMs: llmAgentRunner.realtimeTimeoutMs,
+      timeoutMs: llmTurnTimeoutMs(llmBotConfig),
       run: async (signal) => {
-        const result = await llmAgentRunner.decide({
-          roomId: input.room.id,
-          context: input.context,
-          botConfig: llmBotConfig,
-          signal,
-        });
+        const result = isCliAgentModel(llmBotConfig.model)
+          ? await cliBots.decide({
+              room: input.room,
+              botId: input.actor.id,
+              model: llmBotConfig.model,
+              context: input.context,
+              signal,
+            })
+          : await llmAgentRunner.decide({
+              roomId: input.room.id,
+              context: input.context,
+              botConfig: llmBotConfig,
+              signal,
+            });
 
         return {
           type: 'completed',
@@ -286,7 +306,7 @@ export function registerGameEvents(input: RegisterGameEventsInput): void {
     // LLM bots additionally get their model timeout, so the watchdog only fires if that path is lost.
     const timeoutActorId = actor.id;
     const isBotActor = actor.isBot;
-    const timeoutMs = actionTimeoutMs + (actor.botConfig?.kind === 'llm' ? llmAgentRunner.realtimeTimeoutMs : 0);
+    const timeoutMs = actionTimeoutMs + (actor.botConfig?.kind === 'llm' ? llmTurnTimeoutMs(actor.botConfig) : 0);
     const timeoutActionCount = room.hand.actions.length;
     scheduleRoomActionTimeout(roomActionTimeouts, room.id, timeoutMs, () => {
       void enqueueRoomTask(roomTaskQueues, room.id, async () => {

@@ -37,6 +37,8 @@ const serverConfigSchema = z.object({
   LLM_AGENT_MAX_PROMPT_TOKENS: z.coerce.number().int().min(1).optional(),
   LLM_AGENT_MAX_COMPLETION_TOKENS: z.coerce.number().int().min(1).optional(),
   LLM_AGENT_ROOM_COST_LIMIT_USD: z.coerce.number().positive().optional(),
+  LLM_CLI_BOTS_ENABLED: booleanFromEnvSchema,
+  LLM_CLI_BOT_TIMEOUT_MS: z.coerce.number().int().min(1).optional(),
 });
 
 export interface ServerConfig {
@@ -62,6 +64,8 @@ export interface ServerConfig {
   llmAgentMaxPromptTokens: number;
   llmAgentMaxCompletionTokens: number;
   llmAgentRoomCostLimitUsd: number;
+  llmCliBotsEnabled: boolean;
+  llmCliBotTimeoutMs: number;
 }
 
 export type ServerConfigResult =
@@ -109,6 +113,8 @@ export function parseServerConfig(env: Record<string, string | undefined>): Serv
       llmAgentMaxPromptTokens: parsed.data.LLM_AGENT_MAX_PROMPT_TOKENS ?? 4000,
       llmAgentMaxCompletionTokens: parsed.data.LLM_AGENT_MAX_COMPLETION_TOKENS ?? 600,
       llmAgentRoomCostLimitUsd: parsed.data.LLM_AGENT_ROOM_COST_LIMIT_USD ?? 1,
+      llmCliBotsEnabled: parsed.data.LLM_CLI_BOTS_ENABLED ?? false,
+      llmCliBotTimeoutMs: parsed.data.LLM_CLI_BOT_TIMEOUT_MS ?? 30000,
     }
   };
 }

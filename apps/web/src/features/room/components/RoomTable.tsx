@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useRef, useState, type CSSProperties } from 'react';
-import type { BotPersonality } from '@aipoker/shared';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/utils';
+import { BOT_PROFILES, CLI_BOT_PROFILES, type BotChoice } from '../lib/bot-profiles';
 import { ROOM_MAX_SEATS } from '../lib/practice-plan';
 import type { RoomPlayer } from '../lib/room-socket-state';
 import { SEAT_SLOTS, slotToSeat } from '../lib/seat-slots';
@@ -14,7 +14,9 @@ interface RoomTableProps {
   players: RoomPlayer[];
   currentUserId: string;
   isPlaying: boolean;
-  onAddBot: (strategy: BotPersonality, seatIndex: number) => void;
+  /** Claude Code bots are offered next to the rule bots. */
+  cliBots: boolean;
+  onAddBot: (choice: BotChoice, seatIndex: number) => void;
   canRemoveBots: boolean;
   onRemoveBot: (playerId: string) => void;
 }
@@ -25,7 +27,7 @@ interface OpenMenu {
 }
 
 /** Mini felt table: six seats around the rail, the player at the bottom, seat count in the middle. */
-export function RoomTable({ players, currentUserId, isPlaying, onAddBot, canRemoveBots, onRemoveBot }: RoomTableProps) {
+export function RoomTable({ players, currentUserId, isPlaying, cliBots, onAddBot, canRemoveBots, onRemoveBot }: RoomTableProps) {
   const t = useT();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const playerBySeat = new Map(players.map((player) => [player.seatIndex, player]));
@@ -105,8 +107,9 @@ export function RoomTable({ players, currentUserId, isPlaying, onAddBot, canRemo
           anchor={menu.anchor}
           seatNumber={menu.seatIndex + 1}
           onClose={closeMenu}
-          onPick={(strategy) => {
-            onAddBot(strategy, menu.seatIndex);
+          profiles={cliBots ? [...BOT_PROFILES, ...CLI_BOT_PROFILES] : BOT_PROFILES}
+          onPick={(choice) => {
+            onAddBot(choice, menu.seatIndex);
             setMenu(null);
           }}
         />

@@ -51,6 +51,12 @@ const en = {
   'room.bot.lag.name': 'LAG',
   'room.bot.lag.style': 'Loose-aggressive',
   'room.bot.lag.desc': 'Plays many hands with constant pressure. Hard to read.',
+  'room.bot.haiku.name': 'Claude Haiku',
+  'room.bot.haiku.style': 'Claude Code · fast',
+  'room.bot.haiku.desc': 'Reads each spot and plays an analyst. Takes a few seconds a decision and uses your Claude plan.',
+  'room.bot.sonnet.name': 'Claude Sonnet',
+  'room.bot.sonnet.style': 'Claude Code · careful',
+  'room.bot.sonnet.desc': 'The same analyst on a bigger model. Slower, and uses more of your Claude plan.',
 
   // Waiting room: invite
   'room.invite.title': 'Invite code',
@@ -105,6 +111,7 @@ const en = {
   'room.error.notHost': 'Only the room host can do that.',
   'room.error.roomFull': 'This table is full (9 seats). Create a new one.',
   'room.error.tooManyPlayers': 'A table seats at most 9 players. Remove a player or bot, then start again.',
+  'room.error.cliBotsDisabled': 'Claude bots are not available on this server right now.',
 };
 
 const zh: Translation<typeof en> = {
@@ -157,6 +164,12 @@ const zh: Translation<typeof en> = {
   'room.bot.lag.name': 'LAG',
   'room.bot.lag.style': '松凶',
   'room.bot.lag.desc': '入池多，持续施压，很难读牌。',
+  'room.bot.haiku.name': 'Claude Haiku',
+  'room.bot.haiku.style': 'Claude Code · 快',
+  'room.bot.haiku.desc': '逐手分析局面，打法偏分析型。每手要想几秒，会用到你的 Claude 额度。',
+  'room.bot.sonnet.name': 'Claude Sonnet',
+  'room.bot.sonnet.style': 'Claude Code · 稳',
+  'room.bot.sonnet.desc': '同样的分析型打法，模型更大。更慢，也更耗你的 Claude 额度。',
 
   // Waiting room: invite
   'room.invite.title': '邀请码',
@@ -211,6 +224,7 @@ const zh: Translation<typeof en> = {
   'room.error.notHost': '只有房主可以这样做。',
   'room.error.roomFull': '这张牌桌已满（9 个座位），请新建一张。',
   'room.error.tooManyPlayers': '一张牌桌最多 9 名玩家。请移除一名玩家或机器人后再开始。',
+  'room.error.cliBotsDisabled': '这台服务器现在不能使用 Claude 机器人。',
 };
 
 export const lobby = { en, zh };

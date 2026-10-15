@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { isValidRoomCode, normalizeRoomCode } from '@aipoker/shared';
+import { CLI_AGENT_MODELS, isValidRoomCode, normalizeRoomCode } from '@aipoker/shared';
 
-const agentModelSchema = z.enum(['claude', 'gpt', 'gemini', 'grok', 'minimax']);
+const agentModelSchema = z.enum(['claude', 'gpt', 'gemini', 'grok', 'minimax', ...CLI_AGENT_MODELS]);
 const agentPersonaIdSchema = z.enum(['analyst', 'bully', 'chaos', 'nit', 'showman']);
 
 export const MAX_SEATS = 9;
@@ -85,7 +85,8 @@ export type JoinRoomAck =
         | 'player_name_taken'
         | 'not_room_member'
         | 'room_full'
-        | 'rate_limited';
+        | 'rate_limited'
+        | 'cli_bots_disabled';
     };
 
 export type RoomCreateAck =

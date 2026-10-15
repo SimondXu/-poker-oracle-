@@ -8,7 +8,7 @@ import {
   type AgentLlmClient,
 } from '@aipoker/agent-engine';
 import { chooseBotAction } from '@aipoker/strategy-engine';
-import type { BotConfig, BotDecisionContext } from '@aipoker/shared';
+import type { BotAction, BotConfig, BotDecisionContext } from '@aipoker/shared';
 
 export interface RealtimeLlmAgentOptions {
   enabled: boolean;
@@ -26,7 +26,8 @@ export interface RealtimeLlmAgentOptions {
   llmClient?: AgentLlmClient;
 }
 
-export type RealtimeFallbackReason = AgentFallbackReason | 'budget_exceeded';
+/** `timeout` and `cli_unavailable` come from Claude Code bots; the others from the API path. */
+export type RealtimeFallbackReason = AgentFallbackReason | 'budget_exceeded' | 'timeout' | 'cli_unavailable';
 
 export interface RealtimeLlmDecisionResult {
   action: AgentDecision;
@@ -51,7 +52,10 @@ export function buildRealtimeFallbackAction(
   context: BotDecisionContext,
   rng: () => number = Math.random,
 ): AgentDecision {
-  const action = chooseBotAction(context, 'tag', rng);
+  return botActionToDecision(chooseBotAction(context, 'tag', rng));
+}
+
+export function botActionToDecision(action: BotAction): AgentDecision {
   switch (action.type) {
     case 'raise_to':
       return { type: 'raise_to', amount: action.amount };

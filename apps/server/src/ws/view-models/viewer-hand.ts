@@ -1,5 +1,5 @@
 import type { HandActionRecord, HandPhase, HandState as EngineHandState } from '@aipoker/game-engine';
-import { getRuleBotPersonality, type Card, type GameAction, type HandState as ClientHandState, type Phase } from '@aipoker/shared';
+import { getCliBotModel, getRuleBotPersonality, type Card, type GameAction, type HandState as ClientHandState, type Phase } from '@aipoker/shared';
 
 import type { RuntimeRoom } from '../../rooms/types.ts';
 
@@ -101,6 +101,7 @@ export function buildViewerHand(room: RuntimeRoom, viewerPlayerId: string | null
     players: hand.players.map((player) => {
       const roomPlayer = room.players.get(player.id);
       const ruleBotPersonality = roomPlayer ? getRuleBotPersonality(roomPlayer.botConfig) : null;
+      const cliModel = roomPlayer ? getCliBotModel(roomPlayer.botConfig) : null;
 
       return {
         id: player.id,
@@ -113,6 +114,7 @@ export function buildViewerHand(room: RuntimeRoom, viewerPlayerId: string | null
         holeCards: visibleHoleCards(hand, player.id, viewerPlayerId, player.holeCards),
         isBot: roomPlayer?.isBot ?? false,
         ...(ruleBotPersonality ? { botStrategy: ruleBotPersonality } : {}),
+        ...(cliModel ? { botModel: cliModel } : {}),
         hasActedThisStreet: player.hasActedThisStreet,
         matchedBetToMatchAtLastAction: player.matchedBetToMatchAtLastAction
       };

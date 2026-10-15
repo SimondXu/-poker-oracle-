@@ -6,6 +6,7 @@ import type { GameAction, HandState, PlayerState } from '@aipoker/shared';
 import {
   buildTableViewModel,
   toBotPersonality,
+  toBotStamp,
   getLastActionsForStreet,
   getVisibleHoleCards,
   shareTableViewModel,
@@ -312,6 +313,13 @@ test('toBotPersonality accepts rule personalities only', () => {
   assert.equal(toBotPersonality('fish'), 'fish');
   assert.equal(toBotPersonality('gpt'), null);
   assert.equal(toBotPersonality(undefined), null);
+});
+
+test('toBotStamp names a rule bot by personality and a Claude Code bot by model', () => {
+  assert.equal(toBotStamp('lag', undefined), 'lag');
+  assert.equal(toBotStamp(undefined, 'claude-cli:claude-haiku-5-5'), 'haiku');
+  assert.equal(toBotStamp(undefined, 'claude-cli:claude-sonnet-5-5'), 'sonnet');
+  assert.equal(toBotStamp(undefined, undefined), null);
 });
 
 function handEndHand(overrides: Partial<HandState> = {}): HandState {

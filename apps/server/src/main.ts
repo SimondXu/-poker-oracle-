@@ -7,6 +7,7 @@ import type { Server } from 'socket.io';
 
 import { createSessionRevocations } from './auth/session-revocations.ts';
 import { parseServerConfig, type ServerConfig } from './config.ts';
+import { startCliBots, type CliBotRuntime } from './game-loop/cli-bot-runtime.ts';
 import { createServer } from './index.ts';
 import { attachRealtime } from './realtime.ts';
 
@@ -17,6 +18,8 @@ export interface StartServerOptions {
   nowMs?: () => number;
   actionTimeoutMs?: number;
   registerSignalHandlers?: boolean;
+  /** Replaces the Claude Code bots `LLM_CLI_BOTS_ENABLED` would start (tests inject a fake runner). */
+  cliBots?: CliBotRuntime;
 }
 
 export interface StartedServer {
@@ -104,6 +107,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Sta
     authStrict: serverConfig.authStrict,
     sessionRevocations,
     corsOrigin: serverConfig.corsOrigin,
+    cliBots: options.cliBots ?? startCliBots({ enabled: serverConfig.llmCliBotsEnabled, timeoutMs: serverConfig.llmCliBotTimeoutMs }),
     llmAgent: {
       enabled: serverConfig.llmAgentEnabled,
       apiKey: serverConfig.openRouterApiKey,
