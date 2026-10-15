@@ -1,4 +1,4 @@
-import type { AgentModel, AgentPersonaId, BotConfig, BotPersonality } from '@aipoker/shared';
+import { isCliAgentModel, type AgentModel, type AgentPersonaId, type BotConfig, type BotPersonality } from '@aipoker/shared';
 import type { Server, Socket } from 'socket.io';
 
 import type { GuestSession } from '../../auth/session-token.ts';
@@ -40,6 +40,8 @@ interface RegisterRoomEventsInput {
   waitingRoomReconnectGraceMs: number;
   nowMs: () => number;
   deleteRoom: (roomId: string) => void;
+  /** Whether Claude Code bots may be added now (`LLM_CLI_BOTS_ENABLED`, startup checks passed, no stop rule tripped). */
+  cliBotsEnabled: () => boolean;
   // Shared across sockets so reconnecting does not reset the budget.
   rateLimit: FixedWindowRateLimiter;
 }
@@ -64,7 +66,8 @@ function toBotConfig(input: {
     return {
       kind: 'llm',
       model: input.botModel,
-      personaId: input.botPersonaId ?? 'analyst',
+      // Claude Code bots play the Analyst at tables; the Exploiter is eval-only.
+      personaId: isCliAgentModel(input.botModel) ? 'analyst' : input.botPersonaId ?? 'analyst',
     };
   }
 
@@ -89,6 +92,7 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
     waitingRoomReconnectGraceMs,
     nowMs,
     deleteRoom,
+    cliBotsEnabled,
     rateLimit,
   } = input;
   const clientKey = socket.handshake.address;
@@ -264,6 +268,10 @@ export function registerRoomEvents(input: RegisterRoomEventsInput): void {
       }
       if (existingPlayer && !existingPlayer.isBot) {
         ack({ ok: false, error: 'invalid_payload' });
+        return;
+      }
+      if (parsed.data.botModel && isCliAgentModel(parsed.data.botModel) && !cliBotsEnabled()) {
+        ack({ ok: false, error: 'cli_bots_disabled' });
         return;
       }
       if (!existingPlayer && isRateLimited('bot_join', MAX_BOT_JOINS_PER_WINDOW)) {

@@ -31,7 +31,9 @@ test('parseServerConfig uses defaults when env is empty', () => {
     llmAgentMaxToolRoundsEval: 3,
     llmAgentMaxPromptTokens: 4000,
     llmAgentMaxCompletionTokens: 600,
-    llmAgentRoomCostLimitUsd: 1
+    llmAgentRoomCostLimitUsd: 1,
+    llmCliBotsEnabled: false,
+    llmCliBotTimeoutMs: 30000
   });
 });
 
@@ -141,4 +143,14 @@ test('parseServerConfig rejects enabled llm agent runtime without an OpenRouter 
     ok: false,
     error: 'invalid_server_config',
   });
+});
+
+test('parseServerConfig parses the Claude Code bot settings', () => {
+  const result = parseServerConfig({ LLM_CLI_BOTS_ENABLED: 'true', LLM_CLI_BOT_TIMEOUT_MS: '20000' });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.value.llmCliBotsEnabled, true);
+  assert.equal(result.value.llmCliBotTimeoutMs, 20000);
 });

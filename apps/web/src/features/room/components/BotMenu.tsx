@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import type { BotPersonality } from '@aipoker/shared';
 import { useT } from '@/i18n';
 import { getPlayerAvatarMeta } from '@/lib/player-avatar';
 import { cn } from '@/lib/utils';
-import { BOT_PROFILES } from '../lib/bot-profiles';
+import type { BotChoice, BotProfile } from '../lib/bot-profiles';
 
 interface BotMenuProps {
   anchor: HTMLElement;
   seatNumber: number;
-  onPick: (strategy: BotPersonality) => void;
+  profiles: readonly BotProfile[];
+  onPick: (choice: BotChoice) => void;
   onClose: () => void;
 }
 
@@ -30,7 +30,7 @@ interface Placement {
  * a popover that flips above/below the seat and is clamped inside the viewport (sm and up),
  * a bottom sheet on phones. Escape, outside tap and scrolling close it.
  */
-export function BotMenu({ anchor, seatNumber, onPick, onClose }: BotMenuProps) {
+export function BotMenu({ anchor, seatNumber, profiles, onPick, onClose }: BotMenuProps) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -126,7 +126,7 @@ export function BotMenu({ anchor, seatNumber, onPick, onClose }: BotMenuProps) {
           {t('lobby.room.seat.menuTitle', { seat: seatNumber })}
         </p>
         <div className="py-1">
-          {BOT_PROFILES.map((profile) => {
+          {profiles.map((profile) => {
             const avatar = getPlayerAvatarMeta({ name: t(profile.nameKey), isBot: true, botStrategy: profile.value });
             return (
               <button

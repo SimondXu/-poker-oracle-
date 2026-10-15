@@ -59,7 +59,7 @@ export const RoomSeatCard = forwardRef<HTMLDivElement, RoomSeatCardProps>(functi
   }
 
   const isMe = player.id === currentUserId;
-  const profile = player.isBot ? getBotProfile(player.botStrategy) : null;
+  const profile = player.isBot ? getBotProfile(player.botModel ?? player.botStrategy) : null;
   const displayName = profile ? t(profile.nameKey) : player.name;
   const avatar = getPlayerAvatarMeta({
     name: player.name,

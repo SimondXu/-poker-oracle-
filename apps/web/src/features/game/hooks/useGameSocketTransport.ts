@@ -6,7 +6,7 @@ import { getSocket } from '@/lib/socket';
 import { useSocketSession } from '@/hooks/useSocketSession';
 import { useT } from '@/i18n';
 import { getGameErrorKey } from '../lib/game-errors';
-import type { GameActionRequiredEvent, GameCoachEvent, GameReviewEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
+import type { BotStatusEvent, GameActionRequiredEvent, GameCoachEvent, GameReviewEvent, GameStateEvent, HandResultEvent, HandState } from '@aipoker/shared';
 
 interface UseGameSocketTransportOptions {
   roomId: string;
@@ -22,6 +22,7 @@ interface UseGameSocketTransportOptions {
   onCoach: (payload: GameCoachEvent) => void;
   onReview: (payload: GameReviewEvent) => void;
   onHandResult: (payload: HandResultEvent) => void;
+  onBotStatus: (payload: BotStatusEvent) => void;
   onError: (message: string) => void;
   onCleanup?: () => void;
   onAuthError?: () => void;
@@ -41,6 +42,7 @@ export function useGameSocketTransport({
   onCoach,
   onReview,
   onHandResult,
+  onBotStatus,
   onError,
   onCleanup,
   onAuthError,
@@ -90,6 +92,7 @@ export function useGameSocketTransport({
       socket.on('game:coach', onCoach);
       socket.on('game:review', onReview);
       socket.on('game:hand_result', onHandResult);
+      socket.on('game:bot_status', onBotStatus);
       socket.on('error', handleSocketError);
 
       return () => {
@@ -100,10 +103,11 @@ export function useGameSocketTransport({
         socket.off('game:coach', onCoach);
         socket.off('game:review', onReview);
         socket.off('game:hand_result', onHandResult);
+        socket.off('game:bot_status', onBotStatus);
         socket.off('error', handleSocketError);
       };
     },
-    [onActionRequired, onCoach, onError, onGameState, onHandResult, onReconnected, onReconnecting, onReview, t],
+    [onActionRequired, onBotStatus, onCoach, onError, onGameState, onHandResult, onReconnected, onReconnecting, onReview, t],
   );
 
   const handleCleanup = useCallback(

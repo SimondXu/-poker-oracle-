@@ -34,7 +34,7 @@ import {
 import { adviseFromEquities, chooseBotAction } from '@aipoker/strategy-engine';
 
 import type { AsyncPolicy } from './duplicate-hu-async.ts';
-import { buildClaudeArgs, childEnv, parseClaudeOutput, runClaude, type ClaudeCallMeta, type ClaudeOutcome, type RunFn } from './claude-cli.ts';
+import { buildClaudeArgs, childEnv, parseClaudeOutput, runClaude, type ClaudeCallMeta, type ClaudeOutcome, type RunFn, type RunResult } from './claude-cli.ts';
 
 /** Results under this label join later tables only if the prompt digests match (`llm-bots.md`, "CLI players"). */
 export const CLI_PROTO_PROMPT_VERSION = 'cli-proto-0';
@@ -279,6 +279,50 @@ export function prepareDecision(input: BotTurnInput, version: PromptVersion = DE
   return { ctx, brief, userMessage, menu: buildMenu(input.context) };
 }
 
+/**
+ * One isolated call: a fresh empty working directory, the allow-listed environment, the deadline,
+ * and the output checked against the model it was asked for. Shared by the eval policy and live play.
+ */
+export async function callClaude(
+  args: string[],
+  userMessage: string,
+  options: { model: string; run?: RunFn; deadlineMs?: number },
+): Promise<{ outcome: ClaudeOutcome; result: RunResult }> {
+  const cwd = await mkdtemp(join(tmpdir(), 'holdem-cli-'));
+  let result;
+  try {
+    result = await (options.run ?? runClaude)(args, { cwd, env: childEnv(), stdin: userMessage, deadlineMs: options.deadlineMs ?? DEADLINE_MS });
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+  return { outcome: parseClaudeOutput(result.stdout, result.exitCode, result.timedOut, { model: options.model, maxTurns: MAX_TURNS }), result };
+}
+
+/** What a call's outcome means for this menu: the action to play, or `null` and the reason to play the fallback. */
+export function interpretOutcome(outcome: ClaudeOutcome, menu: MenuOption[], context: BotDecisionContext) {
+  let action: BotAction | null = null;
+  let choice: string | null = null;
+  let fallbackReason: CliFallbackReason | null = null;
+  let validation: CliDecisionTrace['validation'] = null;
+  let note: Bilingual | null = null;
+  let talk: Bilingual | null = null;
+  if (outcome.kind === 'ok') {
+    const checked = validateRealtime(outcome.structured, menu, context.phase);
+    validation = { ok: checked.ok, errors: checked.errors };
+    if (checked.ok) {
+      action = toBotAction(checked.action, context);
+      choice = checked.choice;
+      note = checked.note;
+      talk = checked.talk;
+    } else {
+      fallbackReason = checked.reason;
+    }
+  } else {
+    fallbackReason = outcome.kind === 'timeout' ? 'timeout' : 'cli_error';
+  }
+  return { action, choice, fallbackReason, validation, note, talk };
+}
+
 export interface CliPolicyDeps {
   row: CliRow;
   control: RunControl;
@@ -302,39 +346,11 @@ export function createCliPolicy(deps: CliPolicyDeps): AsyncPolicy<CliDecisionTra
     const { ctx, brief, userMessage, menu } = prepareDecision(input, row.prompt);
 
     control.beginCall(row.id);
-    const cwd = await mkdtemp(join(tmpdir(), 'holdem-cli-'));
-    let result;
-    try {
-      result = await run(args, { cwd, env: childEnv(), stdin: userMessage, deadlineMs: deps.deadlineMs ?? DEADLINE_MS });
-    } finally {
-      await rm(cwd, { recursive: true, force: true });
-    }
-    const outcome = parseClaudeOutput(result.stdout, result.exitCode, result.timedOut, { model: row.model, maxTurns: MAX_TURNS });
+    const { outcome, result } = await callClaude(args, userMessage, { model: row.model, run, deadlineMs: deps.deadlineMs ?? DEADLINE_MS });
     control.endCall(row.id, outcome);
 
-    let action: BotAction | null = null;
-    let choice: string | null = null;
-    let fallbackReason: CliFallbackReason | null = null;
-    let validation: CliDecisionTrace['validation'] = null;
-    let note: Bilingual | null = null;
-    let talk: Bilingual | null = null;
-    if (outcome.kind === 'ok') {
-      const checked = validateRealtime(outcome.structured, menu, context.phase);
-      validation = { ok: checked.ok, errors: checked.errors };
-      if (checked.ok) {
-        action = toBotAction(checked.action, context);
-        choice = checked.choice;
-        note = checked.note;
-        talk = checked.talk;
-      } else {
-        fallbackReason = checked.reason;
-      }
-    } else {
-      fallbackReason = outcome.kind === 'timeout' ? 'timeout' : 'cli_error';
-    }
-    if (!action) {
-      action = chooseBotAction(context, 'tag', rng);
-    }
+    const { action: chosen, choice, fallbackReason, validation, note, talk } = interpretOutcome(outcome, menu, context);
+    const action = chosen ?? chooseBotAction(context, 'tag', rng);
     control.recordDecision(row.id, fallbackReason !== null);
 
     const hero = heroAction(action, context);

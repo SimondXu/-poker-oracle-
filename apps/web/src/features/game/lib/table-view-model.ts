@@ -1,4 +1,4 @@
-import type { ActionType, BotPersonality, GameAction, HandState, Phase, PlayerStatus } from '@aipoker/shared';
+import type { ActionType, BotPersonality, CliAgentModel, GameAction, HandState, Phase, PlayerStatus } from '@aipoker/shared';
 import { describeBestHand, getBestHandCategory, type HandCategoryKey } from '../../../components/poker/hand-name.ts';
 import type { ActionTagKind } from '../../../components/poker/types.ts';
 import { formatChips } from '../../../lib/utils.ts';
@@ -50,8 +50,8 @@ export interface OccupiedSeatViewModel extends SeatViewModelBase {
   id: string;
   name: string;
   isBot: boolean;
-  /** Rule-bot personality (stamped on the plate), null for humans / unknown bots. */
-  personality: BotPersonality | null;
+  /** What is stamped on a bot's plate: a rule bot's personality or a Claude Code model; null for humans / unknown bots. */
+  personality: BotStamp | null;
   /** Stack to display (during announcing/revealing the payout is held back so it can "arrive"). */
   stack: number;
   status: PlayerStatus;
@@ -294,6 +294,14 @@ export function toBotPersonality(value: string | undefined): BotPersonality | nu
   return PERSONALITIES.find((personality) => personality === value) ?? null;
 }
 
+export type BotStamp = BotPersonality | 'haiku' | 'sonnet';
+
+const CLI_STAMPS: Record<CliAgentModel, BotStamp> = { 'claude-cli:claude-haiku-5-5': 'haiku', 'claude-cli:claude-sonnet-5-5': 'sonnet' };
+
+export function toBotStamp(strategy: string | undefined, model: CliAgentModel | undefined): BotStamp | null {
+  return toBotPersonality(strategy) ?? (model ? CLI_STAMPS[model] : null);
+}
+
 /** Category of a face-up hand at showdown (same gating as getShownHandName). */
 export function getShownHandCategory(
   holeCards: readonly (string | null)[],
@@ -350,7 +358,7 @@ export function buildTableViewModel(input: TableViewModelInput): TableViewModel 
       id: player.id,
       name: player.name,
       isBot: player.isBot,
-      personality: player.isBot ? toBotPersonality(player.botStrategy) : null,
+      personality: player.isBot ? toBotStamp(player.botStrategy, player.botModel) : null,
       stack: getDisplayedSeatStack(player.stack, payoutAmount, resultPhase),
       status: player.status,
       isHero,

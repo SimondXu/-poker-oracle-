@@ -9,6 +9,7 @@ import { clearRoomActionTimeout, type RoomActionTimeouts } from '../game-loop/ac
 import { clearRoomNextHandTimeout, type RoomNextHandTimeouts } from '../game-loop/auto-next-hand.ts';
 import { clearEmptyRoomTimeout, type EmptyRoomTimeouts } from '../game-loop/empty-room-timeout.ts';
 import { DEFAULT_BOT_RUNTIME_DEPS, type BotRuntimeDeps } from '../game-loop/bot-support.ts';
+import { DISABLED_CLI_BOTS, type CliBotRuntime } from '../game-loop/cli-bot-runtime.ts';
 import {
   createRealtimeLlmAgentRunner,
   type RealtimeLlmDecisionResult,
@@ -17,6 +18,7 @@ import type { RoomTaskQueues } from '../rooms/room-queue.ts';
 import type { RoomMembership, RuntimeRoom } from '../rooms/types.ts';
 import { registerGameEvents } from './handlers/game-events.ts';
 import { registerRoomEvents } from './handlers/room-events.ts';
+import { setCliBotsOffer } from './cli-bots-offer.ts';
 
 interface AttachRealtimeOptions {
   actionTimeoutMs?: number;
@@ -30,6 +32,8 @@ interface AttachRealtimeOptions {
   waitingRoomReconnectGraceMs?: number;
   nowMs?: () => number;
   botRuntime?: Partial<BotRuntimeDeps>;
+  /** Claude Code bots (`startCliBots`); off unless given. */
+  cliBots?: CliBotRuntime;
   llmAgent?: {
     enabled?: boolean;
     apiKey?: string | null;
@@ -80,6 +84,8 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
     ...(options.llmAgent?.fetch ? { fetch: options.llmAgent.fetch } : {}),
     ...(options.llmAgent?.llmClient ? { llmClient: options.llmAgent.llmClient } : {}),
   });
+  const cliBots = options.cliBots ?? DISABLED_CLI_BOTS;
+  setCliBotsOffer(io, () => cliBots.enabled);
   const llmTurnCoordinator = createAgentTurnCoordinator<RealtimeLlmDecisionResult>({
     setTimeout,
     clearTimeout,
@@ -130,6 +136,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       waitingRoomReconnectGraceMs,
       nowMs,
       deleteRoom,
+      cliBotsEnabled: () => cliBots.enabled,
       rateLimit: roomRateLimit,
     });
 
@@ -145,6 +152,7 @@ export function attachRealtime(app: FastifyInstance, options: AttachRealtimeOpti
       nowMs,
       botRuntime,
       llmAgentRunner,
+      cliBots,
       llmTurnCoordinator,
       deleteRoom,
     });

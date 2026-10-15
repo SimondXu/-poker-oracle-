@@ -124,6 +124,20 @@ NEXT_PUBLIC_SERVER_URL=http://localhost:3001
 
 - `HOST` (optional, default `0.0.0.0`)
 - `PORT` (optional, default `3001`)
+- `LLM_CLI_BOTS_ENABLED` (optional, default `false`)：开启后候机室可添加 Claude Haiku / Sonnet 机器人（见下）
+- `LLM_CLI_BOT_TIMEOUT_MS` (optional, default `30000`)：单次 `claude -p` 决策的期限，超时该手按 TAG 打
+
+### 和 Claude Code 机器人对打（仅本地）
+
+机器人通过本机的 `claude -p` 走你的 Claude 订阅，每手决策一个独立进程（无工具、空目录、白名单环境变量），提示词为 v1.2 + analyst。服务器启动时会检查订阅登录和 canary（`pnpm --filter @aipoker/server eval:cli-canary` 通过过），不通过则不启用并在日志里说明原因。
+
+```bash
+# 启动前必须不带 ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY（否则会计到 API 上，服务器拒绝启用）
+pnpm --filter @aipoker/server dev:claude-bots   # 等价于 env -u ANTHROPIC_BASE_URL LLM_CLI_BOTS_ENABLED=true ... dev
+pnpm --filter @aipoker/web dev
+```
+
+遇到登录、用量上限或限流错误时，Claude 机器人在本进程内全部停用，改按 TAG 打，且不会重试。同时最多 2 个 `claude` 进程并行。
 
 ## Notes
 

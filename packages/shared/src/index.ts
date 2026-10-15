@@ -11,7 +11,22 @@ export function err<E>(error: E): Result<never, E> {
 }
 
 export type BotPersonality = 'fish' | 'tag' | 'lag';
-export type AgentModel = 'claude' | 'gpt' | 'gemini' | 'grok' | 'minimax';
+/**
+ * Claude Code models played through `claude -p` on the user's subscription (local tables only; the
+ * server offers them behind `LLM_CLI_BOTS_ENABLED`). The part after the prefix is the CLI's model id.
+ */
+export const CLI_AGENT_MODELS = ['claude-cli:claude-haiku-5-5', 'claude-cli:claude-sonnet-5-5'] as const;
+export type CliAgentModel = (typeof CLI_AGENT_MODELS)[number];
+export type AgentModel = 'claude' | 'gpt' | 'gemini' | 'grok' | 'minimax' | CliAgentModel;
+
+export function isCliAgentModel(model: string): model is CliAgentModel {
+  return (CLI_AGENT_MODELS as readonly string[]).includes(model);
+}
+
+/** The id `claude --model` takes. */
+export function cliModelId(model: CliAgentModel): string {
+  return model.slice('claude-cli:'.length);
+}
 /** `exploiter` is eval-only (never offered at tables): it plays to win chips and nothing else. */
 export type AgentPersonaId = 'analyst' | 'bully' | 'chaos' | 'exploiter' | 'nit' | 'showman';
 export type BotDecisionPhase = 'preflop' | 'flop' | 'turn' | 'river';
@@ -116,6 +131,10 @@ export function deriveBotBettingState(aggressiveActionCount: number, hasPassiveE
     return 'facing_raise';
   }
   return 'facing_3bet_plus';
+}
+
+export function getCliBotModel(botConfig: BotConfig | undefined): CliAgentModel | null {
+  return botConfig?.kind === 'llm' && isCliAgentModel(botConfig.model) ? botConfig.model : null;
 }
 
 export function getRuleBotPersonality(botConfig: BotConfig | undefined): BotPersonality | null {
@@ -272,6 +291,8 @@ export interface PlayerState {
   holeCards: Card[];
   isBot: boolean;
   botStrategy?: string;
+  /** Set for Claude Code bots only. */
+  botModel?: CliAgentModel;
   hasActedThisStreet: boolean;
   matchedBetToMatchAtLastAction: number;
 }
@@ -380,6 +401,8 @@ export interface RoomStateEvent {
     stack: number;
     isBot: boolean;
     botStrategy: BotPersonality | null;
+    /** Set for Claude Code bots only. */
+    botModel?: CliAgentModel;
     isReady: boolean;
   }>;
   playerCount: number;
@@ -387,6 +410,8 @@ export interface RoomStateEvent {
   isPlaying: boolean;
   table: TableLifecycleSnapshot;
   hostPlayerId: string | null;
+  /** Present only when the server offers Claude Code bots. */
+  cliBots?: true;
 }
 
 export type RoomState = RoomStateEvent;

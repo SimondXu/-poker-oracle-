@@ -17,6 +17,7 @@ const ROOM_ERROR_KEYS: Record<string, MessageKey> = {
   not_room_host: 'lobby.room.error.notHost',
   room_full: 'lobby.room.error.roomFull',
   too_many_players: 'lobby.room.error.tooManyPlayers',
+  cli_bots_disabled: 'lobby.room.error.cliBotsDisabled',
 };
 
 /** Message key for a server error code, or the caller's fallback key for unknown/missing codes. */

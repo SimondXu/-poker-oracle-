@@ -195,6 +195,7 @@ export default function RoomPage({ params }: RoomPageProps) {
               players={players}
               currentUserId={playerId}
               isPlaying={isPlaying || isPracticeActive}
+              cliBots={roomState?.cliBots ?? false}
               onAddBot={addBot}
               canRemoveBots={roomState?.hostPlayerId === playerId}
               onRemoveBot={removeBot}

@@ -5,8 +5,9 @@ import { toast } from 'sonner';
 import { useT } from '@/i18n';
 import { getSocket } from '@/lib/socket';
 import { useSocketSession } from '@/hooks/useSocketSession';
-import type { BotPersonality, RoomStateEvent } from '@aipoker/shared';
+import type { RoomStateEvent } from '@aipoker/shared';
 import { getBotDisplayName } from '../lib/bot-names';
+import { isCliBotChoice, type BotChoice } from '../lib/bot-profiles';
 import { getRoomErrorKey } from '../lib/room-errors';
 import type { RoomJoinIntent } from '../lib/room-types';
 import {
@@ -160,15 +161,15 @@ export function useRoomSocket(
   });
 
   const requestAddBot = useCallback(
-    (strategy: BotPersonality, seatIndex: number) =>
+    (choice: BotChoice, seatIndex: number) =>
       emitWithAck(getSocket(), 'room:join', {
         roomId,
-        playerId: `bot-${strategy}-${seatIndex}`,
+        playerId: `bot-${isCliBotChoice(choice) ? 'claude' : choice}-${seatIndex}`,
         playerName: getBotDisplayName(seatIndex),
         seatIndex,
         stack: 1000,
         isBot: true,
-        botStrategy: strategy,
+        ...(isCliBotChoice(choice) ? { botModel: choice } : { botStrategy: choice }),
       }),
     [roomId],
   );
@@ -178,8 +179,8 @@ export function useRoomSocket(
   const requestStart = useCallback(() => emitWithAck(getSocket(), 'game:start', { roomId }), [roomId]);
 
   const addBot = useCallback(
-    (strategy: BotPersonality, seatIndex: number) => {
-      void requestAddBot(strategy, seatIndex).then((res) => {
+    (choice: BotChoice, seatIndex: number) => {
+      void requestAddBot(choice, seatIndex).then((res) => {
         if (!res.ok) {
           toast.error(t(getRoomErrorKey(res.error, 'lobby.room.error.addBot')));
         }

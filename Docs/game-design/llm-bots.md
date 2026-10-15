@@ -1074,6 +1074,17 @@ Calls go to the user's subscription. There is no dollar charge, but the plan's u
 - Candidate flags, from `codex exec --help` and `codex features list` (codex-cli 0.157.1): `codex exec --ephemeral --skip-git-repo-check --ignore-user-config --ignore-rules --sandbox read-only -C <temp dir> -m <model> --output-schema <file> --json --disable shell_tool --disable unified_exec`, plus disabling the browser, computer-use, image-generation, apps and plugins features listed as on.
 - The read-only sandbox still lets a shell read files and lets `ps` show command lines, so Codex runs only if its canary passes with the shell disabled.
 
+### Live play on a local table (2026-10-15)
+
+Claude Haiku and Sonnet can sit at a table on the user's own machine, behind `LLM_CLI_BOTS_ENABLED` (default off). This does not change the non-goal above: other people's tables still need an API profile.
+
+- Same pieces as the evals: `buildBotTurnInput`, prompt v1.2 with the Analyst (the Exploiter stays eval-only), the brief and menu, one isolated `claude -p` per decision (`callClaude`), `validateRealtime`. The eval policy and the live runtime share `callClaude` and `interpretOutcome` in `llm-cli-policy.ts`.
+- Startup runs the preflight and the canary gate; on failure the bots stay off and the log says why. `ANTHROPIC_BASE_URL` set is such a failure, so `dev:claude-bots` unsets it.
+- The room keeps the opponent ledger and updates it when each hand ends, with shown cards (a live table is not a duplicate deal). Memory (NOTES) stays empty, as in the evals.
+- Deadline 30 s per call (`LLM_CLI_BOT_TIMEOUT_MS`); a timeout, error or invalid letter plays TAG for that decision. At most 2 calls at once per process. The call runs outside the room's task queue, so other rooms are not held, and the human's clock starts only when it is their turn.
+- Stop rules, as in the evals: sign-in, usage-limit and rate-limit errors, an isolation violation, or 3 unclassified errors in a row turn the Claude bots off for the process (they play TAG, nothing retries) and the room gets a `game:bot_status` error with message `cli_unavailable`, which the web shows as a toast.
+- Talk and notes are not shown yet. A 30 s deadline and decisions of 6-15 s still sit badly with PRODUCT principle 5; this is for a single player who accepts that.
+
 ### Live demo (later)
 
 - A CLI decision takes longer than the 6 s realtime deadline, so a live CLI bot would mostly play its fallback, and a slow table goes against PRODUCT principle 5.
