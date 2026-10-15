@@ -9,6 +9,7 @@ export {
   ToolArgumentError,
   toolSeed,
   type BotTurnInput,
+  type FoldModel,
   type ToolContext,
 } from './context.ts';
 

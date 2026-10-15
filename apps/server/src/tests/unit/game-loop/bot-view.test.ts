@@ -44,7 +44,14 @@ function everythingTheBotSees(input: BotTurnInput, seedBase = input.seedBase) {
     const run = runTool(ctx, name, args);
     return { tool: run.tool, args: run.args, ok: run.ok, error: run.error, result: run.result };
   });
-  return { messages, tools };
+  // Prompt v1.2: the same brief and estimates with the line model.
+  const lineCtx = createToolContext({ ...input, seedBase }, { foldModel: 'line' });
+  const lineRun = runTool(lineCtx, 'bet_estimates', { seat: null, option: null });
+  const line = {
+    message: renderUserMessage({ ctx: lineCtx, brief: buildBrief(lineCtx, 'full', 'brief-1'), handNumber: input.handNumber, notes: [], format: 'brief-1' }),
+    estimates: { ok: lineRun.ok, error: lineRun.error, result: lineRun.result },
+  };
+  return { messages, tools, line };
 }
 
 function seen(spot: Pick<BotSpot, 'room' | 'botId' | 'ledger'>): string {
@@ -189,6 +196,27 @@ test('brief-1 prices the bets heads-up and adds the ledger lines; the tools say 
     assert.ok(!/est\. folds|folds by bet size|stack-off|hands shown/.test(old));
   }
   assert.ok(withShown > 0);
+});
+
+test('prompt v1.2 renders brief-1 word for word, with the line model\'s fold estimates (and river gains) in the menu', () => {
+  const masked = (message: string) => message.replace(/est\. folds (\d+%|<1%)/g, 'est. folds X').replace(/gain vs check [^\n]*/g, 'gain X');
+  let moved = 0;
+  for (const spot of HU_UNOPENED) {
+    const input = buildBotTurnInput(spot.room, spot.botId, undefined, spot.ledger)!;
+    const render = (foldModel: 'size' | 'line') => {
+      const ctx = createToolContext(input, { foldModel });
+      return renderUserMessage({ ctx, brief: buildBrief(ctx, 'full', 'brief-1'), handNumber: 1, notes: [], format: 'brief-1' });
+    };
+    const size = render('size');
+    const line = render('line');
+    assert.equal(masked(line), masked(size));
+    // The default is the size-only model, the one v1.1 shows.
+    const ctx = createToolContext(input);
+    assert.equal(renderUserMessage({ ctx, brief: buildBrief(ctx, 'full', 'brief-1'), handNumber: 1, notes: [], format: 'brief-1' }), size);
+    moved += line === size ? 0 : 1;
+  }
+  // The random ledgers hold bets by line, so the v1.2 numbers differ from v1.1's and the permutation test above covers them.
+  assert.ok(moved >= HU_UNOPENED.length / 2, `${moved}`);
 });
 
 test('at a bigger table brief-1 keeps the brief-0 lines for prices, folds and the menu, and only rewords the hand rank', () => {

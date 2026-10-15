@@ -25,7 +25,7 @@ import {
 } from '@aipoker/strategy-engine';
 import { z } from 'zod';
 
-import { callingEquities, foldEstimates, readsFor, riverGain, SIZE_BUCKET_LABELS } from '../exploit.ts';
+import { callingEquities, foldEstimates, foldLine, readsFor, riverGain, SIZE_BUCKET_LABELS } from '../exploit.ts';
 import { ledgerOf } from '../ledger.ts';
 import { HAND_CATEGORIES, type HandCategory } from '../memory.ts';
 import { buildMenu, MENU_IDS, type MenuId } from '../menu.ts';
@@ -526,7 +526,8 @@ const betEstimates: ToolSpec<{ seat: number | null; options: BetEstimate[] }> = 
     }
 
     const entry = ledgerOf(ctx.ledger, opponent.id);
-    const folds = foldEstimates(entry, bets.map((option) => option.potShare!));
+    const sizes = bets.map((option) => option.potShare!);
+    const folds = ctx.foldModel === 'line' ? foldEstimates(entry, sizes, foldLine(ctx.view.actions, opponent.id, ctx.view.phase)) : foldEstimates(entry, sizes);
     let gains: Array<number | null> = bets.map(() => null);
     if (context.phase === 'river') {
       const range = buildOpponentRange(opponent, context);

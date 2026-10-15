@@ -679,6 +679,32 @@ A room-level, public-only record keyed by player id and rendered by seat. Plain 
 - **Stage A** (`eval:exploit-calibration`, CPU only): the fold model against rule bots, the false-read rate, the probes' fold rates and the sd per pair. Results in `bot-eval.md`.
 - **Traces** of brief-1 rows carry the ledger JSON and its hash and what the model was shown (reads, per-size estimates); a pair logs both halves' hand actions so the report can score fold estimates against what the opponent did next.
 
+#### Prompt v1.2: the line fold model
+
+Status: built 2026-10-15, offline only; no model has seen it. Results and how the features were picked: `bot-eval.md`, "Prompt v1.2: fold model".
+
+**Why.** Against a selective folder the size-only estimate was badly calibrated (Haiku v1.1 vs `folder`: Brier 0.277, bets estimated at 60-80% folded to 36%). Such a player keeps made hands and draws, so whether it folds depends on what it has already shown this hand, not on the size.
+
+**What changes.** Only the numbers in `bet_estimates` (and with them the brief-1 menu lines and the river gains). v1.2 has v1.1's system text, brief wording, reads, persona and thresholds; its digest differs because it also hashes `FOLD_LINE_RULES`. `PROMPTS[version].foldModel` is `'size'` for v0 and v1.1 and `'line'` for v1.2; `createToolContext(input, { foldModel })` passes it to the tools (default `'size'`), so v1.1 renders byte for byte as before.
+
+**The line** (`foldLine(actions, playerId, street)`), from public actions on earlier streets only: whether the player *called a bet on an earlier street*, and whether *an earlier street was checked through*. Both are false on the flop. Four cells.
+
+**The estimate.** With `F(x)` the v1.1 estimate (rational defender → global shift → size bucket) and `δ` its global shift:
+
+```
+for each level (1: all cells with the same "called earlier"; 2: the line's own cell):
+  n, f   = bets faced and folded in the level's cells
+  p̄      = Σ over size buckets of n_b · σ(logit F_raw(x̄_b; δ) + Δ) / n   # the current estimate at the cells' own mean sizes
+  Δ     += logit((f + 8·p̄) / (n + 8)) − logit(p̄)                        # 0 when n = 0
+F_line(x) = σ(logit F_raw(x) + Δ), then the over-pot cap and the running maximum exactly as in v1.1
+```
+
+Each level shrinks toward the one above it with a prior worth 8 bets, and the top level toward the size-only estimate; with no bets on the line `Δ = 0` and the estimate is v1.1's to the bit. Comparing each cell with the *current* size-only estimate at its own sizes, rather than with the global fold rate, keeps a context that the size buckets already price (bigger bets on later streets) from being counted twice; the global version made TAG's calibration worse at every prior weight.
+
+**Ledger.** `PlayerLedger.byLine[lineKey]` holds, by size bucket, the faced, folded and rational-fold sums of bets **into an unopened pot** after the flop (the street's first bet, nothing of the player's in yet), the only bets `bet_estimates` prices. It is filled by `updateLedger` from the same public actions as the size buckets, keyed by player id, and follows the duplicate snapshot rule unchanged; a ledger saved before v1.2 reads as empty lines. Tests: the leak test (permuting unshown cards leaves the whole ledger, lines included, unchanged; changing a shown hand changes it), the lines are a part of each size bucket's bets, the permutation and no-id tests render brief-1 with the line model over random ledgers that hold lines, and unit tests for `n = 0`, shrinkage, monotonicity and the cap.
+
+**Known limits.** A line seen rarely in a match (a folder facing a bet after calling, about twice per 50 deals when TAG bets) stays near the size-only estimate; size effects such as `size-reader`'s raises of small bets are untouched; against the folder v1.2 runs high in its top decile (estimates of 90%+ folded to 75-80%).
+
 ### Trace
 
 ```ts

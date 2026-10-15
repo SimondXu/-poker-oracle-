@@ -1,8 +1,9 @@
 import type { AgentPersonaId } from '@aipoker/shared';
 
 import type { BriefFormat } from './brief.ts';
-import { READ_RULES } from './exploit.ts';
+import { FOLD_LINE_RULES, READ_RULES } from './exploit.ts';
 import { getPersona, PERSONA_IDS } from './personas.ts';
+import type { FoldModel } from './tools/context.ts';
 import { hashJson, type BotChatMessage } from './trace.ts';
 
 /** Byte-stable, first in `system`, so providers can cache it as a prefix. No ids, no timestamps. */
@@ -70,7 +71,7 @@ const ADVISOR_LINE = `
 export type PromptMode = { deep: false } | { deep: true; maxRounds: number; withAdvisor: boolean };
 
 /** The prompt versions evals can compare. A version fixes the system text and the brief format it goes with. */
-export const PROMPT_VERSIONS = ['v0', 'v1.1'] as const;
+export const PROMPT_VERSIONS = ['v0', 'v1.1', 'v1.2'] as const;
 export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
 export const DEFAULT_PROMPT_VERSION: PromptVersion = 'v0';
 
@@ -86,6 +87,8 @@ export interface PromptTexts {
   advisor: string;
   /** The read thresholds this version shows reads under, hashed into its digest; none for a version without reads. */
   reads?: typeof READ_RULES;
+  /** How its fold estimates are made (`ToolContext.foldModel`); a version on the line model hashes its rules into its digest. */
+  foldModel: FoldModel;
   /** The personas whose text the digest covers. */
   personas: readonly AgentPersonaId[];
 }
@@ -154,6 +157,7 @@ export const PROMPTS: Record<PromptVersion, PromptTexts> = {
     common: COMMON_SECTIONS,
     deep: DEEP_SECTION,
     advisor: ADVISOR_LINE,
+    foldModel: 'size',
     // The five personas of the time; the digest must not move when a persona is added.
     personas: ['analyst', 'nit', 'bully', 'chaos', 'showman'],
   },
@@ -166,6 +170,20 @@ export const PROMPTS: Record<PromptVersion, PromptTexts> = {
     deep: V1_DEEP,
     advisor: ADVISOR_LINE,
     reads: READ_RULES,
+    foldModel: 'size',
+    personas: PERSONA_IDS,
+  },
+  // v1.1's text and brief, with fold estimates that also read the opponent's line this hand (`FOLD_LINE_RULES`).
+  'v1.2': {
+    id: 'v1.2',
+    botVersion: 'bot-2026-10-15.1',
+    brief: 'brief-1',
+    defaultPersona: 'exploiter',
+    common: V1_COMMON,
+    deep: V1_DEEP,
+    advisor: ADVISOR_LINE,
+    reads: READ_RULES,
+    foldModel: 'line',
     personas: PERSONA_IDS,
   },
 };
@@ -202,6 +220,7 @@ export function botPromptDigest(version: PromptVersion = DEFAULT_PROMPT_VERSION)
     deep: texts.deep,
     advisor: texts.advisor,
     ...(texts.reads ? { reads: texts.reads } : {}),
+    ...(texts.foldModel === 'line' ? { foldModel: FOLD_LINE_RULES } : {}),
     personas: texts.personas.map((id) => getPersona(id).prompt),
   });
 }

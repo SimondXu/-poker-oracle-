@@ -302,3 +302,89 @@ Flop and turn value bets of pot or more went from 6/64 to 64/64 (median ¾ pot t
 - The value side of v1.1 works: against a player who calls too much it more than doubled the win rate, now level with or above the best rule bot, and it cost nothing measurable against TAG.
 - The bluffing side is not shown to pay. The model follows the bluff rule faithfully, so the weak link is the fold estimate: it needs hand-class or board context (for example, fold rates split by board texture or by the line taken) before bluffing rules can be trusted against a selective folder.
 - Held-out opponents (`calldown`, `size-reader`) and Sonnet v1.1 (stages D and E) have not been run.
+
+## Prompt v1.2: fold model (2026-10-15, CPU only, no model)
+
+Haiku v1.1 against `folder` (run `20261015083304-09bf`) followed the bluff rule but gained nothing measurable (+60 ± 187 bb/100 over v0): its fold estimates scored a Brier of 0.277 on 127 answered bets, and bets estimated at 60-80% were folded to 36% of the time. The folder keeps top pair or better and, before the river, strong draws, so once it has called a bet it rarely folds; a model that sees only the bet size cannot tell. v1.2 keeps v1.1's text, brief and reads and changes only the numbers in the menu: each estimate is shifted by what the opponent did on the same **line** this hand (design in `llm-bots.md`, "Prompt v1.2: the line fold model"). Digest `6806de7e…`, bot version `bot-2026-10-15.1`; v0 and v1.1 are unchanged.
+
+### How the features were picked (development data only)
+
+TAG as the bettor against `folder`, `calldown`, TAG and `station`, seed 20261014, 200 matches of 50 deals, snapshot on, every bet into an unopened pot (about 3,200 to 24,000 per opponent). Candidates, all public: street, river, called a bet on an earlier street, an earlier street checked through, the bettor's barrels, preflop aggressor, and board texture (paired, two-tone or more, three of a suit, straight possible, a queen or higher, "drawy"). Each was scored by the mean Brier gain over the four opponents against the size-only model, replaying the ledger with snapshot semantics. Greedy, at a prior weight of 8 bets per cell:
+
+| Step | Best | Mean gain | Runner-up |
+|---|---|---|---|
+| 1 | called a bet earlier | +0.0095 | barrels +0.0083, street +0.0067, straight possible +0.0052; every board feature ≤ +0.0052 |
+| 2 | + an earlier street checked through | +0.0120 | + straight possible +0.0121, + three of a suit +0.0119, + street +0.0113 |
+| 3 | nothing added more than +0.0002 | | |
+
+Step 2 was a tie on the mean; "checked through" was taken because it costs TAG half as much (TAG Brier +0.004 pooled and −0.003 after 15 bets, against +0.008 and +0.006 for "straight possible"). Board texture adds nothing once the line is known. Prior weight per cell: 4 +0.0122, 6 +0.0124, **8 +0.0120**, 12 +0.0109; 8 is within 0.0005 of the best with a smaller cost against TAG. A first version that shrank each cell toward the global record made TAG worse at every weight (the size buckets already carry part of the line), so each cell is compared with the current size-only estimate at its own sizes instead. Frozen in commit `1fb4b5d` before any held-out run.
+
+### Results
+
+`pnpm eval:exploit-calibration --opponents <name> [--seed 535489449]`, 60 matches of 50 deals, TAG as the bettor, snapshot on. Brier is over bets into an unopened pot (what `bet_estimates` prices). The gate is the restated one: within 10 points per size bucket with 30 or more bets, after the probe has faced 15, over-pot only once it holds 5.
+
+| Opponent | Data | Bets | Brier v1.1 | Brier v1.2 | Gate v1.1 | Gate v1.2 |
+|---|---|---|---|---|---|---|
+| `folder` | dev (seed 20261014) | 1,000 | 0.2532 | **0.2199** | under ½ pot −18.1 **FAIL**, ½-¾ −3.8 | −5.4, +4.4: PASS |
+| `calldown` | dev | 1,689 | 0.2516 | **0.2439** | −1.5, −3.1 | +1.6, −2.3: PASS |
+| TAG | dev | 1,251 | 0.2594 | 0.2625 | −3.7, −1.4 | −1.1, −1.4: PASS |
+| `station` | dev | 7,516 | 0.0162 | **0.0063** | over pot +10.4 **FAIL** (others ≤ 2.9) | all ≤ 0.8: PASS |
+| `folder` | held out (seed 535489449) | 982 | 0.2563 | **0.2278** | under ½ pot −26.9 **FAIL**, ½-¾ −8.9 | **−14.3 FAIL**, −0.2 |
+| `calldown` | held out | 1,705 | 0.2397 | **0.2298** | −1.7, +2.8 | −0.3, +4.6: PASS |
+| TAG | held out | 1,240 | 0.2557 | 0.2556 | −3.3, −0.6 | −0.2, +0.1: PASS |
+| `station` | held out | 7,619 | 0.0171 | **0.0068** | over pot +10.2 **FAIL** | all ≤ 0.7: PASS |
+| `size-reader` | held out (never used before) | 1,173 | 0.1836 | 0.1864 | under ½ pot +11.1 **FAIL**, ½-¾ −4.5 | **+11.5 FAIL**, −5.7 |
+
+**The gate fails on held-out data for v1.2 in two cells**, both also failed by v1.1: the folder's small bets (−14.3, from −26.9: the folder folds 85% to them after 15 bets, and the first bet of a hand is still priced low) and `size-reader`'s small bets (+11.5: it raises bets of a third of the pot or less, a size effect the line cannot see and the size buckets learn slowly). Nothing was retuned after these runs.
+
+By line (held-out folder; estimate is the mean of each model):
+
+| Line | Bets | Folded | v1.1 | v1.2 |
+|---|---|---|---|---|
+| first bet faced (flop, or after betting) | 655 | 82.3% | 58.3% | 70.0% |
+| an earlier street checked through | 212 | 81.6% | 62.1% | 70.8% |
+| called an earlier bet | 99 | 15.2% | 61.9% | 59.3% |
+| called, and a street checked through | 16 | 62.5% | 63.4% | 62.4% |
+
+With TAG as the bettor the folder faces a bet after calling only about 1.7 times per 50-deal match, too few for the line's cell to move far from its prior; the first-bet lines, where most bets are, move most. Reliability (estimate vs realised, held-out folder): v1.1 40-50% 45 vs 80 (115), 50-60% 55 vs 81 (190), 80-90% 84 vs 60 (103); v1.2 40-50% 45 vs 67 (52), 50-60% 55 vs 74 (102), 70-80% 75 vs 77 (226), 80-90% 85 vs 74 (226), 90-100% 94 vs 75 (115). v1.2 now runs high in its top decile against the folder (94 vs 75-80, dev and held out). Against TAG (held out) v1.2's 50-80% deciles are within 3-4 points (v1.1: 11 points under at 50-60%, 24 over at 70-80%).
+
+**False reads.** v1.2 does not change the reads: 233 of 21,483 decisions (1.08%) of TAG against TAG on the development seed, 10 of 21,705 (0.05%) on the held-out seed. PASS.
+
+### Bluff proxy
+
+Every bet into an unopened pot scored as a pure bluff: it wins the pot when they fold and loses the bet when they call (a raise counts as a call). "Clears" is the bluff rule: estimate minus what the bluff needs, 10 points or more. bb per bet, ± 95%:
+
+| | v1.1 clears | v1.2 clears | Only v1.1 (v1.2 filters out) | Only v1.2 (v1.2 adds) |
+|---|---|---|---|---|
+| `folder`, dev | 745: +2.93 ± 0.93 | 823: +3.28 ± 0.83 | 16, folded 25%: **−8.79 ± 8.01** | 94, folded 81%: +4.07 ± 1.10 |
+| `folder`, held out | 797: +3.39 ± 0.83 | 847: +3.44 ± 0.78 | 4, folded 50%: +1.43 ± 17.41 | 54, folded 91%: +4.04 ± 0.73 |
+| `calldown`, held out | 362: −0.92 ± 1.11 | 553: +0.24 ± 0.97 | 58, folded 7%: **−3.67 ± 1.48** | 249, folded 43%: +1.01 ± 1.48 |
+| TAG, held out | 651: +2.65 ± 1.13 | 694: +3.14 ± 1.15 | 104: +0.95 ± 1.12 | 147: +3.74 ± 2.30 |
+| `size-reader`, held out | 454: +3.37 ± 1.61 | 445: +4.22 ± 1.81 | 81: +3.18 ± 2.83 | 72: +8.44 ± 5.58 |
+| Haiku v1.1 vs folder (live, below) | 108: +0.58 ± 2.40 | 94: +2.37 ± 2.25 | 21, folded 10%: **−7.06 ± 6.47** | 7: +1.71 ± 4.56 |
+
+The bets v1.2 filters out lose where they are numerous enough to measure (the calldown, the live run); the bets it adds win. Against the folder in simulation the gain is mostly the added first-bet bluffs, because TAG rarely bets into a folder that has called.
+
+### The live run, re-estimated
+
+`pnpm eval:exploit-calibration --live-run <dir of 20261015083304-09bf>` replays the run (0 game-state problems; the size-only estimates rebuilt equal the recorded ones on every bet) and computes what v1.2 would have shown at each of the model's bets, with the ledger as it was:
+
+| Rows | Answered bets | Brier v1.1 | Brier v1.2 | After a call: folded / v1.1 / v1.2 | First bet: folded / v1.1 / v1.2 |
+|---|---|---|---|---|---|
+| Haiku v1.1 | 127 | 0.2768 | **0.2209** | 35 bets: 14% / 59% / 35% | 92 bets: 71% / 57% / 69% |
+| Haiku v0 | 66 | 0.2807 | 0.2637 | 15 bets: 33% / 65% / 55% | 48 bets: 73% / 61% / 72% |
+
+This is counterfactual: with v1.2's numbers the model would have bet differently and the ledger would have changed. It shows the estimates the model would have seen, not what it would have won; that needs the live comparison below.
+
+### Commands
+
+```bash
+cd apps/server
+pnpm eval:exploit-calibration --opponents folder,calldown,tag,station                  # development seed 20261014
+pnpm eval:exploit-calibration --opponents folder,calldown,tag,station,size-reader --seed 535489449   # held out
+pnpm eval:exploit-calibration --live-run <path to .eval/llm-hu/20261015083304-09bf>
+# Live comparison (not run; about 800-1,000 calls): v1.1 and v1.2 against the folder on the deals of 09bf
+pnpm eval:llm-hu --models claude-haiku-5-5 --prompts v1.1,v1.2 --snapshot-per-pair --same-deals-as 20261015083304-09bf --opponents folder --baselines tag --matches 2 --deals-per-match 50 --max-calls 1100
+pnpm eval:llm-hu-compare <new run id>:cli-claude/claude-haiku-5-5/low/v1.1 <new run id>:cli-claude/claude-haiku-5-5/low/v1.2
+pnpm eval:exploit-calibration --live-run <path to .eval/llm-hu/<new run id>>
+```

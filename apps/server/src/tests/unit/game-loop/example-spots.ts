@@ -26,6 +26,7 @@ export interface ExampleSpot {
 const BLANK_LEDGER: PlayerLedger = {
   buckets: [{ faced: 0, folded: 0 }, { faced: 0, folded: 0 }, { faced: 0, folded: 0 }, { faced: 0, folded: 0 }],
   sumBase: 0,
+  byLine: {},
   sawFlop: 0,
   showdowns: 0,
   lightCalldowns: 0,
