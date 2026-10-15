@@ -388,3 +388,20 @@ pnpm eval:llm-hu --models claude-haiku-5-5 --prompts v1.1,v1.2 --snapshot-per-pa
 pnpm eval:llm-hu-compare <new run id>:cli-claude/claude-haiku-5-5/low/v1.1 <new run id>:cli-claude/claude-haiku-5-5/low/v1.2
 pnpm eval:exploit-calibration --live-run <path to .eval/llm-hu/<new run id>>
 ```
+
+### Prompt v1.2 live against folder (2026-10-15)
+
+Haiku 5.5, effort low, v1.1 and v1.2 on the deals of run `20261015083304-09bf` (run `20261015224944-451b`, snapshot per pair, 2 × 50, 796 calls, no fallbacks, no price blunders). The TAG baseline came out identical on all 100 pairs, and the two prompts' system text is identical (sha256 `41f83fcc…`), so the rows differ only in the menu's fold estimates.
+
+| Same deals | bb/100 |
+|---|---|
+| v1.1 | −77 ± 223 |
+| v1.2 | +93 ± 188 |
+| **v1.2 − v1.1** | **+170 ± 196** |
+| v1.2 − v0 (run 09bf) | +156 ± 172 |
+| v1.1 − v0 (run 09bf) | −14 ± 182 |
+| v1.1 this run − v1.1 run 09bf | −73 ± 163 (sampling noise of the CLI on the same deals) |
+
+- **Calibration improved as predicted:** Brier 0.269 → 0.227 on the bets the folder answered. The 60-80% bucket now matches (said 73%, got 72%, 69 bets; v1.1 said 68%, got 52%). v1.2 is still too high at 80%+ (said 83%, got 43%, 14 bets).
+- **Bluffing:** v1.2 bet 37 of 44 weak hands (v1.1 46 of 52), all but one at a 10-point margin or more; the "folds a lot" read reached 34 decisions (v1.1 6).
+- **Win rate:** v1.2 is ahead of v1.1 and of v0 by about 160-170 bb/100, but both 95% intervals still include 0. The rerun of v1.1 on the same deals moved by −73, which is the size of the noise a single 100-deal row carries. This run supports "v1.2's estimates are better calibrated and it bluffed more selectively", not "v1.2 wins more" yet.
