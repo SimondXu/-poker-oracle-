@@ -336,7 +336,7 @@ Nine short effects, mono mp3 under `public/sounds/` (Kenney, CC0). A sound plays
 
 | Sound | When |
 | --- | --- |
-| `turn` | the hero's decision opens (once per decision; a reconnect replay stays quiet) |
+| `turn` | the table shows it is the hero's turn and a decision is open (once per decision; a reconnect replay stays quiet) |
 | `timer-warning` | the hero's timer has 5s left (once per decision) |
 | `check` | any player checks |
 | `bet` | any bet or call |
@@ -346,7 +346,7 @@ Nine short effects, mono mp3 under `public/sounds/` (Kenney, CC0). A sound plays
 | `board` | flop, turn and river revealed (once per street) |
 | `win` | the winner is named and the pot goes out |
 
-Master volume 0.35. On by default; the top bar speaker toggle mutes it and the choice is kept in `localStorage` (`aipoker-sound-muted`). Nothing plays before the first click or key press, and a blocked play fails silently. Add a sound only if it tells the player something the eye would miss; ambience and decoration are out.
+A `turn` or `timer-warning` that would land within 350 ms of another sound waits 350 ms (and is dropped if the hero acts first). Master volume 0.35. On by default; the top bar speaker toggle mutes it and the choice is kept in `localStorage` (`aipoker-sound-muted`). Nothing plays before the first click or key press, and a blocked play fails silently. Add a sound only if it tells the player something the eye would miss; ambience and decoration are out.
 
 ## Do's and Don'ts
 

@@ -48,18 +48,20 @@ function manualScheduler(start = 1_000_000) {
 const action = (type: ActionType, n: number): GameAction =>
   ({ playerId: 'p', playerName: 'P', seatIndex: 0, phase: 'betting_preflop', type, amount: 0, addedAmount: 0, toAmount: 0, stackBefore: 0, potTotalBefore: 0, sequenceNum: n, timestamp: n }) as GameAction;
 
-function hand(overrides: { id?: string; handNumber?: number; phase?: Phase; actions?: ActionType[]; board?: number } = {}): HandState {
+function hand(overrides: { id?: string; handNumber?: number; phase?: Phase; actions?: ActionType[]; board?: number; actor?: number | null } = {}): HandState {
   return {
     id: overrides.id ?? 'h1',
     handNumber: overrides.handNumber ?? 1,
     phase: overrides.phase ?? 'betting_preflop',
     actions: (overrides.actions ?? []).map(action),
     communityCards: Array.from({ length: overrides.board ?? 0 }, (_, i) => `c${i}`),
+    currentActorSeat: overrides.actor ?? null,
   } as unknown as HandState;
 }
 
 const snap = (h: HandState | null, extra: Partial<TableSoundSnapshot> = {}): TableSoundSnapshot => ({
   hand: h,
+  heroSeat: 0,
   hasValidActions: false,
   timerStartedAt: null,
   timerDurationMs: 30_000,
@@ -159,66 +161,144 @@ test('a new hand cancels board sounds still waiting from the last one', () => {
   assert.deepEqual(played, ['deal']);
 });
 
+const hero = (o: Parameters<typeof hand>[0] = {}) => hand({ ...o, actor: 0 });
+
 test('the turn sounds once per decision, not on a replay of the same state', () => {
-  const { tracker, played } = setup();
-  const open = { hasValidActions: true, timerStartedAt: 1_000_000, timerDurationMs: 4_000 };
-  tracker.update(snap(hand(), open));
+  const { tracker, played, clock } = setup();
+  const open = { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 4_000 };
+  tracker.update(snap(hand()));
   played.length = 0;
 
-  tracker.update(snap(hand({ actions: ['call'] }), open));
+  // Hero to act right after the opponent's call: the turn waits a beat behind the chips.
+  tracker.update(snap(hero({ actions: ['call'] }), open));
+  assert.deepEqual(played, ['bet']);
+  clock.advance(349);
+  assert.deepEqual(played, ['bet']);
+  clock.advance(1);
   assert.deepEqual(played, ['bet', 'turn']);
 
   // Reconnect: the same decision arrives again, with and without a gap in between.
-  tracker.update(snap(hand({ actions: ['call'] }), open));
-  tracker.update(snap(hand({ actions: ['call'] }), { ...open, timerStartedAt: 1_000_500 }));
-  tracker.update(snap(hand({ actions: ['call'] })));
-  tracker.update(snap(hand({ actions: ['call'] }), open));
+  tracker.update(snap(hero({ actions: ['call'] }), open));
+  tracker.update(snap(hero({ actions: ['call'] }), { ...open, timerStartedAt: clock.now + 500 }));
+  tracker.update(snap(hero({ actions: ['call'] })));
+  tracker.update(snap(hero({ actions: ['call'] }), open));
+  clock.advance(1_000);
   assert.deepEqual(played, ['bet', 'turn']);
 
   // The hero acts and is asked again later in the hand.
-  tracker.update(snap(hand({ actions: ['call', 'raise_to', 'call'] }), open));
-  assert.deepEqual(played, ['bet', 'turn', 'bet', 'turn']);
+  tracker.update(snap(hand({ actions: ['call', 'raise_to'] })));
+  clock.advance(1_000);
+  tracker.update(snap(hero({ actions: ['call', 'raise_to', 'call'] }), open));
+  clock.advance(1_000);
+  assert.deepEqual(played, ['bet', 'turn', 'raise', 'bet', 'turn']);
+});
+
+test('the turn waits for the table to show the hero to act, once, after the board', () => {
+  // The hero checked the flop and timed out; opponents act, the turn card falls, then the hero is up.
+  const { tracker, played, clock } = setup();
+  const decision = { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 };
+  const flopActions: ActionType[] = ['call', 'check', 'check'];
+  tracker.update(snap(hero({ phase: 'betting_flop', actions: flopActions, board: 3 }), decision));
+  clock.advance(1_000);
+  played.length = 0;
+
+  // The hero's next decision is already in the store while the hold queue still shows the old street.
+  const open = { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 };
+  tracker.update(snap(hand({ phase: 'betting_flop', actions: [...flopActions, 'check'], board: 3, actor: 1 }), open));
+  clock.advance(900);
+  tracker.update(snap(hand({ phase: 'betting_flop', actions: [...flopActions, 'check', 'check'], board: 3, actor: 2 }), open));
+  clock.advance(900);
+  assert.deepEqual(played, ['check', 'check']);
+
+  // Street change: the turn card shows and the hero is up in the same update; the turn sound
+  // follows the board by a beat, and sounds once however often the state repeats.
+  const turnStreet = { phase: 'betting_turn', actions: [...flopActions, 'check', 'check'] as ActionType[], board: 4 } as const;
+  tracker.update(snap(hero(turnStreet), open));
+  assert.deepEqual(played, ['check', 'check', 'board']);
+  tracker.update(snap(hero(turnStreet), open));
+  clock.advance(350);
+  clock.advance(5_000);
+  assert.deepEqual(played, ['check', 'check', 'board', 'turn']);
+});
+
+test('a delayed turn is dropped if the hero acts first', () => {
+  const { tracker, played, clock } = setup();
+  const open = { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 };
+  tracker.update(snap(hand()));
+  tracker.update(snap(hero({ actions: ['call'] }), open));
+  assert.equal(clock.pendingCount, 2); // the delayed turn and the timer warning
+  tracker.update(snap(hand({ actions: ['call', 'raise_to'] })));
+  assert.equal(clock.pendingCount, 0);
+  clock.advance(60_000);
+  assert.deepEqual(played, ['deal', 'bet', 'raise']);
+});
+
+test('no turn sound while it is someone else\'s turn or the hand is over', () => {
+  const { tracker, played, clock } = setup();
+  const open = { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 };
+  tracker.update(snap(hand({ actor: 3 }), open));
+  tracker.update(snap(hand({ phase: 'hand_end', actor: 0 }), open));
+  tracker.update(snap(hand({ actor: 0 }), { ...open, heroSeat: null }));
+  clock.advance(60_000);
+  assert.deepEqual(played, ['deal']);
 });
 
 test('the timer warning sounds once, five seconds before the deadline', () => {
   const { tracker, played, clock } = setup();
   const open = { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 };
-  tracker.update(snap(hand(), open));
+  tracker.update(snap(hero(), open));
+  clock.advance(1_000);
   played.length = 0;
 
-  clock.advance(30_000 - TIMER_WARNING_MS - 1);
+  clock.advance(30_000 - TIMER_WARNING_MS - 1_000 - 1);
   assert.deepEqual(played, []);
   clock.advance(1);
   assert.deepEqual(played, ['timer-warning']);
 
   // Replays of the same decision do not warn again.
-  tracker.update(snap(hand(), open));
-  tracker.update(snap(hand(), { ...open, timerStartedAt: clock.now, timerDurationMs: 30_000 }));
+  tracker.update(snap(hero(), open));
+  tracker.update(snap(hero(), { ...open, timerStartedAt: clock.now, timerDurationMs: 30_000 }));
   clock.advance(60_000);
   assert.deepEqual(played, ['timer-warning']);
+});
+
+test('a timer warning that lands on another sound waits a beat', () => {
+  const { tracker, played, clock } = setup();
+  const open = { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 };
+  tracker.update(snap(hero(), open));
+  clock.advance(25_000 - 100);
+  played.length = 0;
+  // Another sound is released just before the warning is due.
+  tracker.update(snap(hero(), { ...open, resultPhase: 'showing' }));
+  clock.advance(100);
+  assert.deepEqual(played, ['win']);
+  clock.advance(349);
+  assert.deepEqual(played, ['win']);
+  clock.advance(1);
+  assert.deepEqual(played, ['win', 'timer-warning']);
 });
 
 test('no warning when the hero acts first, or when the timer is already short', () => {
   const acted = setup();
   const open = { hasValidActions: true, timerStartedAt: acted.clock.now, timerDurationMs: 30_000 };
-  acted.tracker.update(snap(hand(), open));
+  acted.tracker.update(snap(hero(), open));
   acted.tracker.update(snap(hand({ actions: ['call'] })));
   assert.equal(acted.clock.pendingCount, 0);
   acted.clock.advance(60_000);
-  assert.deepEqual(acted.played, ['deal', 'turn', 'bet']);
+  assert.deepEqual(acted.played, ['deal', 'bet']);
 
   const short = setup();
-  short.tracker.update(snap(hand(), { hasValidActions: true, timerStartedAt: short.clock.now, timerDurationMs: 4_000 }));
-  assert.equal(short.clock.pendingCount, 0);
+  short.tracker.update(snap(hero(), { hasValidActions: true, timerStartedAt: short.clock.now, timerDurationMs: 4_000 }));
+  assert.equal(short.clock.pendingCount, 1); // only the delayed turn
 });
 
 test('a replay with a shorter server timer moves the warning', () => {
   const { tracker, played, clock } = setup();
-  tracker.update(snap(hand(), { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 }));
+  tracker.update(snap(hero(), { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 30_000 }));
+  clock.advance(10_000);
   played.length = 0;
 
-  clock.advance(10_000);
-  tracker.update(snap(hand(), { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 12_000 }));
+  tracker.update(snap(hero(), { hasValidActions: true, timerStartedAt: clock.now, timerDurationMs: 12_000 }));
   clock.advance(7_000 - 1);
   assert.deepEqual(played, []);
   clock.advance(1);

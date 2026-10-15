@@ -4,6 +4,8 @@ import type { SoundName } from './sound.ts';
 
 /** The hero's timer warning sounds this long before the deadline. */
 export const TIMER_WARNING_MS = 5000;
+/** A turn or warning sound that would land within this long of another sound waits this long. */
+export const SOUND_SPACING_MS = 350;
 
 /** No sound for a fold. */
 export function soundForAction(type: ActionType): SoundName | null {
@@ -30,8 +32,10 @@ function isStreetStart(cardCount: number): boolean {
 /** What the table shows right now (the store, after the hold queue has let things through). */
 export interface TableSoundSnapshot {
   hand: HandState | null;
-  /** The hero has a decision open. */
+  /** The hero has a decision open (it may arrive before the table has shown it is their turn). */
   hasValidActions: boolean;
+  /** The hero's seat in the shown hand; `null` when they are not seated (spectating). */
+  heroSeat: number | null;
   timerStartedAt: number | null;
   timerDurationMs: number;
   /** Phase of the shown hand result; `'showing'` is when the winner is named and the pot goes out. */
@@ -68,8 +72,20 @@ export function createTableSoundTracker(play: (name: SoundName) => void, schedul
   let turnKey: string | null = null;
   let warnedKey: string | null = null;
   let warning: { handle: unknown; deadline: number } | null = null;
+  let pendingTurn: unknown = null;
   let boardTimers: unknown[] = [];
+  let lastSoundAt: number | null = null;
 
+  const emit = (name: SoundName) => {
+    lastSoundAt = scheduler.now();
+    play(name);
+  };
+  const crowded = () => lastSoundAt !== null && scheduler.now() - lastSoundAt < SOUND_SPACING_MS;
+
+  const cancelTurn = () => {
+    if (pendingTurn !== null) scheduler.clear(pendingTurn);
+    pendingTurn = null;
+  };
   const cancelWarning = () => {
     if (warning) scheduler.clear(warning.handle);
     warning = null;
@@ -86,14 +102,16 @@ export function createTableSoundTracker(play: (name: SoundName) => void, schedul
     cancelWarning();
     const delay = deadline - TIMER_WARNING_MS - scheduler.now();
     if (delay <= 0) return;
-    warning = {
-      deadline,
-      handle: scheduler.set(() => {
-        warning = null;
-        warnedKey = key;
-        play('timer-warning');
-      }, delay),
+    const fire = () => {
+      if (crowded()) {
+        warning = { deadline, handle: scheduler.set(fire, SOUND_SPACING_MS) };
+        return;
+      }
+      warning = null;
+      warnedKey = key;
+      emit('timer-warning');
     };
+    warning = { deadline, handle: scheduler.set(fire, delay) };
   };
 
   return {
@@ -101,6 +119,7 @@ export function createTableSoundTracker(play: (name: SoundName) => void, schedul
       const { hand } = snapshot;
       if (!hand) {
         cancelBoard();
+        cancelTurn();
         cancelWarning();
         currentHand = dealtHand = wonHand = turnKey = warnedKey = null;
         actionCount = boardCount = 0;
@@ -110,13 +129,14 @@ export function createTableSoundTracker(play: (name: SoundName) => void, schedul
       const key = handKey(hand);
       if (key !== currentHand) {
         cancelBoard();
+        cancelTurn();
         currentHand = key;
         actionCount = hand.actions.length;
         // A hand seen from its start announces its whole board; one seen midway does not.
         boardCount = hand.actions.length === 0 ? 0 : hand.communityCards.length;
         if (hand.actions.length === 0 && hand.phase === 'betting_preflop' && dealtHand !== key) {
           dealtHand = key;
-          play('deal');
+          emit('deal');
         }
       }
 
@@ -124,38 +144,56 @@ export function createTableSoundTracker(play: (name: SoundName) => void, schedul
       if (hand.actions.length > actionCount) {
         const last = hand.actions.at(-1);
         const sound = last ? soundForAction(last.type) : null;
-        if (sound) play(sound);
+        if (sound) emit(sound);
       }
       actionCount = hand.actions.length;
 
       if (hand.communityCards.length > boardCount) {
         for (const step of buildCommunityRevealSteps(boardCount, hand.communityCards.length)) {
           if (!isStreetStart(step.count)) continue;
-          if (step.delayMs <= 0) play('board');
-          else boardTimers.push(scheduler.set(() => play('board'), step.delayMs));
+          if (step.delayMs <= 0) emit('board');
+          else boardTimers.push(scheduler.set(() => emit('board'), step.delayMs));
         }
       }
       boardCount = hand.communityCards.length;
 
       if (snapshot.resultPhase === 'showing' && wonHand !== key) {
         wonHand = key;
-        play('win');
+        emit('win');
       }
 
-      if (snapshot.hasValidActions) {
-        // One decision per hand and action count; a reconnect that replays it stays quiet.
-        const decision = `${key}:${hand.actions.length}`;
+      // The decision can reach the store before the table has shown the hero's turn (the hold queue
+      // is still releasing the actions before it and the next street); it counts once it is shown.
+      const heroToAct =
+        snapshot.hasValidActions &&
+        snapshot.heroSeat !== null &&
+        hand.phase !== 'hand_end' &&
+        hand.currentActorSeat === snapshot.heroSeat;
+      if (heroToAct) {
+        // One decision per hand, street and action count; a reconnect that replays it stays quiet.
+        const decision = `${key}:${hand.phase}:${hand.actions.length}`;
         if (decision !== turnKey) {
+          cancelTurn();
           turnKey = decision;
-          play('turn');
+          if (crowded()) {
+            pendingTurn = scheduler.set(() => {
+              pendingTurn = null;
+              emit('turn');
+            }, SOUND_SPACING_MS);
+          } else {
+            emit('turn');
+          }
         }
         scheduleWarning(decision, snapshot);
       } else {
+        // The hero acted, or the table moved on, before a delayed sound landed.
+        cancelTurn();
         cancelWarning();
       }
     },
     dispose() {
       cancelBoard();
+      cancelTurn();
       cancelWarning();
     },
   };

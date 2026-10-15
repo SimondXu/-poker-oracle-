@@ -26,7 +26,7 @@ export default function GamePage({ params }: GamePageProps) {
     currentUserName,
     Boolean(user),
   );
-  useTableSounds();
+  useTableSounds(currentUserId);
   const screen = useGameScreenState({
     currentUserId,
     startNextHand,
