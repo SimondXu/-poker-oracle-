@@ -104,7 +104,7 @@ export function formatComparison(comparison: Comparison): string {
     out.push(`${entry.opponent} · ${entry.pairs} · ${win(entry.a)} · ${win(entry.b)} · ${win(entry.difference)} · ${f(entry.sdPerPair, 1)}`);
   }
   for (const check of comparison.dealCheck) {
-    out.push(`deal check ${check.row}: ${check.identical} of ${check.pairs} shared pairs came out identical${check.identical === check.pairs ? '' : '  (the runs did NOT play the same deals)'}`);
+    out.push(`deal check ${check.row}: ${check.identical} of ${check.pairs} shared pairs came out identical${check.identical === check.pairs ? '' : '  (different deals, or a rule bot that reads opponent statistics updated on a different schedule, e.g. snapshot mode)'}`);
   }
   if (comparison.dealCheck.length === 0) {
     out.push('deal check: the runs share no rule bot row, so the deals are not verified');
