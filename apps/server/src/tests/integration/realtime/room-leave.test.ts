@@ -183,7 +183,9 @@ test('room:leave removes room membership and broadcasts updated room state', asy
 
 test('room:leave during active hand keeps seat until hand_end then cleans it up', async (t) => {
   const app = createServer({ nowMs: () => 42 });
-  const io = attachRealtime(app, { actionTimeoutMs: 40 });
+  // The leave must land while the hand is on: a shorter clock lets a busy machine time Alice out
+  // (and end the hand) before her leave is read.
+  const io = attachRealtime(app, { actionTimeoutMs: 1_000 });
 
   t.after(async () => {
     await new Promise<void>((resolve) => io.close(() => resolve()));
@@ -233,11 +235,11 @@ test('room:leave during active hand keeps seat until hand_end then cleans it up'
   });
   assert.deepEqual(startAck, { ok: true });
 
-  const handEndStatePromise = waitForState(bob, (payload) => payload.hand.phase === 'hand_end', 1500);
+  const handEndStatePromise = waitForState(bob, (payload) => payload.hand.phase === 'hand_end', 5000);
   const postHandRoomStatePromise = waitForRoomState(
     bob,
     (payload) => payload.roomId === 'AAAAA2' && payload.playerCount === 1,
-    1500
+    5000
   );
 
   const leaveAck = await emitWithAck<{ ok: boolean; roomId?: string; playerCount?: number; error?: string }>(
