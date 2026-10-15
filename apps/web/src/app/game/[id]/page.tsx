@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { GameView } from '@/features/game/components/GameView';
 import { useGameScreenState } from '@/features/game/hooks/useGameScreenState';
 import { useGameSocket } from '@/features/game/hooks/useGameSocket';
+import { useTableSounds } from '@/features/game/hooks/useTableSounds';
 import { generateRoomCode } from '@/lib/room-code';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -25,6 +26,7 @@ export default function GamePage({ params }: GamePageProps) {
     currentUserName,
     Boolean(user),
   );
+  useTableSounds();
   const screen = useGameScreenState({
     currentUserId,
     startNextHand,

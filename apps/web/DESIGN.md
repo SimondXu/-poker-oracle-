@@ -323,13 +323,30 @@ The signature: the pot printed inside the card-back medallion, 10.5em by 4.4em o
 `Chip`: 1em engraved bet chip, navy face with eight brass edge notches (vermilion face with ivory notches for a raise or all-in). `ChipBubble`: chip at 1.5em plus the amount in the index face at 1.15em. `DealerButton`: 1.6em brass disc with a "D", ink-1 text. `ActionTag`: an ivory stamp with a hairline border and index-face tracked caps; raise and all-in are rotated -3deg with a heavier border (all-in is vermilion-filled). `BlindTag`: SB/BB, hairline border in the plate's secondary ink.
 
 ### Navigation chrome
-Top bar 48px on panel: wordmark and spade mark, a room-code chip (28px, 2px radius, brass/50 border, copies on click), NLHE and blinds, hand number, connection dot, locale toggle (EN / 中文). Icon rail 56px on panel. Side panel 340px with three tabs (Log, Coach, Opponents); Coach opens on the hero's turn.
+Top bar 48px on panel: wordmark and spade mark, a room-code chip (28px, 2px radius, brass/50 border, copies on click), NLHE and blinds, hand number, connection dot, locale toggle (EN / 中文), sound toggle (speaker icon, `aria-pressed` while sound is on, same 36px box and brass focus ring as the coach toggle, no hotkey). Icon rail 56px on panel. Side panel 340px with three tabs (Log, Coach, Opponents); Coach opens on the hero's turn.
 
 ### Hand result banner
 72px in-flow row in the dock, up to 30rem wide: ink-1 ground, brass/70 border, double inset rule, plate shadow. Best-five mini cards, winner and what they won, hand name, one line about the hero's own result (labelled net), and the gross pot in brass. Never takes pointer events, never a modal; it leaves on the phase timers.
 
 ### Motion
 Under 200ms, ease-out family: `--ease-out` cubic-bezier(0.23, 1, 0.32, 1), `--ease-in-out` cubic-bezier(0.77, 0, 0.175, 1); durations `fast` 120ms (press, hover), `normal` 180ms (card highlight, banner entry). Keyframes: `table-deal-in` (dealt from center), `table-fade-in` (board cards, bets, tags, banner), `table-timer-drain` (brass, then vermilion in the last 25%), `thinking-dot` (bot thinking). Table and button animations carry `motion-reduce` variants or a reduced-motion flag (no global `prefers-reduced-motion` rule exists yet). No modal or animation blocks the next decision.
+
+### Sound
+Nine short effects, mono mp3 under `public/sounds/` (Kenney, CC0). A sound plays only when it carries information, at the moment its picture appears (the hold queue and the board stagger have already paced the store), never for folds, bot thinking or UI clicks.
+
+| Sound | When |
+| --- | --- |
+| `turn` | the hero's decision opens (once per decision; a reconnect replay stays quiet) |
+| `timer-warning` | the hero's timer has 5s left (once per decision) |
+| `check` | any player checks |
+| `bet` | any bet or call |
+| `raise` | any raise |
+| `all-in` | any all-in |
+| `deal` | hole cards dealt at hand start |
+| `board` | flop, turn and river revealed (once per street) |
+| `win` | the winner is named and the pot goes out |
+
+Master volume 0.35. On by default; the top bar speaker toggle mutes it and the choice is kept in `localStorage` (`aipoker-sound-muted`). Nothing plays before the first click or key press, and a blocked play fails silently. Add a sound only if it tells the player something the eye would miss; ambience and decoration are out.
 
 ## Do's and Don'ts
 
