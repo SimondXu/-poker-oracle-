@@ -71,6 +71,6 @@ test('two rows from different runs are paired by opponent, match and deal; a dea
 
   const otherDeals = runB.map((entry) => (entry.row === 'rule/tag' ? { ...entry, aBb: entry.aBb + 1 } : entry));
   assert.equal(compareRows(runA, parseSelector('a'), otherDeals, parseSelector('b:cli')).dealCheck[0]!.identical, 0);
-  assert.match(formatComparison(compareRows(runA, parseSelector('a'), otherDeals, parseSelector('b:cli'))), /did NOT play the same deals/);
+  assert.match(formatComparison(compareRows(runA, parseSelector('a'), otherDeals, parseSelector('b:cli'))), /different deals, or a rule bot that reads opponent statistics/);
   assert.throws(() => compareRows(runA, parseSelector('a:rule/zzz'), runB, parseSelector('b')), /no row match/);
 });
