@@ -87,7 +87,7 @@ export interface PublicAction {
   isRaise: boolean;
   /** A raise on a street nobody had bet yet: a bet. */
   isBet: boolean;
-  /** The street total it matched or raised to; a closing call's own logged total is unreliable. */
+  /** The street total it matched or raised to. */
   to: number;
   /** Bets and raises: chips over the price before it, as a share of the pot before it. */
   potShare: number;

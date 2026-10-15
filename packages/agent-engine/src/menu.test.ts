@@ -79,16 +79,9 @@ test('every option on 1,000 seeded spots applies through applyAction, to the tot
       kinds.set(`${context.phase}:${option.kind}`, (kinds.get(`${context.phase}:${option.kind}`) ?? 0) + 1);
       const applied = applyAction(hand, { playerId: actorId, ...toDecision(option) }, { timestamp: 0 });
       assert.ok(applied.ok, `${option.id} ${option.kind} ${option.to} on ${JSON.stringify(context)}`);
-      // The engine logs some fields after the street or hand moves on, so check what it logged from the input.
       const record = applied.value.actions.at(-1)!;
       assert.equal(record.type, toDecision(option).type);
-      if (option.kind === 'call') {
-        assert.equal(record.amount, option.to! - context.myStreetCommitted);
-      } else if (option.kind === 'bet' || option.kind === 'raise') {
-        assert.equal(record.amount, option.to);
-      } else if (option.kind === 'all_in') {
-        assert.equal(option.to, context.myStreetCommitted + context.myStack);
-      }
+      assert.equal(record.type === 'fold' ? null : record.toAmount, option.to);
     }
   }
   // The spots reach every street and every kind of option.
