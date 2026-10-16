@@ -6,6 +6,7 @@ import { LocaleToggle } from '@/components/LocaleToggle';
 import { useT, type MessageKey } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { useGameStore } from '@/stores/gameStore';
+import { useSoundMuted } from '../hooks/useTableSounds';
 import type { TopBarProps } from './slots';
 
 type ConnectionStatus = ReturnType<typeof useGameStore.getState>['connectionStatus'];
@@ -50,6 +51,7 @@ export function TopBar({
 }: TopBarProps) {
   const t = useT();
   const connectionStatus = useGameStore((state) => state.connectionStatus);
+  const { muted, setMuted } = useSoundMuted();
   const copyRoomCode = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(roomCode);
@@ -65,7 +67,7 @@ export function TopBar({
   return (
     <header
       data-layout-box="top-bar"
-      className="col-span-full flex h-12 min-w-0 items-center gap-tight overflow-hidden border-b border-line bg-panel px-3 sm:gap-3 md:px-4"
+      className="col-span-full flex h-12 min-w-0 items-center gap-tight overflow-hidden border-b border-line bg-panel px-3 max-[360px]:px-2 sm:gap-3 md:px-4"
     >
       <button
         type="button"
@@ -121,7 +123,7 @@ export function TopBar({
         </>
       )}
 
-      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+      <div className="ml-auto flex shrink-0 items-center gap-2 max-[360px]:gap-1 sm:gap-3">
         <span
           role="status"
           aria-label={t('common.game.connectionAria', { state: connectionLabel })}
@@ -134,6 +136,25 @@ export function TopBar({
 
         <LocaleToggle />
 
+        <button
+          type="button"
+          onClick={() => setMuted(!muted)}
+          aria-pressed={!muted}
+          aria-label={t('common.rail.sound')}
+          title={t('common.rail.sound')}
+          data-layout-box="sound-toggle"
+          className="flex size-9 max-[360px]:size-8 touch-manipulation items-center justify-center rounded-[var(--radius-control)] border border-line-2 text-text-2 outline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--color-brass)] aria-pressed:border-brass/60 aria-pressed:text-text"
+        >
+          <svg width="18" height="18" {...ICON}>
+            <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+            {muted ? (
+              <path d="M16 9.5l5 5M21 9.5l-5 5" />
+            ) : (
+              <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />
+            )}
+          </svg>
+        </button>
+
         {/* Below md the rail is hidden; the top bar carries its coach toggle. */}
         <button
           type="button"
@@ -142,7 +163,7 @@ export function TopBar({
           aria-label={t('common.rail.coach')}
           title={t('common.rail.coach')}
           data-layout-box="coach-toggle"
-          className="flex size-9 touch-manipulation items-center justify-center rounded-[var(--radius-control)] border border-line-2 text-text-2 outline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--color-brass)] aria-pressed:border-brass/60 aria-pressed:text-text md:hidden"
+          className="flex size-9 max-[360px]:size-8 touch-manipulation items-center justify-center rounded-[var(--radius-control)] border border-line-2 text-text-2 outline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--color-brass)] aria-pressed:border-brass/60 aria-pressed:text-text md:hidden"
         >
           <svg width="18" height="18" {...ICON}>
             <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
@@ -157,7 +178,7 @@ export function TopBar({
           aria-label={t('common.panel.sheetOpen')}
           title={t('common.panel.sheetOpen')}
           data-layout-box="panel-sheet-button"
-          className="flex size-9 touch-manipulation items-center justify-center rounded-[var(--radius-control)] border border-line-2 text-text-2 outline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--color-brass)] aria-expanded:border-brass/60 aria-expanded:text-text md:hidden"
+          className="flex size-9 max-[360px]:size-8 touch-manipulation items-center justify-center rounded-[var(--radius-control)] border border-line-2 text-text-2 outline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-text focus-visible:outline-2 focus-visible:outline-[var(--color-brass)] aria-expanded:border-brass/60 aria-expanded:text-text md:hidden"
         >
           <svg width="18" height="18" {...ICON}>
             <rect x="4" y="3.5" width="16" height="17" rx="2" />
