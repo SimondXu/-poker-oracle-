@@ -332,7 +332,7 @@ Top bar 48px on panel: wordmark and spade mark, a room-code chip (28px, 2px radi
 Under 200ms, ease-out family: `--ease-out` cubic-bezier(0.23, 1, 0.32, 1), `--ease-in-out` cubic-bezier(0.77, 0, 0.175, 1); durations `fast` 120ms (press, hover), `normal` 180ms (card highlight, banner entry). Keyframes: `table-deal-in` (dealt from center), `table-fade-in` (board cards, bets, tags, banner), `table-timer-drain` (brass, then vermilion in the last 25%), `thinking-dot` (bot thinking). Table and button animations carry `motion-reduce` variants or a reduced-motion flag (no global `prefers-reduced-motion` rule exists yet). No modal or animation blocks the next decision.
 
 ### Sound
-Nine short effects, mono mp3 under `public/sounds/` (Kenney, CC0). A sound plays only when it carries information, at the moment its picture appears (the hold queue and the board stagger have already paced the store), never for folds, bot thinking or UI clicks.
+Nine events, played from recorded CC0 clips (freesound.org; credits in `public/sounds/README.md`), mono mp3 under `public/sounds/`. `bet` has three variants, `raise` three, `all-in` two and `win` two; each play picks one at random, never the same as the last, and runs at a random speed within 1 ± 3% (pitch moves with it, so repeats never sound identical). A sound plays only when it carries information, at the moment its picture appears (the hold queue and the board stagger have already paced the store), never for folds, bot thinking or UI clicks.
 
 | Sound | When |
 | --- | --- |
