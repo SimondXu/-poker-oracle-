@@ -108,7 +108,7 @@ Good places to start reading:
 
 - Fold estimates that also read the board. The bluffing results above say this is the next thing to fix.
 - Run the held-out opponents (`calldown`, `size-reader`) and Sonnet on prompt v1.2.
-- Put API models and Codex through the same harness. The provider layer is in progress in [#10](https://github.com/SimondXu/-poker-oracle-/pull/10).
+- Put API models and Codex through the same harness. The provider layer is in progress in [#10](https://github.com/SimondXu/holdem-lab/pull/10).
 - LLM commentary on the post-hand review, checked by evals. The spec is in [Docs/game-design/coach-commentary.md](Docs/game-design/coach-commentary.md).
 - Show which seat is Claude on narrow phone layouts.
 - A hosted demo with API-key bots instead of the local CLI.
@@ -118,3 +118,7 @@ Good places to start reading:
 Table sounds are CC0 recordings from [freesound.org](https://freesound.org); authors and links are in [apps/web/public/sounds/README.md](apps/web/public/sounds/README.md).
 
 Built by [Simon Xu](https://simondxu.com) ([github.com/simondxu](https://github.com/simondxu)).
+
+## License
+
+Code: [MIT](LICENSE). The table sounds are CC0 and keep their own credits.
