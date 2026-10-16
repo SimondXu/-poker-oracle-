@@ -1,150 +1,124 @@
-# AiPoker
+# Holdem Lab
 
-AiPoker 是一个面向个人训练的德州扑克（No-Limit Texas Hold'em）项目，采用 pnpm + Turborepo 的 monorepo 结构。
+Play no-limit Texas Hold'em against rule bots and Claude, get a coach's read on every decision, and measure how well an LLM actually plays.
 
-当前代码重点在：
-- 可测试的规则引擎（`game-engine`）
-- 共享类型与事件契约（`shared`）
-- Bot 决策引擎（`bot-engine`）
-- 实时房间与牌局事件流（`apps/server` + Socket.io）
-- Next.js 首页双入口 + 等待室 + 牌桌 UI（`apps/web`）
+![A six-seat table: you against Claude Haiku, Claude Sonnet, TAG, LAG and Fish, with the coach panel open](Docs/images/table.jpg)
 
-## Project Status
+## What's in it
 
-项目处于持续迭代阶段，核心规则和实时事件链路已可通过测试验证。
+- **A full six-seat table** in the browser. Real-time over Socket.io, server-authoritative rules, English and 中文, works on a phone.
+- **Five kinds of opponents.** Three rule bots (Fish, TAG, LAG) built on range-based equity and an opponent model, and two Claude bots (Haiku and Sonnet) that run through your local Claude Code.
+- **A coach that shows its work.** On your turn it gives the bots' own policy for your spot: the options with their frequencies, your equity against each opponent's likely hands, the price, position and the reasons. It doesn't give one magic answer.
+- **A review after every hand.** Each decision you made is graded against that policy as matched, close or off, with a running tally for the session.
+- **An eval harness for LLM players.** Duplicate heads-up matches on fixed deals, paired comparisons with confidence intervals, and a per-decision trace of what the model saw and chose.
+- **Table sounds** recorded from real chips and cards, with a mute toggle.
 
-已实现的关键能力（基于当前仓库代码）：
-- 自由模式双入口：`用户名创建房间` / `用户名+房间号加入`
-- 显式建房与严格加房语义（加入不存在房间返回 `room_not_found`）
-- 同房同名拦截（`player_name_taken`）
-- 服务端权威状态推进（`game:start` / `game:action`）
-- 合法动作校验与动作序列去重
-- 行动超时自动动作（check/fold）
-- 断线与离房后的 seat 清理逻辑
-- Bot 自动行动循环（Fish / TAG / LAG）
-- 前端实时渲染牌桌、行动面板、行动历史、训练提示
+## Playing against Claude
 
-## Repository Layout
+![Adding Claude Haiku or Claude Sonnet to a seat in the waiting room](Docs/images/add-bot.jpg)
 
-```text
-AiPoker/
-├── apps/
-│   ├── server/         # Fastify + Socket.io realtime layer
-│   └── web/            # Next.js 15 frontend
-├── packages/
-│   ├── game-engine/    # Pure TS poker rules + state transitions
-│   ├── bot-engine/     # Bot action decision logic
-│   └── shared/         # Shared types/contracts between web/server
-├── Docs/               # Product/architecture/rules/plans docs
-├── turbo.json
-└── pnpm-workspace.yaml
-```
+A Claude bot is not a chat window. On each of its turns the server:
 
-## Documentation Map
+1. builds what that seat can legally know: its own cards, the board, the action, stack sizes and each opponent's public stats;
+2. runs the engine on it and writes a short brief: equity and pot odds, and when one opponent is left, how often that player is likely to fold to each bet size and what each bet is worth;
+3. lists the legal moves as lettered options (fold, call, bet a third of the pot, bet the pot, all-in, and so on);
+4. starts one isolated `claude -p` (no tools, an empty working directory, no settings or memory) and asks for a letter;
+5. checks the answer and plays it, or falls back to the TAG bot if the call times out or the answer is invalid.
 
-核心文档位于 `Docs/`：
-- `Docs/process/PRD.md`：产品需求
-- `Docs/game-design/gameplay-rules.md`：玩法规则权威文档
-- `Docs/architecture/data-models.md`：类型与接口契约
-- `Docs/architecture/tech-architecture.md`：技术架构与选型
-- `Docs/game-design/ui-spec.md`：前端 UI/UX 规范
-- `Docs/game-design/bot-roadmap.md`：Bot 分阶段路线图
+The model never sees anyone else's hole cards, and it never does the arithmetic: the numbers come from the engine. Tests check both by re-dealing the hidden cards and confirming the prompt doesn't change. Each Claude bot also keeps a ledger of what every opponent has done in public, so after a few hands its heads-up brief can say things like "this player calls a lot: value-bet big, never bluff".
 
-## Tech Stack
+## What the experiments found
 
-- Node.js 22+
-- pnpm 10+
-- TypeScript 5
-- Turborepo
-- Next.js 15 + React 19
-- Fastify + Socket.io
-- Zustand + Framer Motion
-- Zod
+![Win rates against a calling station on the same 100 duplicate deals](Docs/images/eval-station.png)
 
-## Getting Started
+All runs are duplicate heads-up: each deal is played twice with the seats swapped, which cancels most of the card luck. Every Claude call went through Claude Code on a Max plan.
 
-### 1. Prerequisites
+- **Haiku and Sonnet both play sound poker.** Across about 2,500 decisions neither made a single price blunder, such as folding with the odds to call or calling without them. Against the TAG bot both held their own, and 100 deals can't separate them from it.
+- **The first prompt left money on the table.** Against a player who never folds, Haiku won about 660 bb/100 less than the TAG bot. The traces showed why: with the best hand on the river it bet a pot-sized amount instead of moving all in, 39 times out of 47. The menu priced every size only as a bluff.
+- **Fixing the brief fixed the play.** Prompt v1.1 adds what each bet size is worth against this opponent. Haiku's win rate against the same player went from +1,080 to +2,215 bb/100 on the same deals (+1,135 ± 477), and it lost nothing measurable against TAG.
+- **Bluffing is harder.** Against an opponent who folds a lot but keeps strong hands, the bot bluffed by the rules, but the fold estimates were off by up to 30 points. Prompt v1.2 reads the opponent's line within the hand and is better calibrated (Brier 0.269 → 0.227), but the win-rate gain (+170 ± 196) isn't significant yet.
 
-```bash
-node -v   # >= 22
-pnpm -v   # >= 10
-```
+The full method, numbers and the things that didn't work are in [Docs/game-design/bot-eval.md](Docs/game-design/bot-eval.md). In the chart the rule bots' numbers come from the same deals as the prompt v0 runs.
 
-### 2. Install
+## The coach
+
+![After a hand: your decisions graded against the bots' policy](Docs/images/hand-review.jpg)
+
+The coach uses the same code the bots use, so its advice is exactly what a TAG bot would do in your seat, and it shows its mix rather than pretending to be sure. Advice is built on the server and sent only to you; nothing about other players' cards reaches your browser.
+
+## Quick start
+
+You need Node 22+ and pnpm 10+.
 
 ```bash
 pnpm install
+pnpm dev
 ```
 
-### 3. Useful Commands (root)
+Open http://localhost:3000, type a name and press **Practice now** to play five rule bots.
+
+### With Claude bots (local only)
+
+Claude bots use the Claude Code CLI on your machine and your own Claude subscription, so they're for your local table only. You need `claude` installed and logged in.
 
 ```bash
-pnpm dev         # 一条命令同时启动 server + web（推荐）
-pnpm dev:all     # 同 pnpm dev
-pnpm dev:server  # 仅启动后端
-pnpm dev:web     # 仅启动前端
-pnpm build       # turbo run build
-pnpm typecheck   # turbo run typecheck
-pnpm test        # turbo run test
-```
-
-### 4. Workspace Commands
-
-```bash
-# Frontend
-pnpm --filter @aipoker/web dev
-pnpm --filter @aipoker/web build
-pnpm --filter @aipoker/web typecheck
-
-# Realtime server + tests
-pnpm --filter @aipoker/server typecheck
-pnpm --filter @aipoker/server test
-
-# Core packages
-pnpm --filter @aipoker/game-engine test
-pnpm --filter @aipoker/strategy-engine test
-pnpm --filter @aipoker/shared typecheck
-```
-
-## Environment Variables
-
-### Web (`apps/web`)
-
-- `NEXT_PUBLIC_SERVER_URL` (optional)
-  - default: `http://localhost:3001`
-
-示例：
-
-```bash
-# apps/web/.env.local
-NEXT_PUBLIC_SERVER_URL=http://localhost:3001
-```
-
-### Server (`apps/server`)
-
-- `HOST` (optional, default `0.0.0.0`)
-- `PORT` (optional, default `3001`)
-- `LLM_CLI_BOTS_ENABLED` (optional, default `false`)：开启后候机室可添加 Claude Haiku / Sonnet 机器人（见下）
-- `LLM_CLI_BOT_TIMEOUT_MS` (optional, default `30000`)：单次 `claude -p` 决策的期限，超时该手按 TAG 打
-
-### 和 Claude Code 机器人对打（仅本地）
-
-机器人通过本机的 `claude -p` 走你的 Claude 订阅，每手决策一个独立进程（无工具、空目录、白名单环境变量），提示词为 v1.2 + analyst。服务器启动时会检查订阅登录和 canary（`pnpm --filter @aipoker/server eval:cli-canary` 通过过），不通过则不启用并在日志里说明原因。
-
-```bash
-# 启动前必须不带 ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY（否则会计到 API 上，服务器拒绝启用）
-pnpm --filter @aipoker/server dev:claude-bots   # 等价于 env -u ANTHROPIC_BASE_URL LLM_CLI_BOTS_ENABLED=true ... dev
+pnpm --filter @aipoker/shared --filter @aipoker/strategy-engine --filter @aipoker/agent-engine --filter @aipoker/game-engine build
+pnpm --filter @aipoker/server eval:cli-canary   # one-time isolation check, about 8 short calls
+pnpm --filter @aipoker/server dev:claude-bots
 pnpm --filter @aipoker/web dev
 ```
 
-遇到登录、用量上限或限流错误时，Claude 机器人在本进程内全部停用，改按 TAG 打，且不会重试。同时最多 2 个 `claude` 进程并行。
+Then choose **Create a private table**, add Claude Haiku or Claude Sonnet to a seat, and start. Each decision takes 3 to 8 seconds. The server refuses to enable Claude bots if `ANTHROPIC_API_KEY` or `ANTHROPIC_BASE_URL` is set, so calls can't end up billed to an API key by accident. If the plan's usage limit is hit, the Claude seats switch to the TAG bot for the rest of the session.
 
-## Notes
+### Run the evals
 
-- 当前仓库以模块与测试驱动开发为主，服务端运行链路主要通过 `apps/server/src/*.test.ts` 验证。
-- 前后端契约集中在 `packages/shared/src/index.ts`，改动事件字段时应同步更新 server emitter 与 web hooks。
-- 当前 MVP 不包含数据库持久化、登录注册页面、回放页面；以上能力在后续阶段实现。
+```bash
+cd apps/server
+pnpm simulate:bots --mode duplicate-hu --a tag --b station --hands 3000   # rule bots only, no model calls
+pnpm eval:llm-hu --smoke                                                  # 20 Claude calls
+pnpm eval:llm-hu --models claude-haiku-5-5 --prompts v1.2 --pilot         # a full run pauses after 10%
+```
+
+A full 100-deal run against two opponents is about 1,200 calls and 40 minutes. The commands, gates and stop rules are in [Docs/game-design/bot-eval.md](Docs/game-design/bot-eval.md).
+
+## How it's built
+
+```text
+apps/
+  server/            Fastify + Socket.io: rooms, the game loop, bots, coach, eval tools
+  web/               Next.js 15, React 19, Tailwind v4, Zustand
+packages/
+  game-engine/       pure TypeScript rules and state transitions
+  strategy-engine/   ranges, equity, the opponent model and the rule bots' policy
+  agent-engine/      the LLM bot's brief, menu, validator, ledger and prompts
+  shared/            types and event contracts shared by server and web
+Docs/                specs and eval write-ups
+```
+
+`pnpm typecheck`, `pnpm lint` and `pnpm test` run in CI on every pull request (about 670 tests).
+
+Good places to start reading:
+
+- [Docs/game-design/llm-bots.md](Docs/game-design/llm-bots.md): how the LLM bots work, including isolation, the brief and the eval design
+- [Docs/game-design/bot-eval.md](Docs/game-design/bot-eval.md): every eval run and what it showed
+- [Docs/game-design/coach-advice.md](Docs/game-design/coach-advice.md) and [coach-review.md](Docs/game-design/coach-review.md): the coach
+- [apps/web/DESIGN.md](apps/web/DESIGN.md): the visual design system
+
+## Ideas if you fork it
+
+- Fold estimates that also read the board. The bluffing results above say this is the next thing to fix.
+- Run the held-out opponents (`calldown`, `size-reader`) and Sonnet on prompt v1.2.
+- Put API models and Codex through the same harness. The provider layer is in progress in [#10](https://github.com/SimondXu/holdem-lab/pull/10).
+- LLM commentary on the post-hand review, checked by evals. The spec is in [Docs/game-design/coach-commentary.md](Docs/game-design/coach-commentary.md).
+- Show which seat is Claude on narrow phone layouts.
+- A hosted demo with API-key bots instead of the local CLI.
+
+## Credits
+
+Table sounds are CC0 recordings from [freesound.org](https://freesound.org); authors and links are in [apps/web/public/sounds/README.md](apps/web/public/sounds/README.md).
+
+Built by [Simon Xu](https://simondxu.com) ([github.com/simondxu](https://github.com/simondxu)).
 
 ## License
 
-暂未定义（TBD）。
+Code: [MIT](LICENSE). The table sounds are CC0 and keep their own credits.
